@@ -23,6 +23,15 @@ COMMON_SERVICES_FOLDER_OLD=/var/lib/ambari-server/resources/common-services_$(da
 AMBARI_PROPERTIES="/etc/ambari-server/conf/ambari.properties"
 AMBARI_PROPERTIES_OLD="$AMBARI_PROPERTIES.rpmsave"
 
+AMBARI_ENV="/var/lib/ambari-server/ambari-env.sh"
+AMBARI_ENV_OLD="$AMBARI_ENV.rpmsave"
+
+AMBARI_KRB_JAAS_LOGIN_FILE="/etc/ambari-server/conf/krb5JAASLogin.conf"
+AMBARI_KRB_JAAS_LOGIN_FILE_OLD="$AMBARI_KRB_JAAS_LOGIN_FILE.rpmsave"
+
+AMBARI_VIEWS_FOLDER="/var/lib/ambari-server/resources/views"
+AMBARI_VIEWS_BACKUP_FOLDER="$AMBARI_VIEWS_FOLDER/backups"
+
 if [ -d "/etc/ambari-server/conf.save" ]
 then
     mv /etc/ambari-server/conf.save /etc/ambari-server/conf_$(date '+%d_%m_%y_%H_%M').save
@@ -33,6 +42,16 @@ then
     mv -f "$AMBARI_PROPERTIES" "$AMBARI_PROPERTIES_OLD"
 fi
 
+if [ -f "$AMBARI_ENV" ]
+then
+    mv -f "$AMBARI_ENV" "$AMBARI_ENV_OLD"
+fi
+
+if [ -f "$AMBARI_KRB_JAAS_LOGIN_FILE" ]
+then
+    mv -f "$AMBARI_KRB_JAAS_LOGIN_FILE" "$AMBARI_KRB_JAAS_LOGIN_FILE_OLD"
+fi
+
 if [ -d "$STACKS_FOLDER" ]
 then
     mv -f "$STACKS_FOLDER" "$STACKS_FOLDER_OLD"
@@ -41,6 +60,16 @@ fi
 if [ -d "$COMMON_SERVICES_FOLDER_OLD" ]
 then
     mv -f "$COMMON_SERVICES_FOLDER" "$COMMON_SERVICES_FOLDER_OLD"
+fi
+
+if [ ! -d "$AMBARI_VIEWS_BACKUP_FOLDER" ] && [ -d "$AMBARI_VIEWS_FOLDER" ]
+then
+    mkdir "$AMBARI_VIEWS_BACKUP_FOLDER"
+fi
+
+if [ -d "$AMBARI_VIEWS_FOLDER" ] && [ -d "$AMBARI_VIEWS_BACKUP_FOLDER" ]
+then
+    cp -u $AMBARI_VIEWS_FOLDER/*.jar $AMBARI_VIEWS_BACKUP_FOLDER/
 fi
 
 exit 0

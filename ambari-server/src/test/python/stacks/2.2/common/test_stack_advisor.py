@@ -86,10 +86,12 @@ class TestHDP22StackAdvisor(TestCase):
     expected = {
       "tez-site": {
         "properties": {
-          "tez.am.resource.memory.mb": "4000",
+          # tez.am.resource.memory.mb must be <= yarn.scheduler.maximum-allocation-mb
+          "tez.am.resource.memory.mb": "2048",
           "tez.task.resource.memory.mb": "768",
           "tez.runtime.io.sort.mb": "307",
-          "tez.runtime.unordered.output.buffer.size-mb": "57"
+          "tez.runtime.unordered.output.buffer.size-mb": "57",
+          'tez.session.am.dag.submit.timeout.secs': '600'
         }
       },
       'yarn-site': {
@@ -121,10 +123,12 @@ class TestHDP22StackAdvisor(TestCase):
     expected = {
       "tez-site": {
         "properties": {
-          "tez.am.resource.memory.mb": "3100",
+          # tez.am.resource.memory.mb must be <= yarn.scheduler.maximum-allocation-mb
+          "tez.am.resource.memory.mb": "2048",
           "tez.task.resource.memory.mb": "768",
           "tez.runtime.io.sort.mb": "307",
-          "tez.runtime.unordered.output.buffer.size-mb": "57"
+          "tez.runtime.unordered.output.buffer.size-mb": "57",
+          'tez.session.am.dag.submit.timeout.secs': '600'
         }
       },
       'yarn-site': {
@@ -156,10 +160,12 @@ class TestHDP22StackAdvisor(TestCase):
     expected = {
       "tez-site": {
         "properties": {
-          "tez.am.resource.memory.mb": "4000",
+          # tez.am.resource.memory.mb must be <= yarn.scheduler.maximum-allocation-mb
+          "tez.am.resource.memory.mb": "2048",
           "tez.task.resource.memory.mb": "760",
           "tez.runtime.io.sort.mb": "304",
-          "tez.runtime.unordered.output.buffer.size-mb": "57"
+          "tez.runtime.unordered.output.buffer.size-mb": "57",
+          'tez.session.am.dag.submit.timeout.secs': '600'
         }
       },
       'yarn-site': {
@@ -903,6 +909,16 @@ class TestHDP22StackAdvisor(TestCase):
     self.stackAdvisor.recommendYARNConfigurations(configurations, clusterData, services, hosts)
     self.assertEquals(configurations, expected)
     
+    # Test - with no 'changed-configurations', we should get updated 'maximum's.
+    services.pop("changed-configurations", None)
+    services.pop("configurations", None)
+    services["configurations"] = {"yarn-site": {"properties": {"yarn.nodemanager.resource.memory-mb": '4321', "yarn.nodemanager.resource.cpu-vcores": '9'}}}
+    expected["yarn-site"]["property_attributes"]["yarn.scheduler.minimum-allocation-vcores"]["maximum"] = '9'
+    expected["yarn-site"]["property_attributes"]["yarn.scheduler.maximum-allocation-vcores"]["maximum"] = '9'
+    expected["yarn-site"]["property_attributes"]["yarn.scheduler.maximum-allocation-mb"]["maximum"] = '4321'
+    expected["yarn-site"]["property_attributes"]["yarn.scheduler.minimum-allocation-mb"]["maximum"] = '4321'
+    self.stackAdvisor.recommendYARNConfigurations(configurations, clusterData, services, hosts)
+    self.assertEquals(configurations, expected)
 
 
   def test_recommendHiveConfigurationAttributes(self):
@@ -917,6 +933,11 @@ class TestHDP22StackAdvisor(TestCase):
       "capacity-scheduler": {
         "properties": {
           "yarn.scheduler.capacity.root.queues": "queue1,queue2"
+        }
+      },
+      "hive-site": {
+        "properties": {
+          "hive.server2.authentication": "none"
         }
       }
     }
@@ -951,11 +972,15 @@ class TestHDP22StackAdvisor(TestCase):
       },
       'hive-site': {
         'properties': {
+          'hive.server2.enable.doAs': 'true',
+          'hive.server2.tez.default.queues': "queue1,queue2",
+          'hive.server2.tez.initialize.default.sessions': 'false',
+          'hive.server2.tez.sessions.per.default.queue': '1',
           'hive.auto.convert.join.noconditionaltask.size': '268435456',
           'hive.cbo.enable': 'true',
           'hive.compactor.initiator.on': 'false',
           'hive.compactor.worker.threads': '0',
-          'hive.compute.query.using.stats ': 'true',
+          'hive.compute.query.using.stats': 'true',
           'hive.enforce.bucketing': 'false',
           'hive.exec.dynamic.partition.mode': 'strict',
           'hive.exec.failure.hooks': 'org.apache.hadoop.hive.ql.hooks.ATSHook',
@@ -982,7 +1007,10 @@ class TestHDP22StackAdvisor(TestCase):
           'hive.tez.java.opts': '-server -Xmx615m -Djava.net.preferIPv4Stack=true -XX:NewRatio=8 -XX:+UseNUMA -XX:+UseParallelGC -XX:+PrintGCDetails -verbose:gc -XX:+PrintGCTimeStamps',
           'hive.txn.manager': 'org.apache.hadoop.hive.ql.lockmgr.DummyTxnManager',
           'hive.vectorized.execution.enabled': 'true',
-          'hive.vectorized.execution.reduce.enabled': 'false'
+          'hive.vectorized.execution.reduce.enabled': 'false',
+          'hive.security.metastore.authorization.manager': 'org.apache.hadoop.hive.ql.security.authorization.StorageBasedAuthorizationProvider',
+          'hive.security.authorization.manager': 'org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdConfOnlyAuthorizerFactory',
+          "hive.server2.authentication": "none"
         },
        'property_attributes': {
          'hive.auto.convert.join.noconditionaltask.size': {'maximum': '805306368'},
@@ -991,23 +1019,20 @@ class TestHDP22StackAdvisor(TestCase):
          'hive.server2.authentication.ldap.baseDN': {'delete': 'true'}, 
          'hive.server2.authentication.kerberos.principal': {'delete': 'true'}, 
          'hive.server2.authentication.kerberos.keytab': {'delete': 'true'}, 
-         'hive.server2.authentication.ldap.url': {'delete': 'true'}
+         'hive.server2.authentication.ldap.url': {'delete': 'true'},
+         'hive.server2.tez.default.queues': {
+           'entries': [{'value': 'queue1', 'label': 'queue1 queue'}, {'value': 'queue2', 'label': 'queue2 queue'}]
+          }
         }
       },
       'hiveserver2-site': {
         'properties': {
-          'hive.server2.enable.doAs': 'true',
-          'hive.server2.tez.default.queues': "queue1,queue2",
-          'hive.server2.tez.initialize.default.sessions': 'false',
-          'hive.server2.tez.sessions.per.default.queue': '1',
-          'tez.session.am.dag.submit.timeout.secs': '600'
         },
         'property_attributes': {
-          'hive.server2.tez.default.queues': {
-            'entries': [{'value': 'queue1', 'label': 'queue1 queue'}, {'value': 'queue2', 'label': 'queue2 queue'}]
-          }
+         'hive.security.authorization.manager': {'delete': 'true'},
+         'hive.security.authenticator.manager': {'delete': 'true'}
         }
-      },
+      }
     }
     services = {
       "services": [
@@ -1129,20 +1154,94 @@ class TestHDP22StackAdvisor(TestCase):
     self.assertEquals(configurations, expected)
 
     #test recommendations
-    configurations = expected
     configurations["hive-site"]["properties"]["hive.cbo.enable"] = "false"
     configurations["hive-env"]["properties"]["hive_security_authorization"] = "sqlstdauth"
-    services["configurations"] = configurations
-    services["changed-configurations"] = [{"type": "hive-site", "key": "hive.cbo.enable"},
-                                          {"type": "hive-env", "key": "hive_security_authorization"}]
+    services["changed-configurations"] = [{"type": "hive-site", "name": "hive.cbo.enable"},
+                                          {"type": "hive-env", "name": "hive_security_authorization"}]
+    expected["hive-env"]["properties"]["hive_security_authorization"] = "sqlstdauth"
+    expected["hive-site"]["properties"]["hive.cbo.enable"] = "false"
     expected["hive-site"]["properties"]["hive.stats.fetch.partition.stats"]="false"
     expected["hive-site"]["properties"]["hive.stats.fetch.column.stats"]="false"
+    expected["hive-site"]["properties"]["hive.security.authorization.enabled"]="true"
+    expected["hive-site"]["properties"]["hive.server2.enable.doAs"]="false"
     expected["hive-site"]["properties"]["hive.security.metastore.authorization.manager"]=\
-      ",org.apache.hadoop.hive.ql.security.authorization.MetaStoreAuthzAPIAuthorizerEmbedOnly"
+      "org.apache.hadoop.hive.ql.security.authorization.StorageBasedAuthorizationProvider,org.apache.hadoop.hive.ql.security.authorization.MetaStoreAuthzAPIAuthorizerEmbedOnly"
+    expected["hiveserver2-site"]["properties"]["hive.security.authorization.enabled"]="true"
+    expected["hiveserver2-site"]["properties"]["hive.security.authorization.manager"]="org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdHiveAuthorizerFactory"
+    expected["hiveserver2-site"]["properties"]["hive.security.authenticator.manager"]="org.apache.hadoop.hive.ql.security.SessionStateUserAuthenticator"
 
     self.stackAdvisor.recommendHIVEConfigurations(configurations, clusterData, services, hosts)
     self.assertEquals(configurations, expected)
 
+
+    # test 'hive_security_authorization'=='sqlstdauth' => 'hive.server2.enable.doAs'=='false'
+    configurations["hive-env"]["properties"]["hive_security_authorization"] = "none"
+    expected["hive-env"]["properties"]["hive_security_authorization"] = "none"
+    expected["hive-site"]["properties"]["hive.security.authorization.enabled"]="false"
+    expected["hive-site"]["properties"]["hive.server2.enable.doAs"]="true"
+    expected["hive-site"]["properties"]["hive.security.metastore.authorization.manager"]=\
+      "org.apache.hadoop.hive.ql.security.authorization.StorageBasedAuthorizationProvider"
+    self.stackAdvisor.recommendHIVEConfigurations(configurations, clusterData, services, hosts)
+    self.assertEquals(configurations, expected)
+
+    # test 'hive.server2.tez.default.queues' leaf queues
+    configurations['capacity-scheduler']['properties'] = {
+            "yarn.scheduler.capacity.maximum-am-resource-percent": "0.2",
+            "yarn.scheduler.capacity.maximum-applications": "10000",
+            "yarn.scheduler.capacity.node-locality-delay": "40",
+            "yarn.scheduler.capacity.queue-mappings-override.enable": "false",
+            "yarn.scheduler.capacity.resource-calculator": "org.apache.hadoop.yarn.util.resource.DefaultResourceCalculator",
+            "yarn.scheduler.capacity.root.accessible-node-labels": "*",
+            "yarn.scheduler.capacity.root.acl_administer_queue": "*",
+            "yarn.scheduler.capacity.root.capacity": "100",
+            "yarn.scheduler.capacity.root.default.a.a1.acl_administer_queue": "*",
+            "yarn.scheduler.capacity.root.default.a.a1.acl_submit_applications": "*",
+            "yarn.scheduler.capacity.root.default.a.a1.capacity": "75",
+            "yarn.scheduler.capacity.root.default.a.a1.maximum-capacity": "100",
+            "yarn.scheduler.capacity.root.default.a.a1.minimum-user-limit-percent": "100",
+            "yarn.scheduler.capacity.root.default.a.a1.ordering-policy": "fifo",
+            "yarn.scheduler.capacity.root.default.a.a1.state": "RUNNING",
+            "yarn.scheduler.capacity.root.default.a.a1.user-limit-factor": "1",
+            "yarn.scheduler.capacity.root.default.a.a2.acl_administer_queue": "*",
+            "yarn.scheduler.capacity.root.default.a.a2.acl_submit_applications": "*",
+            "yarn.scheduler.capacity.root.default.a.a2.capacity": "25",
+            "yarn.scheduler.capacity.root.default.a.a2.maximum-capacity": "25",
+            "yarn.scheduler.capacity.root.default.a.a2.minimum-user-limit-percent": "100",
+            "yarn.scheduler.capacity.root.default.a.a2.ordering-policy": "fifo",
+            "yarn.scheduler.capacity.root.default.a.a2.state": "RUNNING",
+            "yarn.scheduler.capacity.root.default.a.a2.user-limit-factor": "1",
+            "yarn.scheduler.capacity.root.default.a.acl_administer_queue": "*",
+            "yarn.scheduler.capacity.root.default.a.acl_submit_applications": "*",
+            "yarn.scheduler.capacity.root.default.a.capacity": "50",
+            "yarn.scheduler.capacity.root.default.a.maximum-capacity": "100",
+            "yarn.scheduler.capacity.root.default.a.minimum-user-limit-percent": "100",
+            "yarn.scheduler.capacity.root.default.a.ordering-policy": "fifo",
+            "yarn.scheduler.capacity.root.default.a.queues": "a1,a2",
+            "yarn.scheduler.capacity.root.default.a.state": "RUNNING",
+            "yarn.scheduler.capacity.root.default.a.user-limit-factor": "1",
+            "yarn.scheduler.capacity.root.default.acl_submit_applications": "*",
+            "yarn.scheduler.capacity.root.default.b.acl_administer_queue": "*",
+            "yarn.scheduler.capacity.root.default.b.acl_submit_applications": "*",
+            "yarn.scheduler.capacity.root.default.b.capacity": "50",
+            "yarn.scheduler.capacity.root.default.b.maximum-capacity": "50",
+            "yarn.scheduler.capacity.root.default.b.minimum-user-limit-percent": "100",
+            "yarn.scheduler.capacity.root.default.b.ordering-policy": "fifo",
+            "yarn.scheduler.capacity.root.default.b.state": "RUNNING",
+            "yarn.scheduler.capacity.root.default.b.user-limit-factor": "1",
+            "yarn.scheduler.capacity.root.default.capacity": "100",
+            "yarn.scheduler.capacity.root.default.maximum-capacity": "100",
+            "yarn.scheduler.capacity.root.default.queues": "a,b",
+            "yarn.scheduler.capacity.root.default.state": "RUNNING",
+            "yarn.scheduler.capacity.root.default.user-limit-factor": "1",
+            "yarn.scheduler.capacity.root.queues": "default"
+          }
+    expected['hive-site']['properties']['hive.server2.tez.default.queues'] = 'default.a.a1,default.a.a2,default.b'
+    expected['hive-site']['property_attributes']['hive.server2.tez.default.queues'] = {
+           'entries': [{'value': 'default.a.a1', 'label': 'default.a.a1 queue'}, {'value': 'default.a.a2', 'label': 'default.a.a2 queue'}, {'value': 'default.b', 'label': 'default.b queue'}]
+          }
+    self.stackAdvisor.recommendHIVEConfigurations(configurations, clusterData, services, hosts)
+    self.assertEquals(configurations['hive-site']['property_attributes']['hive.server2.tez.default.queues'], expected['hive-site']['property_attributes']['hive.server2.tez.default.queues'])
+    self.assertEquals(configurations['hive-site']['properties']['hive.server2.tez.default.queues'], expected['hive-site']['properties']['hive.server2.tez.default.queues'])
 
   def test_recommendMapredConfigurationAttributesWithPigService(self):
     configurations = {
@@ -1159,17 +1258,18 @@ class TestHDP22StackAdvisor(TestCase):
       },
       "yarn-site": {
         "properties": {
-          "yarn.nodemanager.resource.memory-mb": "1280",
+          "yarn.nodemanager.resource.memory-mb": "2048",
           "yarn.scheduler.minimum-allocation-mb": "100",
-          "yarn.scheduler.maximum-allocation-mb": "1280",
+          "yarn.scheduler.maximum-allocation-mb": "2048",
           "yarn.nodemanager.resource.cpu-vcores": "2"
         },
         }
     }
     clusterData = {
       "cpu": 4,
-      "containers" : 5,
-      "ramPerContainer": 256
+      "containers" : 7,
+      "ramPerContainer": 256,
+      "totalAvailableRam": 4096,
     }
     expected = {
       "yarn-env": {
@@ -1179,31 +1279,31 @@ class TestHDP22StackAdvisor(TestCase):
       },
       "mapred-site": {
         "properties": {
-          "mapreduce.map.memory.mb": "1500",
-          "mapreduce.reduce.memory.mb": "200",
+          "mapreduce.map.memory.mb": "1536",
+          "mapreduce.reduce.memory.mb": "1536",
           "yarn.app.mapreduce.am.command-opts": "-Xmx80m -Dhdp.version=${hdp.version}",
-          "mapreduce.reduce.java.opts": "-Xmx160m",
+          "mapreduce.reduce.java.opts": "-Xmx1228m",
           "yarn.app.mapreduce.am.resource.mb": "100",
-          "mapreduce.map.java.opts": "-Xmx1200m",
-          "mapreduce.task.io.sort.mb": "840"
+          "mapreduce.map.java.opts": "-Xmx1228m",
+          "mapreduce.task.io.sort.mb": "859"
         },
         "property_attributes": {
           'mapreduce.task.io.sort.mb': {'maximum': '2047'},
-          'yarn.app.mapreduce.am.resource.mb': {'maximum': '1280',
+          'yarn.app.mapreduce.am.resource.mb': {'maximum': '1792',
                                                 'minimum': '100'},
-          'mapreduce.map.memory.mb': {'maximum': '1280',
+          'mapreduce.map.memory.mb': {'maximum': '1792',
                                       'minimum': '100'},
-          'mapreduce.reduce.memory.mb': {'maximum': '1280',
+          'mapreduce.reduce.memory.mb': {'maximum': '1792',
                                          'minimum': '100'}
         }
       },
       "yarn-site": {
         "properties": {
-          "yarn.nodemanager.resource.memory-mb": "1280",
+          "yarn.nodemanager.resource.memory-mb": "1792",
           "yarn.scheduler.minimum-allocation-mb": "100",
           "yarn.scheduler.maximum-allocation-vcores": "1",
           "yarn.scheduler.minimum-allocation-vcores": "1",
-          "yarn.scheduler.maximum-allocation-mb": "1280",
+          "yarn.scheduler.maximum-allocation-mb": "1792",
           "yarn.nodemanager.resource.cpu-vcores": "1"
         },
         "property_attributes": {
@@ -1211,8 +1311,8 @@ class TestHDP22StackAdvisor(TestCase):
           'yarn.nodemanager.resource.cpu-vcores': {'maximum': '2'},
           'yarn.scheduler.minimum-allocation-vcores': {'maximum': '1'},
           'yarn.scheduler.maximum-allocation-vcores': {'maximum': '1'},
-          'yarn.scheduler.minimum-allocation-mb': {'maximum': '1280'},
-          'yarn.scheduler.maximum-allocation-mb': {'maximum': '1280'}
+          'yarn.scheduler.minimum-allocation-mb': {'maximum': '1792'},
+          'yarn.scheduler.maximum-allocation-mb': {'maximum': '1792'}
         }
       }
     }
@@ -1637,6 +1737,56 @@ class TestHDP22StackAdvisor(TestCase):
     self.stackAdvisor.recommendMapReduce2Configurations(configurations, clusterData, services, hosts)
     self.assertEquals(configurations, expected)
 
+    configurations["yarn-site"]["properties"]["yarn.scheduler.minimum-allocation-mb"] = "700"
+
+    expected = {
+        "yarn-env": {
+            "properties": {
+                "min_user_id": "500"
+            }
+        },
+        "mapred-site": {
+            "properties": {
+                "mapreduce.map.memory.mb": "700",
+                "mapreduce.reduce.memory.mb": "1280",
+                "yarn.app.mapreduce.am.command-opts": "-Xmx560m -Dhdp.version=${hdp.version}",
+                "mapreduce.reduce.java.opts": "-Xmx1024m",
+                "yarn.app.mapreduce.am.resource.mb": "700",
+                "mapreduce.map.java.opts": "-Xmx560m",
+                "mapreduce.task.io.sort.mb": "392"
+            },
+            "property_attributes": {
+                'mapreduce.task.io.sort.mb': {'maximum': '2047'},
+                'yarn.app.mapreduce.am.resource.mb': {'maximum': '1280',
+                                                      'minimum': '700'},
+                'mapreduce.map.memory.mb': {'maximum': '1280',
+                                            'minimum': '700'},
+                'mapreduce.reduce.memory.mb': {'maximum': '1280',
+                                               'minimum': '700'}
+            }
+        },
+        "yarn-site": {
+            "properties": {
+                "yarn.nodemanager.resource.memory-mb": "1280",
+                "yarn.scheduler.minimum-allocation-mb": "700",
+                "yarn.scheduler.maximum-allocation-vcores": "1",
+                "yarn.scheduler.minimum-allocation-vcores": "1",
+                "yarn.scheduler.maximum-allocation-mb": "1280",
+                "yarn.nodemanager.resource.cpu-vcores": "1"
+            },
+            "property_attributes": {
+                'yarn.nodemanager.resource.memory-mb': {'maximum': '1877'},
+                'yarn.nodemanager.resource.cpu-vcores': {'maximum': '2'},
+                'yarn.scheduler.minimum-allocation-vcores': {'maximum': '1'},
+                'yarn.scheduler.maximum-allocation-vcores': {'maximum': '1'},
+                'yarn.scheduler.minimum-allocation-mb': {'maximum': '1280'},
+                'yarn.scheduler.maximum-allocation-mb': {'maximum': '1280'}
+            }
+        }
+    }
+    self.stackAdvisor.recommendMapReduce2Configurations(configurations, clusterData, services, hosts)
+    self.assertEquals(configurations, expected)
+
   def test_recommendAmsConfigurations(self):
     configurations = {}
     clusterData = {}
@@ -1757,11 +1907,19 @@ class TestHDP22StackAdvisor(TestCase):
       "configurations": {
         "hbase-env": {
           "properties": {
-            "phoenix_sql_enabled": "true"
+            "phoenix_sql_enabled": "true",
+            "hbase_max_direct_memory_size": ""
           }
         },
         "hbase-site": {
-          "properties": {}
+          "properties": {
+            "hbase.rpc.controllerfactory.class": "",
+            "phoenix.functions.allowUserDefinedFunctions": "",
+            "hbase.bucketcache.ioengine": "",
+            "hbase.bucketcache.size": "",
+            "hbase.bucketcache.percentage.in.combinedcache": "",
+            "hbase.coprocessor.regionserver.classes": ""
+          }
         }
       }
     }
@@ -1769,16 +1927,22 @@ class TestHDP22StackAdvisor(TestCase):
       "hbase-site": {
         "properties": {
           "hbase.regionserver.wal.codec": "org.apache.hadoop.hbase.regionserver.wal.IndexedWALEditCodec",
-          "hbase.region.server.rpc.scheduler.factory.class": "org.apache.hadoop.hbase.ipc.PhoenixRpcSchedulerFactory",
-          "hbase.rpc.controllerfactory.class": "org.apache.hadoop.hbase.ipc.controller.ServerRpcControllerFactory",
-          "hbase.bucketcache.size": "",
-          "hbase.bucketcache.percentage.in.combinedcache": "",
+          "phoenix.functions.allowUserDefinedFunctions": "true",
           "hbase.regionserver.global.memstore.size": "0.4",
-          "hbase.bucketcache.ioengine": ""
+          "hbase.coprocessor.region.classes": "org.apache.hadoop.hbase.security.access.SecureBulkLoadEndpoint"
         },
         'property_attributes': {
-          'hbase.coprocessor.regionserver.classes': {
-            'delete': 'true'
+          "hbase.bucketcache.size": {
+            "delete": "true"
+          },
+          "hbase.bucketcache.percentage.in.combinedcache": {
+            "delete": "true"
+          },
+          "hbase.coprocessor.regionserver.classes": {
+            "delete": "true"
+          },
+          "hbase.bucketcache.ioengine": {
+            "delete": "true"
           }
         }
       },
@@ -1786,7 +1950,11 @@ class TestHDP22StackAdvisor(TestCase):
         "properties": {
           "hbase_master_heapsize": "8192",
           "hbase_regionserver_heapsize": "8192",
-          "hbase_max_direct_memory_size": ""
+        },
+        "property_attributes": {
+          "hbase_max_direct_memory_size": {
+            "delete": "true"
+          }
         }
       }
     }
@@ -1801,7 +1969,9 @@ class TestHDP22StackAdvisor(TestCase):
     # Test when phoenix_sql_enabled = false
     services['configurations']['hbase-env']['properties']['phoenix_sql_enabled'] = 'false'
     expected['hbase-site']['properties']['hbase.regionserver.wal.codec'] = 'org.apache.hadoop.hbase.regionserver.wal.WALCellCodec'
-    expected['hbase-site']['property_attributes'] = {'hbase.region.server.rpc.scheduler.factory.class': {'delete': 'true'}, 'hbase.rpc.controllerfactory.class': {'delete': 'true'}, 'hbase.coprocessor.regionserver.classes': {'delete': 'true'}}
+    expected['hbase-site']['property_attributes']['hbase.rpc.controllerfactory.class'] = {'delete': 'true'}
+    expected['hbase-site']['property_attributes']['hbase.coprocessor.regionserver.classes'] = {'delete': 'true'}
+    expected['hbase-site']['property_attributes']['phoenix.functions.allowUserDefinedFunctions'] = {'delete': 'true'}
     self.stackAdvisor.recommendHBASEConfigurations(configurations, clusterData, services, None)
     self.assertEquals(configurations, expected)
 
@@ -1833,20 +2003,22 @@ class TestHDP22StackAdvisor(TestCase):
                         }]})
     services['configurations']['hbase-env']['properties']['phoenix_sql_enabled'] = 'false'
     expected['hbase-site']['properties']['hbase.regionserver.wal.codec'] = 'org.apache.hadoop.hbase.regionserver.wal.WALCellCodec'
-    expected['hbase-site']['property_attributes'] = {'hbase.region.server.rpc.scheduler.factory.class': {'delete': 'true'}, 'hbase.rpc.controllerfactory.class': {'delete': 'true'}, 'hbase.coprocessor.regionserver.classes': {'delete': 'true'}}
-    expected['hbase-env']['property_attributes'] = {'hbase_master_heapsize': {'maximum': '49152'}}
+    expected['hbase-site']['property_attributes']['hbase.rpc.controllerfactory.class'] = {'delete': 'true'}
+    expected['hbase-site']['property_attributes']['hbase.coprocessor.regionserver.classes'] = {'delete': 'true'}
+    expected['hbase-site']['property_attributes']['phoenix.functions.allowUserDefinedFunctions'] = {'delete': 'true'}
+    expected['hbase-env']['property_attributes']['hbase_master_heapsize'] = {'maximum': '49152'}
     self.stackAdvisor.recommendHBASEConfigurations(configurations, clusterData, services, hosts)
     self.assertEquals(configurations, expected)
 
     # Test when hbase.security.authentication = kerberos
     services['configurations']['hbase-site']['properties']['hbase.security.authentication'] = 'kerberos'
-    expected['hbase-site']['properties']['hbase.coprocessor.region.classes'] = 'org.apache.hadoop.hbase.security.token.TokenProvider'
+    expected['hbase-site']['properties']['hbase.coprocessor.region.classes'] = 'org.apache.hadoop.hbase.security.token.TokenProvider,org.apache.hadoop.hbase.security.access.SecureBulkLoadEndpoint'
     self.stackAdvisor.recommendHBASEConfigurations(configurations, clusterData, services, None)
     self.assertEquals(configurations, expected)
 
     # Test when hbase.security.authentication = simple
     services['configurations']['hbase-site']['properties']['hbase.security.authentication'] = 'simple'
-    expected['hbase-site']['properties']['hbase.coprocessor.region.classes'] = ''
+    expected['hbase-site']['properties']['hbase.coprocessor.region.classes'] = 'org.apache.hadoop.hbase.security.access.SecureBulkLoadEndpoint'
     self.stackAdvisor.recommendHBASEConfigurations(configurations, clusterData, services, None)
     self.assertEquals(configurations, expected)
 
@@ -1854,19 +2026,28 @@ class TestHDP22StackAdvisor(TestCase):
     configurations['hbase-site']['properties'].pop('hbase.coprocessor.region.classes', None)
     services['configurations']['hbase-site']['properties']['hbase.security.authentication'] = 'kerberos'
     services['configurations']['hbase-site']['properties']['hbase.coprocessor.region.classes'] = 'a.b.c.d'
-    expected['hbase-site']['properties']['hbase.coprocessor.region.classes'] = 'a.b.c.d,org.apache.hadoop.hbase.security.token.TokenProvider'
+    expected['hbase-site']['properties']['hbase.coprocessor.region.classes'] = 'a.b.c.d,org.apache.hadoop.hbase.security.token.TokenProvider,org.apache.hadoop.hbase.security.access.SecureBulkLoadEndpoint'
     self.stackAdvisor.recommendHBASEConfigurations(configurations, clusterData, services, None)
     self.assertEquals(configurations, expected)
 
     # Test when hbase.security.authentication = kerberos AND authorization = true
     configurations['hbase-site']['properties'].pop('hbase.coprocessor.region.classes', None)
+    services['configurations']['hbase-site']['properties'].pop('hbase.coprocessor.region.classes', None)
     services['configurations']['hbase-site']['properties']['hbase.security.authentication'] = 'kerberos'
     services['configurations']['hbase-site']['properties']['hbase.security.authorization'] = 'true'
     expected['hbase-site']['properties']['hbase.coprocessor.master.classes'] = "org.apache.hadoop.hbase.security.access.AccessController"
-    expected['hbase-site']['properties']['hbase.coprocessor.region.classes'] = 'org.apache.hadoop.hbase.security.access.AccessController,org.apache.hadoop.hbase.security.token.TokenProvider'
+    expected['hbase-site']['properties']['hbase.coprocessor.region.classes'] = 'org.apache.hadoop.hbase.security.access.AccessController,org.apache.hadoop.hbase.security.token.TokenProvider,org.apache.hadoop.hbase.security.access.SecureBulkLoadEndpoint'
     expected['hbase-site']['properties']['hbase.coprocessor.regionserver.classes'] = "org.apache.hadoop.hbase.security.access.AccessController"
     self.stackAdvisor.recommendHBASEConfigurations(configurations, clusterData, services, None)
     self.assertEquals(configurations, expected)
+
+    # Test - default recommendations should have certain configs deleted. HAS TO BE LAST TEST.
+    services["configurations"] = {"hbase-site": {"properties": {"phoenix.functions.allowUserDefinedFunctions": '', "hbase.rpc.controllerfactory.class": ''}}}
+    configurations = {}
+    self.stackAdvisor.recommendHBASEConfigurations(configurations, clusterData, services, None)
+    self.assertEquals(configurations['hbase-site']['property_attributes']['phoenix.functions.allowUserDefinedFunctions'], {'delete': 'true'})
+    self.assertEquals(configurations['hbase-site']['property_attributes']['hbase.rpc.controllerfactory.class'], {'delete': 'true'})
+    self.assertEquals(configurations['hbase-site']['properties']['hbase.regionserver.wal.codec'], "org.apache.hadoop.hbase.regionserver.wal.WALCellCodec")
 
 
   def test_recommendHDFSConfigurations(self):
@@ -2166,6 +2347,60 @@ class TestHDP22StackAdvisor(TestCase):
     self.stackAdvisor.recommendHDFSConfigurations(configurations, clusterData, services, hosts)
     self.assertEqual("kms://http@myhost1:2222/kms", configurations["hdfs-site"]["properties"]["dfs.encryption.key.provider.uri"])
 
+    # Test - 'https' in KMS URL
+    configurations["ranger-kms-site"] = {"properties": {"ranger.service.https.attrib.ssl.enabled": "true"}}
+    self.stackAdvisor.recommendHDFSConfigurations(configurations, clusterData, services, hosts)
+    self.assertEqual("kms://https@myhost1:2222/kms", configurations["hdfs-site"]["properties"]["dfs.encryption.key.provider.uri"])
+
+    # Test 8 - Dynamic maximum for 'dfs.namenode.handler.count'
+    hosts['items'][1]['Hosts']['cpu_count'] = 9
+    self.stackAdvisor.recommendHDFSConfigurations(configurations, clusterData, services, hosts)
+    self.assertEqual(str(9 * 25), configurations["hdfs-site"]["property_attributes"]["dfs.namenode.handler.count"]['maximum'])
+
+    # Test 9 - Dynamic maximum for 'dfs.namenode.handler.count'
+    configurations["hdfs-site"]["property_attributes"].pop("dfs.namenode.handler.count", None)
+    hosts['items'][1]['Hosts']['cpu_count'] = 4
+    self.stackAdvisor.recommendHDFSConfigurations(configurations, clusterData, services, hosts)
+    self.assertTrue("dfs.namenode.handler.count" not in configurations["hdfs-site"]["property_attributes"])
+
+  def test_validateTezConfigurationsEnv(self):
+    configurations = {
+        "yarn-site": {
+            "properties": {
+                "yarn.scheduler.minimum-allocation-mb": "100",
+                "yarn.scheduler.maximum-allocation-mb": "2048"
+            }
+        }
+    }
+
+    recommendedDefaults = {'tez.task.resource.memory.mb': '1024',
+                           'tez.runtime.io.sort.mb' : '256',
+                           'tez.runtime.unordered.output.buffer.size-mb' : '256',
+                           'tez.am.resource.memory.mb' : '1024'}
+
+    properties = {'tez.task.resource.memory.mb': '2050',
+                  'tez.runtime.io.sort.mb' : '256',
+                  'tez.runtime.unordered.output.buffer.size-mb' : '256',
+                  'tez.am.resource.memory.mb' : '2050'}
+
+
+    res_expected = [{'config-name': 'tez.am.resource.memory.mb',
+                 'config-type': 'tez-site',
+                 'level': 'WARN',
+                 'message': "tez.am.resource.memory.mb should be less than YARN max allocation size (2048)",
+                 'type': 'configuration',
+                 'level': 'WARN'},
+                    {'config-name': 'tez.task.resource.memory.mb',
+                 'config-type': 'tez-site',
+                 'level': 'WARN',
+                 'message': "tez.task.resource.memory.mb should be less than YARN max allocation size (2048)",
+                 'type': 'configuration',
+                 'level': 'WARN'}]
+
+    res = self.stackAdvisor.validateTezConfigurations(properties, recommendedDefaults, configurations, '', '')
+    self.assertEquals(res, res_expected)
+
+
   def test_validateHDFSConfigurationsEnv(self):
     configurations = {}
 
@@ -2271,6 +2506,11 @@ class TestHDP22StackAdvisor(TestCase):
                      'message': 'Value is less than the recommended default of -Xmx546m',
                      'type': 'configuration',
                      'config-name': 'yarn.app.mapreduce.am.command-opts',
+                     'level': 'WARN'},
+                    {'config-type': 'mapred-site',
+                     'message': 'yarn.app.mapreduce.am.command-opts Xmx should be less than yarn.app.mapreduce.am.resource.mb (410)',
+                     'type': 'configuration',
+                     'config-name': 'yarn.app.mapreduce.am.command-opts',
                      'level': 'WARN'}]
 
     res = self.stackAdvisor.validateMapReduce2Configurations(properties, recommendedDefaults, {}, '', '')
@@ -2297,6 +2537,34 @@ class TestHDP22StackAdvisor(TestCase):
     ]
 
     res = self.stackAdvisor.validateHiveConfigurationsEnv(properties, {}, configurations, {}, {})
+    self.assertEquals(res, res_expected)
+
+    pass
+
+  def test_validateHiveConfigurations(self):
+    properties = {"hive_security_authorization": "None",
+                  "hive.exec.orc.default.stripe.size": "8388608",
+                  'hive.tez.container.size': '2048',
+                  'hive.tez.java.opts': '-Xmx300m',
+                  'hive.auto.convert.join.noconditionaltask.size': '1100000000'}
+    recommendedDefaults = {'hive.tez.container.size': '1024',
+                           'hive.tez.java.opts': '-Xmx256m',
+                           'hive.auto.convert.join.noconditionaltask.size': '1000000000'}
+    configurations = {
+      "hive-site": {
+        "properties": {"hive.security.authorization.enabled": "true"}
+      },
+      "hive-env": {
+        "properties": {"hive_security_authorization": "None"}
+      }
+    }
+    services = {
+      "services": []
+    }
+
+    # Test for 'ranger-hive-plugin-properties' not being in configs
+    res_expected = []
+    res = self.stackAdvisor.validateHiveConfigurations(properties, recommendedDefaults, configurations, services, {})
     self.assertEquals(res, res_expected)
 
     pass

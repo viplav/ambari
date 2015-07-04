@@ -111,13 +111,13 @@ App.WidgetWizardStep2Controller = Em.Controller.extend({
       case "GRAPH":
         return !this.isGraphDataComplete(this.get('dataSets'));
       case "TEMPLATE":
-        return !this.isTemplateDataComplete(this.get('expressions'), this.get('templateValue'));
+        return this.get('isTemplateInvalid') || !this.isTemplateDataComplete(this.get('expressions'), this.get('templateValue'));
     }
     return false;
   }.property(
     'widgetPropertiesViews.@each.isValid',
     'dataSets.@each.label',
-    'templateValue'
+    'templateValue', 'isTemplateInvalid'
   ),
 
   /**
@@ -180,6 +180,7 @@ App.WidgetWizardStep2Controller = Em.Controller.extend({
       label: Em.I18n.t('dashboard.widgets.wizard.step2.dataSeries').format(id),
       isRemovable: !isDefault,
       expression: Em.Object.create({
+        id: id,
         data: [],
         isInvalid: false,
         isEmpty: function () {
@@ -268,10 +269,10 @@ App.WidgetWizardStep2Controller = Em.Controller.extend({
           ];
           break;
         case 'TEMPLATE':
-          expressionData = this.parseTemplateExpression(this);
+          expressionData = this.parseTemplateExpression(this.get('templateValue'), this.get('expressions'));
           break;
         case 'GRAPH':
-          expressionData = this.parseGraphDataset(this);
+          expressionData = this.parseGraphDataset(this.get('dataSets'));
           break;
       }
     }
@@ -281,14 +282,14 @@ App.WidgetWizardStep2Controller = Em.Controller.extend({
 
   /**
    * parse Graph data set
-   * @param {Ember.View} view
+   * @param {Array} dataSets
    * @returns {{metrics: Array, values: Array}}
    */
-  parseGraphDataset: function (view) {
+  parseGraphDataset: function (dataSets) {
     var metrics = [];
     var values = [];
 
-    view.get('dataSets').forEach(function (dataSet) {
+    dataSets.forEach(function (dataSet) {
       var result = this.parseExpression(dataSet.get('expression'));
       metrics.pushObjects(result.metrics);
       values.push({
@@ -305,16 +306,34 @@ App.WidgetWizardStep2Controller = Em.Controller.extend({
 
   /**
    * parse expression from template
-   * @param {Ember.View} view
+   * @param {string} templateValue
+   * @param {Array} expressions
    * @returns {{metrics: Array, values: {value: *}[]}}
    */
-  parseTemplateExpression: function (view) {
+  parseTemplateExpression: function (templateValue, expressions) {
     var metrics = [];
     var self = this;
-    var expression = view.get('templateValue').replace(/\{\{Expression[\d]\}\}/g, function (exp) {
+
+    // check if there is invalid expression name eg. {{myExpre}}
+    var isTemplateInvalid = false;
+    var validExpressionName = /\{\{(Expression[\d])\}\}/g;
+    var expressionName = /\{\{((?!}}).)*\}\}/g;
+    if (templateValue) {
+      var expressionNames = templateValue.match(expressionName);
+      if (expressionNames) {
+        expressionNames.forEach(function(name) {
+          if (!name.match(validExpressionName)) {
+            isTemplateInvalid = true;
+          }
+        });
+      }
+    }
+    this.set('isTemplateInvalid', isTemplateInvalid);
+
+    var expression = templateValue.replace(/\{\{Expression[\d]\}\}/g, function (exp) {
       var result;
-      if (view.get('expressions').someProperty('alias', exp)) {
-        result = self.parseExpression(view.get('expressions').findProperty('alias', exp));
+      if (expressions.someProperty('alias', exp)) {
+        result = self.parseExpression(expressions.findProperty('alias', exp));
         metrics.pushObjects(result.metrics);
         return result.value;
       }
@@ -343,7 +362,17 @@ App.WidgetWizardStep2Controller = Em.Controller.extend({
       value = '${';
       expression.data.forEach(function (element) {
         if (element.isMetric) {
-          metrics.push(element);
+          var metricObj = {
+            "name": element.name,
+            "service_name": element.serviceName,
+            "component_name": element.componentName,
+            "metric_path": element.metricPath
+          };
+          if (element.hostComponentCriteria) {
+            metricObj.host_component_criteria = element.hostComponentCriteria;
+          }
+          metrics.push(metricObj);
+
         }
         value += element.name;
       }, this);
@@ -362,7 +391,7 @@ App.WidgetWizardStep2Controller = Em.Controller.extend({
   updateProperties: function () {
     var result = {};
 
-    this.get('widgetPropertiesViews').forEach(function(property){
+    this.get('widgetPropertiesViews').forEach(function (property) {
       for (var key in property.valueMap) {
         result[property.valueMap[key]] = property.get(key);
       }
@@ -463,21 +492,11 @@ App.WidgetWizardStep2Controller = Em.Controller.extend({
     var str = '';
     var data = [];
     var id = 0;
-    var metric;
 
     for (var i = 0, l = expression.length; i < l; i++) {
       if (this.get('OPERATORS').contains(expression[i])) {
         if (str.trim().length > 0) {
-          metric = metrics.findProperty('name', str.trim());
-          data.pushObject(Em.Object.create({
-            id: ++id,
-            name: str.trim(),
-            isMetric: true,
-            componentName: metric.component_name,
-            serviceName: metric.service_name,
-            metricPath: metric.metric_path,
-            hostComponentCriteria: metric.host_component_criteria
-          }));
+          data.pushObject(this.getExpressionVariable(str.trim(), ++id, metrics));
           str = '';
         }
         data.pushObject(Em.Object.create({
@@ -490,24 +509,44 @@ App.WidgetWizardStep2Controller = Em.Controller.extend({
       }
     }
     if (str.trim().length > 0) {
-      metric = metrics.findProperty('name', str.trim());
-      data.pushObject(Em.Object.create({
-        id: ++id,
-        name: str.trim(),
+      data.pushObject(this.getExpressionVariable(str.trim(), ++id, metrics));
+    }
+    return data;
+  },
+
+  /**
+   * get variable of expression
+   * could be name of metric "m1" or constant number "1"
+   * @param {string} name
+   * @param {Array} metrics
+   * @param {number} id
+   * @returns {Em.Object}
+   */
+  getExpressionVariable: function (name, id, metrics) {
+    var metric;
+
+    if (isNaN(Number(name))) {
+      metric = metrics.findProperty('name', name);
+      return Em.Object.create({
+        id: id,
+        name: metric.name,
         isMetric: true,
         componentName: metric.component_name,
         serviceName: metric.service_name,
         metricPath: metric.metric_path,
         hostComponentCriteria: metric.host_component_criteria
-      }));
+      });
+    } else {
+      return Em.Object.create({
+        id: id,
+        name: name,
+        isNumber: true
+      });
     }
-    return data;
   },
 
   next: function () {
-    if (!this.get('isSubmitDisabled')) {
-      App.router.send('next');
-    }
+    App.router.send('next');
   }
 });
 

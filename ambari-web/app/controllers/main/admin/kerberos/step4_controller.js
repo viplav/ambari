@@ -19,8 +19,11 @@
 var App = require('app');
 require('controllers/wizard/step7_controller');
 
-App.KerberosWizardStep4Controller = App.WizardStep7Controller.extend(App.AddSecurityConfigs, {
+App.KerberosWizardStep4Controller = App.WizardStep7Controller.extend(App.AddSecurityConfigs, App.ToggleIsRequiredMixin, {
   name: 'kerberosWizardStep4Controller',
+  isWithinAddService: function () {
+    return this.get('wizardController.name') == 'addServiceController';
+  }.property('wizardController.name'),
 
   adminPropertyNames: [{name: 'admin_principal', displayName: 'Admin principal'}, {name: 'admin_password', displayName: 'Admin password'}],
   
@@ -29,7 +32,7 @@ App.KerberosWizardStep4Controller = App.WizardStep7Controller.extend(App.AddSecu
     this.set('selectedService', null);
     this.set('stepConfigs', []);
   },
-  
+
   loadStep: function() {
     if (this.get('wizardController.skipConfigureIdentitiesStep')) {
       App.router.send('next');
@@ -37,10 +40,23 @@ App.KerberosWizardStep4Controller = App.WizardStep7Controller.extend(App.AddSecu
     }
     var self = this;
     this.clearStep();
-    this.getDescriptorConfigs().then(function(properties) {
-      self.setStepConfigs(properties);
-      self.set('isRecommendedLoaded', true);
-    });
+     if (this.get('wizardController.name') === 'addServiceController' && this.get('shouldLoadClusterDescriptor')) {
+     // merge saved properties with default ones for the newly added service
+       this.loadClusterDescriptorConfigs().always(function(clusterDescriptorConfigs,textStatus) {
+         var clusterProperties =  textStatus === 'success' ? self.createServicesStackDescriptorConfigs.call(self, clusterDescriptorConfigs) : [];
+         self.loadStackDescriptorConfigs().always(function(stackDescriptorConfigs, textStatus) {
+           var stackProperties =  textStatus === 'success' ? self.createServicesStackDescriptorConfigs.call(self, stackDescriptorConfigs) : [];
+            self.setStepConfigs(clusterProperties, stackProperties);
+            self.set('isRecommendedLoaded', true);
+         });
+       });
+     } else {
+       this.getDescriptorConfigs().then(function (properties) {
+         self.setStepConfigs(properties);
+       }).always(function() {
+         self.set('isRecommendedLoaded', true);
+       });
+     }
   },
 
   /**
@@ -53,7 +69,7 @@ App.KerberosWizardStep4Controller = App.WizardStep7Controller.extend(App.AddSecu
     // Identity configs related to user principal
     var clusterConfigs = configs.filterProperty('serviceName','Cluster');
     // storm user principal is not required for ambari operation
-    var userConfigs = configs.filterProperty('identityType','user').rejectProperty('serviceName','STORM');
+    var userConfigs = configs.filterProperty('identityType','user');
     var generalConfigs = clusterConfigs.concat(userConfigs).uniq('name');
     var advancedConfigs = configs.filter(function(element){
       return !generalConfigs.findProperty('name', element.get('name'));
@@ -105,15 +121,35 @@ App.KerberosWizardStep4Controller = App.WizardStep7Controller.extend(App.AddSecu
    * Prepare step configs using stack descriptor properties.
    * 
    * @param {App.ServiceConfigProperty[]} configs
+   * @param {App.ServiceConfigProperty[]} stackConfigs
    */
-  setStepConfigs: function(configs) {
-    var configProperties = this.prepareConfigProperties(configs);
+  setStepConfigs: function(configs, stackConfigs) {
+    var configProperties = this.prepareConfigProperties(configs),
+      stackConfigProperties = stackConfigs ? this.prepareConfigProperties(stackConfigs) : [],
+      alterProperties = ['value','initialValue', 'defaultValue'];
     if (this.get('wizardController.name') == 'addServiceController') {
       // config properties for installed services should be disabled on Add Service Wizard
       configProperties.forEach(function(item) {
         if (this.get('adminPropertyNames').mapProperty('name').contains(item.get('name'))) return;
         if (this.get('installedServiceNames').contains(item.get('serviceName')) || item.get('serviceName') == 'Cluster') {
           item.set('isEditable', false);
+        } else if (stackConfigs) {
+          var stackConfigProperty = stackConfigProperties.filterProperty('filename', item.get('filename')).findProperty('name', item.get('name'));
+          if (stackConfigProperty) {
+            alterProperties.forEach(function (alterProperty) {
+              item.set(alterProperty, stackConfigProperty.get(alterProperty));
+            });
+          }
+        }
+      }, this);
+      // Concat properties that are present in the stack's kerberos  descriptor but not in the cluster kerberos descriptor
+      stackConfigProperties.forEach(function(_stackConfigProperty){
+        var isPropertyInClusterDescriptor = configProperties.filterProperty('filename', _stackConfigProperty.get('filename')).someProperty('name', _stackConfigProperty.get('name'));
+        if (!isPropertyInClusterDescriptor) {
+          if (this.get('installedServiceNames').contains(_stackConfigProperty.get('serviceName')) || _stackConfigProperty.get('serviceName') == 'Cluster') {
+            _stackConfigProperty.set('isEditable', false);
+          }
+          configProperties.pushObject(_stackConfigProperty);
         }
       }, this);
     }
@@ -127,36 +163,50 @@ App.KerberosWizardStep4Controller = App.WizardStep7Controller.extend(App.AddSecu
    * Set property value observer.
    * Set realm property with value from previous configuration step.
    * Set appropriate category for all configs.
+   * Hide KDC related credentials properties if kerberos was manually enabled.
    *
    * @param {App.ServiceConfigProperty[]} configs
    * @returns {App.ServiceConfigProperty[]}
    */
   prepareConfigProperties: function(configs) {
+    console.log("call prepare");
     var self = this;
     var storedServiceConfigs = this.get('wizardController').getDBProperty('serviceConfigProperties');
     var installedServiceNames = ['Cluster'].concat(App.Service.find().mapProperty('serviceName'));
     var adminProps = [];
     var configProperties = configs.slice(0);
     var siteProperties = App.config.get('preDefinedSiteProperties');
-    if (this.get('wizardController.name') == 'addServiceController') {
+    // override stored values
+    App.config.mergeStoredValue(configProperties, storedServiceConfigs);
+    console.log(this.get('wizardController'));
+    App.config.mergeStoredValue(configProperties, this.get('wizardController').loadCachedStepConfigValues(this));
+
+    // show admin properties in add service wizard
+    if (this.get('isWithinAddService')) {
       installedServiceNames = installedServiceNames.concat(this.get('selectedServiceNames'));
       this.get('adminPropertyNames').forEach(function(item) {
         var property = storedServiceConfigs.filterProperty('filename', 'krb5-conf.xml').findProperty('name', item.name);
         if (!!property) {
-          var _prop = App.ServiceConfigProperty.create($.extend({}, property, { name: item.name, value: '', defaultValue: '', serviceName: 'Cluster', displayName: item.displayName}));
+          var _prop = App.ServiceConfigProperty.create($.extend({}, property, { name: item.name, value: '', recommendedValue: '', serviceName: 'Cluster', displayName: item.displayName}));
+          if (App.router.get('mainAdminKerberosController.isManualKerberos')) {
+            _prop.setProperties({
+              isRequired: false,
+              isVisible: false
+            });
+          }
           _prop.validate();
           adminProps.push(_prop);
         }
       });
-      configProperties = adminProps.concat(configProperties);
     }
+    configProperties = adminProps.concat(configProperties);
     configProperties = configProperties.filter(function(item) {
       return installedServiceNames.contains(item.get('serviceName'));
     });
     if (this.get('wizardController.name') != 'addServiceController') {
       var realmValue = storedServiceConfigs.findProperty('name', 'realm').value;
       configProperties.findProperty('name', 'realm').set('value', realmValue);
-      configProperties.findProperty('name', 'realm').set('defaultValue', realmValue);
+      configProperties.findProperty('name', 'realm').set('recommendedValue', realmValue);
     }
 
     configProperties.setEach('isSecureConfig', false);
@@ -167,7 +217,7 @@ App.KerberosWizardStep4Controller = App.WizardStep7Controller.extend(App.AddSecu
       if (property.get('observesValueFrom')) {
         var observedValue = allConfigs.findProperty('name', property.get('observesValueFrom')).get('value');
         property.set('value', observedValue);
-        property.set('defaultValue', observedValue);
+        property.set('recommendedValue', observedValue);
       }
       if (property.get('serviceName') == 'Cluster') {
         property.set('category', 'Global');
@@ -176,7 +226,7 @@ App.KerberosWizardStep4Controller = App.WizardStep7Controller.extend(App.AddSecu
         property.set('category', property.get('serviceName'));
       }
       // All user identity except storm should be grouped under "Ambari Principals" category
-      if (property.get('identityType') == 'user' && property.get('serviceName') !== 'STORM') property.set('category', 'Ambari Principals');
+      if (property.get('identityType') == 'user') property.set('category', 'Ambari Principals');
       var siteProperty = siteProperties.findProperty('name', property.get('name'));
       if (siteProperty) {
         if (siteProperty.category === property.get('category')) {
@@ -211,7 +261,7 @@ App.KerberosWizardStep4Controller = App.WizardStep7Controller.extend(App.AddSecu
         }
         var configValue =  config.value.replace(/thrift.+[0-9]{2,},/i, hiveMSHostNames.join('\\,') + ",");
         config.set('value', configValue);
-        config.set('defaultValue', configValue);
+        config.set('recommendedValue', configValue);
       }
     }
   },
@@ -228,7 +278,7 @@ App.KerberosWizardStep4Controller = App.WizardStep7Controller.extend(App.AddSecu
       if (config.get('observesValueFrom') == configProperty.get('name')) {
         Em.run.once(self, function() {
           config.set('value', configProperty.get('value'));
-          config.set('defaultValue', configProperty.get('value'));
+          config.set('recommendedValue', configProperty.get('value'));
         });
       }
     });

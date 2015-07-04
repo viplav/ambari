@@ -46,6 +46,8 @@ public class JobImpl implements Job {
   private String dagName;
 
   private String sessionTag;
+  private String referrer;
+  private String globalSettings;
 
   private String id = null;
   private String owner = null;
@@ -271,5 +273,25 @@ public class JobImpl implements Job {
   @Override
   public void setSqlState(String sqlState) {
     this.sqlState = sqlState;
+  }
+
+  @Override
+  public String getReferrer() {
+    return referrer;
+  }
+
+  @Override
+  public void setReferrer(String referrer) {
+    this.referrer = referrer;
+  }
+
+  @Override
+  public String getGlobalSettings() {
+    return globalSettings;
+  }
+
+  @Override
+  public void setGlobalSettings(String globalSettings) {
+    this.globalSettings = globalSettings;
   }
 }

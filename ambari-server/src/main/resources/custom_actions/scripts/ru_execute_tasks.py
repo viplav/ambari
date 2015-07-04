@@ -21,7 +21,7 @@ Ambari Agent
 """
 import re
 import os
-import json
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
 import socket
 
 from resource_management.libraries.script import Script
@@ -110,15 +110,23 @@ class ExecuteUpgradeTasks(Script):
         Logger.info(str(task))
 
         # If a (script, function) exists, it overwrites the command.
-        if task.script and task.function and service_package_folder and hooks_folder:
+        if task.script and task.function:
           file_cache = FileCache(agent_config)
-          command_paths = {"commandParams":
-                                 {"service_package_folder": service_package_folder,
-                                  "hooks_folder": hooks_folder
-                                 }
-                              }
+
           server_url_prefix = default('/hostLevelParams/jdk_location', "")
-          base_dir = file_cache.get_service_base_dir(command_paths, server_url_prefix)
+
+          if service_package_folder and hooks_folder:
+            command_paths = {
+              "commandParams": {
+                "service_package_folder": service_package_folder,
+                "hooks_folder": hooks_folder
+              }
+            } 
+
+            base_dir = file_cache.get_service_base_dir(command_paths, server_url_prefix)
+          else:
+            base_dir = file_cache.get_custom_actions_base_dir(server_url_prefix)
+
           script_path = os.path.join(base_dir, task.script)
           if not os.path.exists(script_path):
             message = "Script %s does not exist" % str(script_path)

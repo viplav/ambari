@@ -18,7 +18,6 @@
 
 package org.apache.ambari.view.hive.client;
 
-import org.apache.ambari.view.hive.utils.HiveClientFormattedException;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.shims.ShimLoader;
@@ -189,8 +188,9 @@ public class Connection {
   }
 
   private String getAuthParamDefault(String key, String defaultValue) {
-    if (authParams.containsKey(key))
+    if (authParams.containsKey(key)) {
       return authParams.get(key);
+    }
     return defaultValue;
   }
 

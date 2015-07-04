@@ -21,26 +21,20 @@ import constants from 'hive/utils/constants';
 import utils from 'hive/utils/functions';
 
 export default Ember.ArrayController.extend({
-  needs: [ constants.namingConventions.databases,
-           constants.namingConventions.loadedFiles,
-           constants.namingConventions.jobResults,
+  fileService: Ember.inject.service(constants.namingConventions.file),
+  databaseService: Ember.inject.service(constants.namingConventions.database),
+
+  needs: [ constants.namingConventions.jobResults,
            constants.namingConventions.jobExplain,
-           constants.namingConventions.columns,
-           constants.namingConventions.index,
-           constants.namingConventions.settings
+           constants.namingConventions.index
          ],
 
-  databases: Ember.computed.alias('controllers.' + constants.namingConventions.databases),
-
-  files: Ember.computed.alias('controllers.' + constants.namingConventions.loadedFiles),
-
   jobResults: Ember.computed.alias('controllers.' + constants.namingConventions.jobResults),
-
   jobExplain: Ember.computed.alias('controllers.' + constants.namingConventions.jobExplain),
-
   index: Ember.computed.alias('controllers.' + constants.namingConventions.index),
 
-  settings: Ember.computed.alias('controllers.' + constants.namingConventions.settings),
+  selectedTables: Ember.computed.alias('databaseService.selectedTables'),
+  selectedDatabase: Ember.computed.alias('databaseService.selectedDatabase'),
 
   init: function () {
     this._super();
@@ -132,14 +126,14 @@ export default Ember.ArrayController.extend({
 
         defer.resolve();
       } else {
-        this.get('files').loadFile(model.get('queryFile')).then(function (file) {
+        this.get('fileService').loadFile(model.get('queryFile')).then(function (file) {
           self.set('currentQuery', self.pushObject(file));
 
           updateSubroute();
         });
 
         if (model.get('logFile') && !model.get('log')) {
-          this.get('files').loadFile(model.get('logFile')).then(function (file) {
+          this.get('fileService').loadFile(model.get('logFile')).then(function (file) {
             model.set('log', file.get('fileContent'));
           });
         }
@@ -159,8 +153,7 @@ export default Ember.ArrayController.extend({
         self = this,
         wasNew,
         defer = Ember.RSVP.defer(),
-        jobModel = model,
-        originalId = model.get('id');
+        jobModel = model;
 
     if (!query) {
       query = this.getQueryForModel(model);
@@ -175,19 +168,19 @@ export default Ember.ArrayController.extend({
     //if current query it's a job, convert it to a savedQuery before saving
     if (model.get('constructor.typeKey') === constants.namingConventions.job) {
       model = this.store.createRecord(constants.namingConventions.savedQuery, {
-        dataBase: this.get('databases.selectedDatabase.name'),
+        dataBase: this.get('selectedDatabase.name'),
         title: newTitle,
         queryFile: model.get('queryFile'),
         owner: model.get('owner')
       });
-    } else {
-      tab.set('name', newTitle);
     }
+
+    tab.set('name', newTitle);
 
     //if saving a new query from an existing one create a new record and save it
     if (!isUpdating && !model.get('isNew') && model.get('constructor.typeKey') !== constants.namingConventions.job) {
       model = this.store.createRecord(constants.namingConventions.savedQuery, {
-        dataBase: this.get('databases.selectedDatabase.name'),
+        dataBase: this.get('selectedDatabase.name'),
         title: newTitle,
         owner: model.get('owner')
       });
@@ -201,12 +194,14 @@ export default Ember.ArrayController.extend({
       tab.set('isDirty', false);
 
       var content = query.get('fileContent');
+      content = self.get('index').buildQuery(query);
+      content = self.get('index').bindQueryParams(content);
+
       //update query tab path with saved model id if its a new record
       if (wasNew) {
-        self.get('settings').updateSettingsId(originalId, updatedModel.get('id'));
         tab.set('id', updatedModel.get('id'));
 
-        self.get('files').loadFile(updatedModel.get('queryFile')).then(function (file) {
+        self.get('fileService').loadFile(updatedModel.get('queryFile')).then(function (file) {
           file.set('fileContent', content);
           file.save().then(function (updatedFile) {
             self.removeObject(query);
@@ -225,6 +220,7 @@ export default Ember.ArrayController.extend({
         query.save().then(function () {
           self.toggleProperty('tabUpdated');
           defer.resolve(updatedModel.get('id'));
+
         }, function (err) {
           defer.reject(err);
         });
@@ -247,7 +243,7 @@ export default Ember.ArrayController.extend({
     tab.set('type', constants.namingConventions.job);
     tab.set('path', constants.namingConventions.subroutes.historyQuery);
 
-    this.get('files').loadFile(job.get('queryFile')).then(function (file) {
+    this.get('fileService').loadFile(job.get('queryFile')).then(function (file) {
       //replace old model representing file to reflect model update to job
       if (self.keepOriginalQuery(jobId)) {
         file.set('fileContent', oldQuery.get('fileContent'));
@@ -264,14 +260,11 @@ export default Ember.ArrayController.extend({
     return defer.promise;
   },
 
-  keepOriginalQuery: function (jobId) {
+  keepOriginalQuery: function () {
     var selected = this.get('highlightedText');
     var hasQueryParams = this.get('index.queryParams.length');
-    var hasSettings = this.get('settings').hasSettings(jobId);
 
-    return selected && selected[0] !== "" ||
-         hasQueryParams ||
-         hasSettings;
+    return selected && selected[0] !== "" || hasQueryParams;
   },
 
   isDirty: function (model) {
@@ -373,8 +366,25 @@ export default Ember.ArrayController.extend({
     },
 
     getColumnsForAutocomplete: function (tableName, callback) {
-      this.get('databases').getAllColumns(tableName).then(function () {
+      this.get('databaseService').getAllColumns(tableName).then(function () {
         callback();
+      });
+    },
+
+    changeTabTitle: function(tab) {
+      var self = this,
+          defer = Ember.RSVP.defer(),
+          title = this.get('index.content.title');
+
+      this.send('openModal', 'modal-save', {
+        heading: 'modals.changeTitle.heading',
+        text: title,
+        defer: defer
+      });
+
+      defer.promise.then(function (result) {
+        self.set('index.model.title', result);
+        tab.set('name', result);
       });
     }
   }

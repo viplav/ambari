@@ -464,7 +464,7 @@ public class ViewRegistry {
    * Read all view archives.
    */
   public void readViewArchives() {
-    readViewArchives(false, true, ALL_VIEWS_REG_EXP, true);
+    readViewArchives(false, true, ALL_VIEWS_REG_EXP);
   }
 
   /**
@@ -473,7 +473,7 @@ public class ViewRegistry {
    * @param viewNameRegExp view name regular expression
    */
   public void readViewArchives(String viewNameRegExp) {
-    readViewArchives(false, false, viewNameRegExp, false);
+    readViewArchives(false, false, viewNameRegExp);
   }
 
   /**
@@ -501,7 +501,6 @@ public class ViewRegistry {
    *                                   does not exist
    * @throws SystemException           if the instance can not be installed
    */
-  @Transactional
   public void installViewInstance(ViewInstanceEntity instanceEntity)
       throws ValidationException, IllegalArgumentException, SystemException {
     ViewEntity viewEntity = getDefinition(instanceEntity.getViewName());
@@ -519,21 +518,12 @@ public class ViewRegistry {
 
         instanceEntity.validate(viewEntity, Validator.ValidationContext.PRE_CREATE);
 
-        ResourceTypeEntity resourceTypeEntity = resourceTypeDAO.findByName(ViewEntity.getViewName(viewName, version));
-        // create an admin resource to represent this view instance
-        instanceEntity.setResource(createViewInstanceResource(resourceTypeEntity));
+        setPersistenceEntities(instanceEntity);
 
-        instanceDAO.merge(instanceEntity);
+        ViewInstanceEntity persistedInstance = mergeViewInstance(instanceEntity, viewEntity.getResourceType());
 
-        ViewInstanceEntity persistedInstance = instanceDAO.findByName(ViewEntity.getViewName(viewName, version), instanceName);
-        if (persistedInstance == null) {
-          String message = "Instance  " + instanceEntity.getViewName() + " can not be found.";
-
-          LOG.error(message);
-          throw new IllegalStateException(message);
-        }
         instanceEntity.setViewInstanceId(persistedInstance.getViewInstanceId());
-        instanceEntity.setResource(persistedInstance.getResource());
+        syncViewInstance(instanceEntity, persistedInstance);
 
         try {
           // bind the view instance to a view
@@ -1121,6 +1111,9 @@ public class ViewRegistry {
       properties.put(propertyConfig.getKey(), propertyConfig.getValue());
     }
     setViewInstanceProperties(viewInstanceDefinition, properties, viewConfig, viewDefinition.getClassLoader());
+
+    setPersistenceEntities(viewInstanceDefinition);
+
     return viewInstanceDefinition;
   }
 
@@ -1157,9 +1150,6 @@ public class ViewRegistry {
             getProvider(resourceConfig.getProviderClass(cl), viewInstanceContext));
       }
     }
-
-    setPersistenceEntities(viewInstanceDefinition);
-
     viewDefinition.addInstanceDefinition(viewInstanceDefinition);
   }
 
@@ -1283,9 +1273,8 @@ public class ViewRegistry {
                         Set<ViewInstanceEntity> instanceDefinitions)
       throws Exception {
 
-    String             viewName      = view.getName();
-    ViewEntity         persistedView = viewDAO.findByName(viewName);
-    ResourceTypeEntity resourceType  = view.getResourceType();
+    String      viewName      = view.getName();
+    ViewEntity  persistedView = viewDAO.findByName(viewName);
 
     if (LOG.isDebugEnabled()) {
       LOG.debug("Syncing view " + viewName + ".");
@@ -1297,20 +1286,14 @@ public class ViewRegistry {
         LOG.debug("Creating view " + viewName + ".");
       }
 
-      // get or create an admin resource type to represent this view
-      ResourceTypeEntity resourceTypeEntity = resourceTypeDAO.findByName(viewName);
-      if (resourceTypeEntity == null) {
-        resourceTypeEntity = resourceType;
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Creating resource type for " + viewName + ".");
-        }
-        resourceTypeDAO.create(resourceTypeEntity);
-      }
+      // create an admin resource type to represent this view
+      ResourceTypeEntity resourceType = resourceTypeDAO.merge(view.getResourceType());
 
       for( ViewInstanceEntity instance : view.getInstances()) {
         instance.setResource(createViewInstanceResource(resourceType));
       }
       // ... merge the view
+      view.setResourceType(resourceType);
       persistedView = viewDAO.merge(view);
     }
 
@@ -1368,6 +1351,15 @@ public class ViewRegistry {
     instance1.setData(instance2.getData());
     instance1.setEntities(instance2.getEntities());
     instance1.setProperties(instance2.getProperties());
+  }
+
+  // create an admin resource for the given view instance entity and merge it
+  @Transactional
+  private ViewInstanceEntity mergeViewInstance(ViewInstanceEntity instanceEntity, ResourceTypeEntity resourceTypeEntity) {
+    // create an admin resource to represent this view instance
+    instanceEntity.setResource(createViewInstanceResource(resourceTypeEntity));
+
+    return instanceDAO.merge(instanceEntity);
   }
 
   // create an admin resource to represent a view instance
@@ -1437,7 +1429,7 @@ public class ViewRegistry {
 
   // read the view archives.
   private void readViewArchives(boolean systemOnly, boolean useExecutor,
-                                String viewNameRegExp, boolean removeUndeployed) {
+                                String viewNameRegExp) {
     try {
       File viewDir = configuration.getViewsDir();
 
@@ -1509,7 +1501,7 @@ public class ViewRegistry {
             }
           }
 
-          if (removeUndeployed) {
+          if (configuration.isViewRemoveUndeployedEnabled()) {
             removeUndeployedViews();
           }
         }

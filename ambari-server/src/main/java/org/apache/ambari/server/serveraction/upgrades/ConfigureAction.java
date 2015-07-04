@@ -46,6 +46,7 @@ import org.apache.ambari.server.state.DesiredConfig;
 import org.apache.ambari.server.state.PropertyInfo;
 import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.stack.upgrade.ConfigureTask;
+import org.apache.ambari.server.state.stack.upgrade.ConfigureTask.ConfigurationKeyValue;
 import org.apache.commons.lang.StringUtils;
 
 import com.google.gson.Gson;
@@ -55,8 +56,23 @@ import com.google.inject.Provider;
 
 /**
  * The {@link ConfigureAction} is used to alter a configuration property during
- * an upgrade. It will only produce a new configuration if the value being
- * changed is different than the existing value.
+ * an upgrade. It will only produce a new configuration if an actual change is
+ * occuring. For some configure tasks, the value is already at the desired
+ * property or the conditions of the task are not met. In these cases, a new
+ * configuration will not be created. This task can perform any of the following
+ * actions in a single declaration:
+ * <ul>
+ * <li>Copy a configuration to a new property key, optionally setting a default
+ * if the original property did not exist</li>
+ * <li>Copy a configuration to a new property key from one configuration type to
+ * another, optionally setting a default if the original property did not exist</li>
+ * <li>Rename a configuration, optionally setting a default if the original
+ * property did not exist</li>
+ * <li>Delete a configuration property</li>
+ * <li>Set a configuration property</li>
+ * <li>Conditionally set a configuration property based on another configuration
+ * property value</li>
+ * </ul>
  */
 public class ConfigureAction extends AbstractServerAction {
 
@@ -95,7 +111,11 @@ public class ConfigureAction extends AbstractServerAction {
   @Inject
   private ConfigMergeHelper m_mergeHelper;
 
-  private Gson m_gson = new Gson();
+  /**
+   * Gson
+   */
+  @Inject
+  private Gson m_gson;
 
   /**
    * Aside from the normal execution, this method performs the following logic, with
@@ -151,12 +171,19 @@ public class ConfigureAction extends AbstractServerAction {
     }
 
     String clusterName = commandParameters.get("clusterName");
+
     // such as hdfs-site or hbase-env
     String configType = commandParameters.get(ConfigureTask.PARAMETER_CONFIG_TYPE);
 
-    String key = commandParameters.get(ConfigureTask.PARAMETER_KEY);
-    String value = commandParameters.get(ConfigureTask.PARAMETER_VALUE);
+    // extract transfers
+    List<ConfigureTask.ConfigurationKeyValue> keyValuePairs = Collections.emptyList();
+    String keyValuePairJson = commandParameters.get(ConfigureTask.PARAMETER_KEY_VALUE_PAIRS);
+    if (null != keyValuePairJson) {
+      keyValuePairs = m_gson.fromJson(
+          keyValuePairJson, new TypeToken<List<ConfigureTask.ConfigurationKeyValue>>(){}.getType());
+    }
 
+    // extract transfers
     List<ConfigureTask.Transfer> transfers = Collections.emptyList();
     String transferJson = commandParameters.get(ConfigureTask.PARAMETER_TRANSFERS);
     if (null != transferJson) {
@@ -164,18 +191,34 @@ public class ConfigureAction extends AbstractServerAction {
         transferJson, new TypeToken<List<ConfigureTask.Transfer>>(){}.getType());
     }
 
-    // if the two required properties are null and no transfer properties, then
-    // assume that no conditions were met and let the action complete
-    if (null == configType && null == key && transfers.isEmpty()) {
-      return createCommandReport(0, HostRoleStatus.COMPLETED, "{}", "",
-          "Skipping configuration task");
+    // extract replacements
+    List<ConfigureTask.Replace> replacements = Collections.emptyList();
+    String replaceJson = commandParameters.get(ConfigureTask.PARAMETER_REPLACEMENTS);
+    if (null != replaceJson) {
+      replacements = m_gson.fromJson(
+          replaceJson, new TypeToken<List<ConfigureTask.Replace>>(){}.getType());
+    }
+
+    // if there is nothing to do, then skip the task
+    if (keyValuePairs.isEmpty() && transfers.isEmpty() && replacements.isEmpty()) {
+      String message = "cluster={0}, type={1}, transfers={2}, replacements={3}, configurations={4}";
+      message = MessageFormat.format(message, clusterName, configType, transfers, replacements,
+          keyValuePairs);
+
+      StringBuilder buffer = new StringBuilder(
+          "Skipping this configuration task since none of the conditions were met and there are no transfers or replacements").append("\n");
+
+      buffer.append(message);
+
+      return createCommandReport(0, HostRoleStatus.COMPLETED, "{}", buffer.toString(), "");
     }
 
     // if only 1 of the required properties was null and no transfer properties,
     // then something went wrong
-    if (null == clusterName || null == configType || (null == key && transfers.isEmpty())) {
-      String message = "cluster={0}, type={1}, key={2}, transfers={3}";
-      message = MessageFormat.format(message, clusterName, configType, key, transfers);
+    if (null == clusterName || null == configType
+        || (keyValuePairs.isEmpty() && transfers.isEmpty() && replacements.isEmpty())) {
+      String message = "cluster={0}, type={1}, transfers={2}, replacements={3}, configurations={4}";
+      message = MessageFormat.format(message, clusterName, configType, transfers, replacements, keyValuePairs);
       return createCommandReport(0, HostRoleStatus.FAILED, "{}", "", message);
     }
 
@@ -200,48 +243,54 @@ public class ConfigureAction extends AbstractServerAction {
     for (ConfigureTask.Transfer transfer : transfers) {
       switch (transfer.operation) {
         case COPY:
-          // if copying from the current configuration type, then first
-          // determine if the key already exists; if it does not, then set a
-          // default if a default exists
-          if (null == transfer.fromType) {
-            if (base.containsKey(transfer.fromKey)) {
-              newValues.put(transfer.toKey, base.get(transfer.fromKey));
-              changedValues = true;
-
-              // append standard output
-              outputBuffer.append(MessageFormat.format("Copied {0}/{1}\n", configType, key));
-            } else if (StringUtils.isNotBlank(transfer.defaultValue)) {
-              newValues.put(transfer.toKey, transfer.defaultValue);
-              changedValues = true;
-
-              // append standard output
-              outputBuffer.append(MessageFormat.format("Created {0}/{1} with default value {2}\n",
-                  configType, transfer.toKey, transfer.defaultValue));
-            }
+          String valueToCopy = null;
+          if( null == transfer.fromType ) {
+            // copying from current configuration
+            valueToCopy = base.get(transfer.fromKey);
           } else {
-            // !!! copying from another configuration
+            // copying from another configuration
             Config other = cluster.getDesiredConfigByType(transfer.fromType);
-
-            if (null != other) {
+            if (null != other){
               Map<String, String> otherValues = other.getProperties();
-
-              if (otherValues.containsKey(transfer.fromKey)) {
-                newValues.put(transfer.toKey, otherValues.get(transfer.fromKey));
-                changedValues = true;
-
-                // append standard output
-                outputBuffer.append(MessageFormat.format("Copied {0}/{1} to {2}\n",
-                    transfer.fromType, transfer.fromKey, configType));
-              } else if (StringUtils.isNotBlank(transfer.defaultValue)) {
-                newValues.put(transfer.toKey, transfer.defaultValue);
-                changedValues = true;
-
-                // append standard output
-                outputBuffer.append(MessageFormat.format(
-                    "Created {0}/{1} with default value {2}\n", configType, transfer.toKey,
-                    transfer.defaultValue));
+              if (otherValues.containsKey(transfer.fromKey)){
+                valueToCopy = otherValues.get(transfer.fromKey);
               }
             }
+          }
+
+          // if the value is null use the default if it exists
+          if (StringUtils.isBlank(valueToCopy) && !StringUtils.isBlank(transfer.defaultValue)) {
+            valueToCopy = transfer.defaultValue;
+          }
+
+          if (StringUtils.isNotBlank(valueToCopy)) {
+            // possibly coerce the value on copy
+            if (transfer.coerceTo != null) {
+              switch (transfer.coerceTo) {
+                case YAML_ARRAY: {
+                  // turn c6401,c6402 into ['c6401',c6402']
+                  String[] splitValues = StringUtils.split(valueToCopy, ',');
+                  List<String> quotedValues = new ArrayList<String>(splitValues.length);
+                  for (String splitValue : splitValues) {
+                    quotedValues.add("'" + StringUtils.trim(splitValue) + "'");
+                  }
+
+                  valueToCopy = "[" + StringUtils.join(quotedValues, ',') + "]";
+
+                  break;
+                }
+                default:
+                  break;
+              }
+            }
+
+            // at this point we know that we have a changed value
+            changedValues = true;
+            newValues.put(transfer.toKey, valueToCopy);
+
+            // append standard output
+            outputBuffer.append(MessageFormat.format("Created {0}/{1} = \"{2}\"\n", configType,
+                transfer.toKey, mask(transfer, valueToCopy)));
           }
           break;
         case MOVE:
@@ -260,8 +309,9 @@ public class ConfigureAction extends AbstractServerAction {
             changedValues = true;
 
             // append standard output
-            outputBuffer.append(MessageFormat.format("Created {0}/{1} with default value {2}\n",
-                configType, transfer.toKey, transfer.defaultValue));
+            outputBuffer.append(MessageFormat.format(
+                "Created {0}/{1} with default value \"{2}\"\n",
+                configType, transfer.toKey, mask(transfer, transfer.defaultValue)));
           }
 
           break;
@@ -308,28 +358,69 @@ public class ConfigureAction extends AbstractServerAction {
       }
     }
 
+    // set all key/value pairs
+    if (null != keyValuePairs && !keyValuePairs.isEmpty()) {
+      for (ConfigurationKeyValue keyValuePair : keyValuePairs) {
+        String key = keyValuePair.key;
+        String value = keyValuePair.value;
 
-    if (null != key) {
-      String oldValue = base.get(key);
+        if (null != key) {
+          String oldValue = base.get(key);
 
-      // !!! values are not changing, so make this a no-op
-      if (null != oldValue && value.equals(oldValue)) {
-        if (currentStack.equals(targetStack) && !changedValues) {
-          return createCommandReport(0, HostRoleStatus.COMPLETED, "{}",
-              MessageFormat.format("{0}/{1} for cluster {2} would not change, skipping setting",
-                  configType, key, clusterName),
-              "");
+          // !!! values are not changing, so make this a no-op
+          if (null != oldValue && value.equals(oldValue)) {
+            if (currentStack.equals(targetStack) && !changedValues) {
+              outputBuffer.append(MessageFormat.format(
+                  "{0}/{1} for cluster {2} would not change, skipping setting", configType, key,
+                  clusterName));
+
+              // continue because this property is not changing
+              continue;
+            }
+          }
+
+          // !!! only put a key/value into this map of new configurations if
+          // there was a key, otherwise this will put something like null=null
+          // into the configs which will cause NPEs after upgrade - this is a
+          // byproduct of the configure being able to take a list of transfers
+          // without a key/value to set
+          newValues.put(key, value);
+
+          final String message;
+          if (StringUtils.isEmpty(value)) {
+            message = MessageFormat.format("{0}/{1} changed to an empty value", configType, key);
+          } else {
+            message = MessageFormat.format("{0}/{1} changed to \"{2}\"\n", configType, key,
+                mask(keyValuePair, value));
+          }
+
+          outputBuffer.append(message);
         }
       }
-
-      // !!! only put a key/value into this map of new configurations if there
-      // was a key, otherwise this will put something like null=null into the
-      // configs which will cause NPEs after upgrade - this is a byproduct of
-      // the configure being able to take a list of transfers without a
-      // key/value to set
-      newValues.put(key, value);
-      outputBuffer.append(MessageFormat.format("{0}/{1} changed to {2}\n", configType, key, value));
     }
+
+    // !!! string replacements happen only on the new values.
+    for (ConfigureTask.Replace replacement : replacements) {
+      if (newValues.containsKey(replacement.key)) {
+        String toReplace = newValues.get(replacement.key);
+
+        if (!toReplace.contains(replacement.find)) {
+          outputBuffer.append(MessageFormat.format("String \"{0}\" was not found in {1}/{2}\n",
+              replacement.find, configType, replacement.key));
+        } else {
+          String replaced = StringUtils.replace(toReplace, replacement.find, replacement.replaceWith);
+
+          newValues.put(replacement.key, replaced);
+
+          outputBuffer.append(MessageFormat.format("Replaced {0}/{1} containing \"{2}\" with \"{3}\"\n",
+            configType, replacement.key, replacement.find, replacement.replaceWith));
+        }
+      } else {
+        outputBuffer.append(MessageFormat.format("Property \"{0}\" was not found in {1} to replace content\n",
+            replacement.key, configType));
+      }
+    }
+
 
     // !!! check to see if we're going to a new stack and double check the
     // configs are for the target.  Then simply update the new properties instead
@@ -354,9 +445,8 @@ public class ConfigureAction extends AbstractServerAction {
     m_configHelper.createConfigType(cluster, m_controller, configType,
         newValues, auditName, serviceVersionNote);
 
-    String message = "Updated configuration ''{0}'' with ''{1}={2}''";
-    message = MessageFormat.format(message, configType, key, value);
-
+    String message = "Finished updating configuration ''{0}''";
+    message = MessageFormat.format(message, configType);
     return createCommandReport(0, HostRoleStatus.COMPLETED, "{}", message, "");
   }
 
@@ -443,4 +533,12 @@ public class ConfigureAction extends AbstractServerAction {
 
     return result;
   }
+
+  private static String mask(ConfigureTask.Masked mask, String value) {
+    if (mask.mask) {
+      return StringUtils.repeat("*", value.length());
+    }
+    return value;
+  }
+
 }

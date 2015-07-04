@@ -34,11 +34,13 @@
   </properties>
   <modules>
     <module>files</module>
+    <module>jobs</module>
     <module>pig</module>
     <module>slider</module>
     <module>capacity-scheduler</module>
-    <module>hive</module>
     <module>tez</module>
+    <module>utils</module>
+    <module>storm</module>
   </modules>
   <build>
     <pluginManagement>
@@ -74,6 +76,7 @@
             <exclude>**/.editorconfig</exclude>
             <exclude>**/.jshintrc</exclude>
             <exclude>**/.tmp/**</exclude>
+            <exclude>**/tmp/**</exclude>
             <exclude>**/*.json</exclude>
             <exclude>**/*.svg</exclude>
             <exclude>**/vendor/**</exclude>
@@ -83,12 +86,14 @@
             <exclude>**/public/**</exclude>
             <exclude>**/dist/**</exclude>
             <exclude>**/bower_components/**</exclude>
+            <exclude>**/bower/**</exclude>
             <exclude>**/node/**</exclude>
             <exclude>**/runner.js</exclude>
             <exclude>**/assets/javascripts/**</exclude>
             <exclude>**/assets/stylesheets/**</exclude>
             <exclude>**/assets/static/javascripts/**</exclude>
             <exclude>**/assets/static/stylesheets/**</exclude>
+            <exclude>storm/src/main/resources/**</exclude>
           </excludes>
         </configuration>
       </plugin>
@@ -128,7 +133,7 @@
           <skip>true</skip>
           <attach>false</attach>
           <submodules>true</submodules>
-          <controlDir>${basedir}/../../ambari-project/src/main/package/deb/control</controlDir>
+          <controlDir>${ambari.dir}/ambari-project/src/main/package/deb/control</controlDir>
         </configuration>
       </plugin>
       <plugin>
@@ -141,6 +146,19 @@
       </plugin>
     </plugins>
   </build>
+  <profiles>
+    <profile>
+      <id>linux</id>
+      <activation>
+        <os>
+          <family>unix</family>
+        </os>
+      </activation>
+      <modules>
+        <module>hive</module>
+      </modules>
+    </profile>
+  </profiles>
   <dependencyManagement>
     <dependencies>
       <dependency>

@@ -100,6 +100,13 @@ public class ViewEntity implements ViewDefinition {
   private String version;
 
   /**
+   * The view build number.
+   */
+  @Column
+  @Basic
+  private String build;
+
+  /**
    * The view archive.
    */
   @Column
@@ -271,6 +278,7 @@ public class ViewEntity implements ViewDefinition {
     this.label       = configuration.getLabel();
     this.description = configuration.getDescription();
     this.version     = version;
+    this.build       = configuration.getBuild();
 
     this.mask        = configuration.getMasker();
     this.icon        = configuration.getIcon();
@@ -305,6 +313,11 @@ public class ViewEntity implements ViewDefinition {
   }
 
   @Override
+  public String getBuild() {
+    return build;
+  }
+
+  @Override
   public ViewStatus getStatus() {
     return status;
   }
@@ -312,6 +325,11 @@ public class ViewEntity implements ViewDefinition {
   @Override
   public String getStatusDetail() {
     return statusDetail;
+  }
+
+  @Override
+  public String getMask() {
+    return mask;
   }
 
 
@@ -374,6 +392,15 @@ public class ViewEntity implements ViewDefinition {
    */
   public void setVersion(String version) {
     this.version = version;
+  }
+
+  /**
+   * Set the view build number.
+   *
+   * @param build the build
+   */
+  public void setBuild(String build) {
+    this.build = build;
   }
 
   /**
@@ -773,15 +800,6 @@ public class ViewEntity implements ViewDefinition {
    */
   public void setMask(String mask) {
     this.mask = mask;
-  }
-
-  /**
-   * Get the mask class name.
-   *
-   * @return the mask class name.
-   */
-  public String getMask() {
-    return mask;
   }
 
   /**

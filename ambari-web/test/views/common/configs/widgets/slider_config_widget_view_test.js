@@ -31,17 +31,20 @@ describe('App.SliderConfigWidgetView', function () {
         disable: Em.K,
         setValue: Em.K
       },
-      config: Em.Object.create({
+      config: App.ServiceConfigProperty.create({
         name: 'a.b.c',
         description: 'A B C',
         value: '486',
-        defaultValue: '486',
+        savedValue: '486',
         stackConfigProperty: Em.Object.create({
           valueAttributes: Em.Object.create({
             type: 'int',
             minimum: '0',
             maximum: '2096',
-            unit: 'MB'
+            unit: 'MB',
+            group1: {
+              maximum: '3072'
+            }
           }),
           widget: Em.Object.create({
             type: 'slider',
@@ -61,11 +64,11 @@ describe('App.SliderConfigWidgetView', function () {
         disable: Em.K,
         setValue: Em.K
       },
-      config: Em.Object.create({
+      config: App.ServiceConfigProperty.create({
         name: 'a.b.c2',
         description: 'A B C 2',
         value: '72.2',
-        defaultValue: '72.2',
+        savedValue: '72.2',
         stackConfigProperty: Em.Object.create({
           valueAttributes: Em.Object.create({
             type: 'float',
@@ -90,11 +93,11 @@ describe('App.SliderConfigWidgetView', function () {
         disable: Em.K,
         setValue: Em.K
       },
-      config: Em.Object.create({
+      config: App.ServiceConfigProperty.create({
         name: 'a.b.c3',
         description: 'A B C 3',
         value: '0.22',
-        defaultValue: '0.22',
+        savedValue: '0.22',
         stackConfigProperty: Em.Object.create({
           valueAttributes: Em.Object.create({
             type: 'float',
@@ -181,6 +184,18 @@ describe('App.SliderConfigWidgetView', function () {
       expect(viewPercent.get('config.errorMessage')).to.equal('');
       expect(viewPercent.get('config.warnMessage')).to.have.property('length').that.is.least(1);
       expect(viewPercent.get('config.warn')).to.be.true;
+    });
+  });
+
+  describe('#getValueAttributeByGroup', function() {
+    it('returns default max value', function() {
+      viewInt.set('config.group', null);
+      expect(viewInt.getValueAttributeByGroup('maximum')).to.equal('2096');
+    });
+
+    it('returns max value for group1', function() {
+      viewInt.set('config.group', {name: 'group1'});
+      expect(viewInt.getValueAttributeByGroup('maximum')).to.equal('3072');
     });
   });
 
@@ -330,6 +345,59 @@ describe('App.SliderConfigWidgetView', function () {
           ticks: [0,2,6,12,17,20,23],
           ticksLabels: ['0 ', '', '', '12 ', '', '', '23 ']
         }
+      },
+      {
+        viewSetup: {
+          minMirrorValue: 1,
+          maxMirrorValue: 30,
+          widgetRecommendedValue: 1,
+          config: Em.Object.create({
+            stackConfigProperty: Em.Object.create({
+              valueAttributes: { unit: "B", type: "int", minimum: "1048576", maximum: "31457280", increment_step: "262144" },
+              widget: { units: [ { 'unit-name': "MB"}]}
+            })
+          })
+        },
+        e: {
+          ticks: [1, 8.25, 15.5, 22.75, 30],
+          ticksLabels: ["1 MB", "", "15.5 MB", "", "30 MB"]
+        }
+      },
+      {
+        viewSetup: {
+          minMirrorValue: 1,
+          maxMirrorValue: 100,
+          widgetRecommendedValue: 10,
+          config: Em.Object.create({
+            stackConfigProperty: Em.Object.create({
+              valueAttributes: {unit: "B", type: "int", minimum: "1073741824", maximum: "107374182400", increment_step: "1073741824"},
+              widget: { units: [ { 'unit-name': "GB"}]}
+            })
+          })
+        },
+        e: {
+          ticks: [1, 10, 26, 51, 75, 87.5, 100],
+          ticksLabels: ["1 GB", "", "", "51 GB", "", "", "100 GB"]
+        }
+      },
+      {
+        viewSetup: {
+          minMirrorValue: 1,
+          maxMirrorValue: 100,
+          isCompareMode: true,
+          widgetRecommendedValue: 10,
+          config: Em.Object.create({
+            isOriginalSCP: false,
+            stackConfigProperty: Em.Object.create({
+              valueAttributes: {unit: "B", type: "int", minimum: "1073741824", maximum: "107374182400", increment_step: "1073741824"},
+              widget: { units: [ { 'unit-name': "GB"}]}
+            })
+          })
+        },
+        e: {
+          ticks: [1, 26, 51, 75, 100],
+          ticksLabels: ["1 GB", "", "51 GB", "", "100 GB"]
+        }
       }
     ];
 
@@ -337,6 +405,9 @@ describe('App.SliderConfigWidgetView', function () {
       it('should generate ticks: {0} - tick labels: {1}'.format(test.e.ticks, test.e.ticksLabels), function() {
         var ticks, ticksLabels;
         this.view = this.view.create(test.viewSetup);
+        this.view.set('controller', {
+          isCompareMode: test.viewSetup.isCompareMode
+        });
         var sliderCopy= window.Slider.prototype;
         window.Slider = function(a, b) {
           ticks = b.ticks;
@@ -375,7 +446,7 @@ describe('App.SliderConfigWidgetView', function () {
 
     beforeEach(function() {
       viewInt.set('config', {});
-      stackConfigProperty = App.StackConfigProperty.createRecord({name: 'p1', valueAttributes: {minimum: 1, maximum: 10, increment_step: 4, type: 'int'}});
+      stackConfigProperty = App.StackConfigProperty.createRecord({name: 'p1', widget: { units: [ { 'unit-name': "int"}]}, valueAttributes: {minimum: 1, maximum: 10, increment_step: 4, type: 'int'}});
       viewInt.set('config.stackConfigProperty', stackConfigProperty);
       viewInt.set('config.isValid', true);
     });
@@ -404,14 +475,18 @@ describe('App.SliderConfigWidgetView', function () {
     it ('fail: to large', function() {
       viewInt.set('config.value', 12);
       expect(viewInt.isValueCompatibleWithWidget()).to.be.false;
+      expect(viewInt.get('warnMessage')).to.have.property('length').that.is.least(1);
+      expect(viewInt.get('issueMessage')).to.have.property('length').that.is.least(1);
     });
 
     it ('fail: to small', function() {
       viewInt.set('config.value', 0);
       expect(viewInt.isValueCompatibleWithWidget()).to.be.false;
+      expect(viewInt.get('warnMessage')).to.have.property('length').that.is.least(1);
+      expect(viewInt.get('issueMessage')).to.have.property('length').that.is.least(1);
     });
 
-    it ('ok for wrong step', function() {
+    it ('fail: for wrong step', function() {
       viewInt.set('config.stackConfigProperty', stackConfigProperty);
       viewInt.set('config.value', '3');
       expect(viewInt.isValueCompatibleWithWidget()).to.be.true;
@@ -420,6 +495,8 @@ describe('App.SliderConfigWidgetView', function () {
     it ('ok', function() {
       viewInt.set('config.value', 4);
       expect(viewInt.isValueCompatibleWithWidget()).to.be.true;
+      expect(viewInt.get('warnMessage')).to.equal('');
+      expect(viewInt.get('issueMessage')).to.equal('');
     });
   });
 

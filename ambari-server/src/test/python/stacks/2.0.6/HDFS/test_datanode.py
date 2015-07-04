@@ -62,12 +62,12 @@ class TestDatanode(RMFTestCase):
                               recursive = True,
                               )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ulimit -c unlimited ;  /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf start datanode'",
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec'},
-        not_if = 'ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
     )
     self.assertNoMoreResources()
 
@@ -80,23 +80,10 @@ class TestDatanode(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assertResourceCalled('Directory', '/var/run/hadoop',
-                              owner = 'hdfs',
-                              group = 'hadoop',
-                              mode = 0755
-                              )
-    self.assertResourceCalled('Directory', '/var/run/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
-    self.assertResourceCalled('Directory', '/var/log/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ulimit -c unlimited ;  /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf stop datanode'",
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec'},
         not_if = None,
@@ -140,12 +127,12 @@ class TestDatanode(RMFTestCase):
                               recursive = True,
                               )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', 'ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf start datanode',
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec'},
-        not_if = 'ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
     )
     self.assertNoMoreResources()
 
@@ -163,7 +150,7 @@ class TestDatanode(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assert_configure_secured("2.2")
+    self.assert_configure_secured("2.2", snappy_enabled=False)
     self.assertResourceCalled('Directory', '/var/run/hadoop',
                               owner = 'hdfs',
                               group = 'hadoop',
@@ -178,12 +165,12 @@ class TestDatanode(RMFTestCase):
                               recursive = True,
                               )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', 'ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/hdp/current/hadoop-client/sbin/hadoop-daemon.sh --config /usr/hdp/current/hadoop-client/conf start datanode',
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/hdp/current/hadoop-client/libexec'},
-        not_if = 'ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
     )
     self.assertNoMoreResources()
 
@@ -204,7 +191,7 @@ class TestDatanode(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assert_configure_secured("2.2")
+    self.assert_configure_secured("2.2", snappy_enabled=False)
     self.assertResourceCalled('Directory', '/var/run/hadoop',
                               owner = 'hdfs',
                               group = 'hadoop',
@@ -219,12 +206,12 @@ class TestDatanode(RMFTestCase):
                               recursive = True,
                               )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ulimit -c unlimited ;  /usr/hdp/current/hadoop-client/sbin/hadoop-daemon.sh --config /usr/hdp/current/hadoop-client/conf start datanode'",
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/hdp/current/hadoop-client/libexec'},
-        not_if = 'ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
     )
     self.assertNoMoreResources()
 
@@ -237,23 +224,10 @@ class TestDatanode(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assertResourceCalled('Directory', '/var/run/hadoop',
-                              owner = 'hdfs',
-                              group = 'hadoop',
-                              mode = 0755
-                              )
-    self.assertResourceCalled('Directory', '/var/run/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
-    self.assertResourceCalled('Directory', '/var/log/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', 'ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf stop datanode',
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec'},
         not_if = None,
@@ -279,23 +253,10 @@ class TestDatanode(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assertResourceCalled('Directory', '/var/run/hadoop',
-                              owner = 'hdfs',
-                              group = 'hadoop',
-                              mode = 0755
-                              )
-    self.assertResourceCalled('Directory', '/var/run/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
-    self.assertResourceCalled('Directory', '/var/log/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', 'ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/hdp/current/hadoop-client/sbin/hadoop-daemon.sh --config /usr/hdp/current/hadoop-client/conf stop datanode',
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/hdp/current/hadoop-client/libexec'},
         not_if = None,
@@ -323,23 +284,10 @@ class TestDatanode(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assertResourceCalled('Directory', '/var/run/hadoop',
-                              owner = 'hdfs',
-                              group = 'hadoop',
-                              mode = 0755
-                              )
-    self.assertResourceCalled('Directory', '/var/run/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
-    self.assertResourceCalled('Directory', '/var/log/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-datanode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ulimit -c unlimited ;  /usr/hdp/current/hadoop-client/sbin/hadoop-daemon.sh --config /usr/hdp/current/hadoop-client/conf stop datanode'",
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/hdp/current/hadoop-client/libexec'},
         not_if = None,
@@ -350,6 +298,18 @@ class TestDatanode(RMFTestCase):
     self.assertNoMoreResources()
 
   def assert_configure_default(self):
+    self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-i386-32',
+        recursive = True,
+    )
+    self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-amd64-64',
+        recursive = True,
+    )
+    self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-i386-32/libsnappy.so',
+        to = '/usr/lib/hadoop/lib/libsnappy.so',
+    )
+    self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-amd64-64/libsnappy.so',
+        to = '/usr/lib/hadoop/lib64/libsnappy.so',
+    )
     self.assertResourceCalled('Directory', '/etc/security/limits.d',
                               owner = 'root',
                               group = 'root',
@@ -380,9 +340,7 @@ class TestDatanode(RMFTestCase):
                               content = Template('slaves.j2'),
                               owner = 'hdfs',
                               )
-    self.assertResourceCalled('File', '/var/lib/ambari-agent/lib/fast-hdfs-resource.jar',
-        content = StaticFile('fast-hdfs-resource.jar'),
-    )
+
     self.assertResourceCalled('Directory', '/var/lib/hadoop-hdfs',
                               owner = 'hdfs',
                               group = 'hadoop',
@@ -398,11 +356,24 @@ class TestDatanode(RMFTestCase):
                               cd_access='a'
                               )
 
-  def assert_configure_secured(self, stackVersion=STACK_VERSION):
+  def assert_configure_secured(self, stackVersion=STACK_VERSION, snappy_enabled=True):
     conf_dir = '/etc/hadoop/conf'
     if stackVersion != self.STACK_VERSION:
       conf_dir = '/usr/hdp/current/hadoop-client/conf'
-
+    
+    if snappy_enabled:
+      self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-i386-32',
+          recursive = True,
+      )
+      self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-amd64-64',
+          recursive = True,
+      )
+      self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-i386-32/libsnappy.so',
+          to = '/usr/lib/hadoop/lib/libsnappy.so',
+      )
+      self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-amd64-64/libsnappy.so',
+          to = '/usr/lib/hadoop/lib64/libsnappy.so',
+      )
     self.assertResourceCalled('Directory', '/etc/security/limits.d',
                               owner = 'root',
                               group = 'root',
@@ -434,9 +405,7 @@ class TestDatanode(RMFTestCase):
                               content = Template('slaves.j2'),
                               owner = 'root',
                               )
-    self.assertResourceCalled('File', '/var/lib/ambari-agent/lib/fast-hdfs-resource.jar',
-        content = StaticFile('fast-hdfs-resource.jar'),
-    )
+
     self.assertResourceCalled('Directory', '/var/lib/hadoop-hdfs',
                               owner = 'hdfs',
                               group = 'hadoop',
@@ -466,7 +435,7 @@ class TestDatanode(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES)
     self.assertResourceCalled('Execute',
-                              'hdp-select set hadoop-hdfs-datanode %s' % version,)
+                              ('hdp-select', 'set', 'hadoop-hdfs-datanode', version), sudo=True,)
     self.assertNoMoreResources()
 
 
@@ -487,7 +456,7 @@ class TestDatanode(RMFTestCase):
                        target = RMFTestCase.TARGET_COMMON_SERVICES,
                        call_mocks = [(0, None), (0, None)],
                        mocks_dict = mocks_dict)
-    self.assertResourceCalled('Execute', 'hdp-select set hadoop-hdfs-datanode %s' % version,)
+    self.assertResourceCalled('Execute', ('hdp-select', 'set', 'hadoop-hdfs-datanode', version), sudo=True,)
 
     self.assertNoMoreResources()
 
@@ -574,6 +543,37 @@ class TestDatanode(RMFTestCase):
     except Fail,fail:
       self.assertTrue(mocks_dict['call'].called)
       self.assertEqual(mocks_dict['call'].call_count,12)
+
+
+  @patch("resource_management.core.shell.call")
+  @patch('time.sleep')
+  def test_stop_during_upgrade(self, time_mock, call_mock):
+    config_file = self.get_src_folder()+"/test/python/stacks/2.0.6/configs/default.json"
+    call_mock_side_effects = [(0, ""), ]
+    call_mock.side_effects = call_mock_side_effects
+    with open(config_file, "r") as f:
+      json_content = json.load(f)
+
+    version = '2.2.1.0-3242'
+    json_content['commandParams']['version'] = version
+
+    try:
+      self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/datanode.py",
+        classname = "DataNode",
+        command = "stop",
+        config_dict = json_content,
+        hdp_stack_version = self.STACK_VERSION,
+        target = RMFTestCase.TARGET_COMMON_SERVICES,
+        call_mocks = call_mock_side_effects,
+        command_args=[True])
+
+      raise Fail("Expected a fail since datanode didn't report a shutdown")
+    except Exception, err:
+      expected_message = "DataNode has not shutdown."
+      if str(err.message) != expected_message:
+        self.fail("Expected this exception to be thrown. " + expected_message + ". Got this instead, " + str(err.message))
+
+    self.assertResourceCalled("Execute", "hdfs dfsadmin -D ipc.client.connect.max.retries=5 -D ipc.client.connect.retry.interval=1000 -getDatanodeInfo 0.0.0.0:8010", tries=1, user="hdfs")
 
   @patch("resource_management.libraries.functions.security_commons.build_expectations")
   @patch("resource_management.libraries.functions.security_commons.get_params_from_filesystem")

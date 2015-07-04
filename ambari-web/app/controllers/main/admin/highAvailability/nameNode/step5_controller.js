@@ -33,15 +33,6 @@ App.HighAvailabilityWizardStep5Controller = App.HighAvailabilityProgressPageCont
   },
 
   installJournalNodes: function () {
-    App.ajax.send({
-      name: 'admin.high_availability.create_journalnode',
-      sender: this,
-      success: 'onJournalNodeCreate',
-      error: 'onJournalNodeCreate'
-    });
-  },
-
-  onJournalNodeCreate: function () {
     var hostNames = this.get('content.masterComponentHosts').filterProperty('component', 'JOURNALNODE').mapProperty('hostName');
     this.createComponent('JOURNALNODE', hostNames, "HDFS");
   },
@@ -124,7 +115,6 @@ App.HighAvailabilityWizardStep5Controller = App.HighAvailabilityProgressPageCont
   onLoadConfigs: function(data) {
     var self = this;
     var configController = App.router.get('highAvailabilityWizardStep3Controller');
-    var configData = $.extend({}, data);
     var configItems = data.items.map(function(item) {
       var fileName = Em.get(item, 'type');
       var configTypeObject = self.get('content.serviceConfigProperties').items.findProperty('type', fileName);

@@ -17,19 +17,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 """
+import os
 
-import sys
-from resource_management import *
+from resource_management.core.logger import Logger
+from resource_management.core.resources.system import Execute
+from resource_management.libraries.script import Script
 from resource_management.libraries.functions import conf_select
 from resource_management.libraries.functions import hdp_select
-from resource_management.libraries.functions.security_commons import build_expectations, \
-  cached_kinit_executor, get_params_from_filesystem, validate_security_config_properties, \
-  FILE_TYPE_XML
+from resource_management.libraries.functions.format import format
+from resource_management.libraries.functions.version import format_hdp_stack_version
+from resource_management.libraries.functions.version import compare_versions
+from resource_management.libraries.functions.security_commons import build_expectations
+from resource_management.libraries.functions.security_commons import cached_kinit_executor
+from resource_management.libraries.functions.security_commons import get_params_from_filesystem
+from resource_management.libraries.functions.security_commons import validate_security_config_properties
+from resource_management.libraries.functions.security_commons import FILE_TYPE_XML
+
 from hive import hive
+from hive import jdbc_connector
 from hive_service import hive_service
 from ambari_commons.os_family_impl import OsFamilyImpl
 from ambari_commons import OSConst
 
+# the legacy conf.server location in HDP 2.2
+LEGACY_HIVE_SERVER_CONF = "/etc/hive/conf.server"
 
 class HiveMetastore(Script):
   def install(self, env):
@@ -40,7 +51,7 @@ class HiveMetastore(Script):
     import params
     env.set_params(params)
     self.configure(env)  # FOR SECURITY
-    hive_service('metastore', action='start')
+    hive_service('metastore', action='start', rolling_restart=rolling_restart)
 
   def stop(self, env, rolling_restart=False):
     import params
@@ -57,6 +68,7 @@ class HiveMetastore(Script):
 class HiveMetastoreWindows(HiveMetastore):
   def status(self, env):
     import status_params
+    from resource_management.libraries.functions import check_windows_service_status
     check_windows_service_status(status_params.hive_metastore_win_service_name)
 
 
@@ -67,6 +79,8 @@ class HiveMetastoreDefault(HiveMetastore):
 
   def status(self, env):
     import status_params
+    from resource_management.libraries.functions import check_process_status
+
     env.set_params(status_params)
     pid_file = format("{hive_pid_dir}/{hive_metastore_pid}")
     # Recursively check all existing gmetad pid files
@@ -76,6 +90,9 @@ class HiveMetastoreDefault(HiveMetastore):
     Logger.info("Executing Metastore Rolling Upgrade pre-restart")
     import params
     env.set_params(params)
+
+    if Script.is_hdp_stack_greater_or_equal("2.3"):
+      self.upgrade_schema(env)
 
     if params.version and compare_versions(format_hdp_stack_version(params.version), '2.2.0.0') >= 0:
       conf_select.select(params.stack_name, "hive", params.version)
@@ -130,6 +147,55 @@ class HiveMetastoreDefault(HiveMetastore):
         self.put_structured_out({"securityState": "UNSECURED"})
     else:
       self.put_structured_out({"securityState": "UNSECURED"})
+
+
+  def upgrade_schema(self, env):
+    """
+    Executes the schema upgrade binary.  This is its own function because it could
+    be called as a standalone task from the upgrade pack, but is safe to run it for each
+    metastore instance.
+
+    The metastore schema upgrade requires a database driver library for most
+    databases. During an upgrade, it's possible that the library is not present,
+    so this will also attempt to copy/download the appropriate driver.
+    """
+    Logger.info("Upgrading Hive Metastore")
+    import params
+    env.set_params(params)
+
+    if params.security_enabled:
+      kinit_command=format("{kinit_path_local} -kt {smoke_user_keytab} {smokeuser_principal}; ")
+      Execute(kinit_command,user=params.smokeuser)
+
+    # ensure that the JDBC drive is present for the schema tool; if it's not
+    # present, then download it first
+    if params.hive_jdbc_driver in params.hive_jdbc_drivers_list and params.hive_use_existing_db:
+      target_directory = format("/usr/hdp/{version}/hive/lib")
+      if not os.path.exists(params.target):
+        # download it
+        jdbc_connector()
+
+      Execute(('cp', params.target, target_directory),
+        path=["/bin", "/usr/bin/"], sudo = True)
+
+    # build the schema tool command
+    binary = format("/usr/hdp/{version}/hive/bin/schematool")
+
+    # the conf.server directory changed locations between HDP 2.2 and 2.3
+    # since the configurations have not been written out yet during an upgrade
+    # we need to choose the original legacy location
+    schematool_hive_server_conf_dir = params.hive_server_conf_dir
+    if params.current_version is not None:
+      current_version = format_hdp_stack_version(params.current_version)
+      if compare_versions(current_version, "2.3") < 0:
+        schematool_hive_server_conf_dir = LEGACY_HIVE_SERVER_CONF
+
+    env_dict = {
+      'HIVE_CONF_DIR': schematool_hive_server_conf_dir
+    }
+
+    command = format("{binary} -dbType {hive_metastore_db_type} -upgradeSchema")
+    Execute(command, user=params.hive_user, tries=1, environment=env_dict, logoutput=True)
 
 if __name__ == "__main__":
   HiveMetastore().execute()

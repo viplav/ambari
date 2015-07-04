@@ -21,6 +21,7 @@ limitations under the License.
 import sys
 from resource_management import *
 from hcat import hcat
+from setup_atlas_hive import setup_atlas_hive
 from ambari_commons import OSConst
 from ambari_commons.os_family_impl import OsFamilyImpl
 

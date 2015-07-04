@@ -35,12 +35,13 @@ App.WidgetWizardController = App.WizardController.extend({
     controllerName: 'widgetWizardController',
     widgetService: null,
     widgetType: "",
+    isMetricsLoaded: false,
 
     /**
-     * @type {number}
+     * @type {Object}
      * @default null
      */
-    layoutId: null,
+    layout: null,
 
     /**
      * Example:
@@ -102,6 +103,7 @@ App.WidgetWizardController = App.WizardController.extend({
         callback: function () {
           this.load('widgetService');
           this.load('widgetType');
+          this.load('layout', true);
         }
       }
     ],
@@ -159,7 +161,7 @@ App.WidgetWizardController = App.WizardController.extend({
   saveClusterStatus: function (clusterStatus) {
     App.clusterStatus.setClusterStatus({
       clusterState: clusterStatus,
-      wizardControllerName: 'widgetWizardController',
+      wizardControllerName: this.get('name'),
       localdb: App.db.data
     });
   },
@@ -180,17 +182,20 @@ App.WidgetWizardController = App.WizardController.extend({
    * @returns {$.Deferred}
    */
   loadAllMetrics: function () {
-    var widgetMetrics = this.getDBProperty('allMetrics');
+    var allMetrics = this.getDBProperty('allMetrics');
     var self = this;
+    this.set("content.isMetricsLoaded", false);
     var dfd = $.Deferred();
 
-    if (widgetMetrics.length === 0) {
+    if (allMetrics.length === 0) {
       this.loadAllMetricsFromServer(function () {
+        self.set("content.isMetricsLoaded", true);
         dfd.resolve(self.get('content.allMetrics'));
       });
     } else {
-      this.set('content.allMetrics', widgetMetrics);
-      dfd.resolve(widgetMetrics);
+      this.set("content.isMetricsLoaded", true);
+      this.set('content.allMetrics', allMetrics);
+      dfd.resolve(allMetrics);
     }
     return dfd.promise();
   },
@@ -223,34 +228,89 @@ App.WidgetWizardController = App.WizardController.extend({
     var self = this;
     var result = [];
     var metrics = {};
-
+    var slaveComponents = App.StackServiceComponent.find().filterProperty('isSlave').mapProperty('componentName');
     if (json) {
       json.items.forEach(function (service) {
         var data = service.artifacts[0].artifact_data[service.StackServices.service_name];
         for (var componentName in data) {
+          var isSlave = slaveComponents.contains(componentName);
           for (var level in data[componentName]) {
-            metrics = data[componentName][level][0]['metrics']['default'];
-            for (var widgetId in metrics) {
-              var metricObj = {
-                widget_id: widgetId,
-                point_in_time: metrics[widgetId].pointInTime,
-                temporal: metrics[widgetId].temporal,
-                name: metrics[widgetId].name,
-                level: level.toUpperCase(),
-                type: data[componentName][level][0]["type"].toUpperCase(),
-                component_name: componentName,
-                service_name: service.StackServices.service_name
-              };
-              result.push(metricObj);
-              if (metricObj.level === 'HOSTCOMPONENT') {
-                self.insertHostComponentCriteria(metricObj);
+            var metricTypes = data[componentName][level]; //Ganglia or JMX
+            metricTypes.forEach(function (_metricType) {
+              metrics = _metricType['metrics']['default'];
+              var type = _metricType["type"].toUpperCase();
+              if (!((type === 'JMX' && level.toUpperCase() === 'COMPONENT') || (isSlave && level.toUpperCase() === 'HOSTCOMPONENT'))) {
+                for (var widgetId in metrics) {
+                  var _metrics = metrics[widgetId];
+                  var metricObj = {
+                    widget_id: widgetId,
+                    point_in_time: _metrics.pointInTime,
+                    temporal: _metrics.temporal,
+                    name: _metrics.name,
+                    level: level.toUpperCase(),
+                    type: type,
+                    component_name: componentName,
+                    service_name: service.StackServices.service_name
+                  };
+                  result.push(metricObj);
+                  if (metricObj.level === 'HOSTCOMPONENT') {
+                    self.insertHostComponentCriteria(metricObj);
+                  }
+                }
               }
-            }
+            }, this);
           }
         }
       }, this);
     }
+    if (!!App.YARNService.find("YARN")) {
+      result = this.substitueQueueMetrics(result);
+    }
     this.save('allMetrics', result);
+  },
+
+
+  /**
+   * @name substitueQueueMetrics
+   * @param metrics
+   * @return {Array} array of metric objects with regex substituted with actual metrics names
+   */
+  substitueQueueMetrics: function (metrics) {
+    var result = [];
+    var queuePaths = App.YARNService.find("YARN").get("allQueueNames");
+    var queueNames = [];
+    var queueMetricName;
+    queuePaths.forEach(function (_queuePath) {
+      var queueName = _queuePath.replace(/\//g, ".");
+      queueNames.push(queueName);
+    }, this);
+    var regexpForAMS = new RegExp("^yarn.QueueMetrics.Queue=\\(\\.\\+\\).*$");
+    var regexpForJMX = new RegExp("\\(\\.\\+\\)", "g");
+    var replaceRegexForMetricName = regexpForJMX;
+    var replaceRegexForMetricPath = new RegExp("\\$\\d\\..*\\)(?=\\/)", "g");
+    metrics.forEach(function (_metric) {
+      var isAMSQueueMetric = regexpForAMS.test(_metric.name);
+      var isJMXQueueMetrics = regexpForJMX.test(_metric.name);
+      if ((_metric.type === 'GANGLIA' && isAMSQueueMetric) || (_metric.type === 'JMX' && isJMXQueueMetrics)) {
+        queuePaths.forEach(function (_queuePath) {
+          queueMetricName = '';
+          if (_metric.type === 'GANGLIA') {
+            queueMetricName = _queuePath.replace(/\//g, ".");
+          } else if (_metric.type === 'JMX') {
+            _queuePath.split("/").forEach(function(_metricName, index){
+              queueMetricName = queueMetricName + ',q' + index + '=' + _metricName;
+            }, this);
+          }
+          var metricName = _metric.name.replace(replaceRegexForMetricName, queueMetricName);
+          var newMetricPath = _metric.widget_id.replace(replaceRegexForMetricPath, _queuePath);
+          var newQueueMetric = $.extend(true, {}, _metric, {name: metricName, widget_id: newMetricPath});
+          result.pushObject(newQueueMetric);
+        }, this);
+      } else {
+        result.pushObject(_metric);
+      }
+    }, this);
+    return result;
   },
 
   /**
@@ -265,7 +325,11 @@ App.WidgetWizardController = App.WizardController.extend({
       case 'RESOURCEMANAGER':
         metricObj.host_component_criteria = 'host_components/HostRoles/ha_state=ACTIVE';
         break;
+      case 'HBASE_MASTER':
+        metricObj.host_component_criteria = 'host_components/metrics/hbase/master/IsActiveMaster=true';
+        break;
       default:
+        metricObj.host_component_criteria = ' ';
     }
   },
 
@@ -289,12 +353,17 @@ App.WidgetWizardController = App.WizardController.extend({
    * @param data
    */
   postWidgetDefinitionSuccessCallback: function (data) {
-    if (Em.isNone(this.get('content.layoutId'))) return;
-    var widgets = App.WidgetLayout.find(this.get('content.layoutId')).get('widgets').toArray();
+    if (Em.isNone(this.get('content.layout'))) return;
+    var widgets = this.get('content.layout.widgets').map(function(item){
+      return Em.Object.create({id: item});
+    });
     widgets.pushObject(Em.Object.create({
       id: data.resources[0].WidgetInfo.id
     }));
-    App.router.get('mainServiceInfoSummaryController').saveWidgetLayout(widgets);
+    var mainServiceInfoSummaryController = App.router.get('mainServiceInfoSummaryController');
+    mainServiceInfoSummaryController.saveWidgetLayout(widgets, Em.Object.create(this.get('content.layout'))).done(function() {
+      mainServiceInfoSummaryController.updateActiveLayout();
+    });
   },
 
   /**
@@ -316,17 +385,16 @@ App.WidgetWizardController = App.WizardController.extend({
   cancel: function () {
     var self = this;
     var step3Controller = App.router.get('widgetWizardStep3Controller');
+    var isLastStep = parseInt(self.get('currentStep')) === self.get('totalSteps');
     return App.ModalPopup.show({
       header: Em.I18n.t('common.warning'),
-      bodyClass: Em.View.extend({
-        template: Ember.Handlebars.compile('{{t alerts.saveChanges}}')
-      }),
-      primary: Em.I18n.t('common.save'),
-      secondary: Em.I18n.t('common.discard'),
+      body: Em.I18n.t('dashboard.widgets.wizard.onClose.popup.body'),
+      primary: isLastStep ? Em.I18n.t('common.save') : null,
+      secondary: Em.I18n.t('dashboard.widgets.wizard.onClose.popup.discardAndExit'),
       third: Em.I18n.t('common.cancel'),
       disablePrimary: function () {
-        return !(parseInt(self.get('currentStep')) === self.get('totalSteps') && !step3Controller.get('isSubmitDisabled'));
-      }.property(''),
+        return !(isLastStep && !step3Controller.get('isSubmitDisabled'));
+      }.property(),
       onPrimary: function () {
         App.router.send('complete', step3Controller.collectWidgetData());
         this.onSecondary();
@@ -345,11 +413,11 @@ App.WidgetWizardController = App.WizardController.extend({
    * finish wizard
    */
   finishWizard: function () {
+    var service = App.Service.find(this.get('content.widgetService'));
+
     this.finish();
     this.get('popup').hide();
-    var serviceName = this.get('content.widgetService');
-    var service = App.Service.find().findProperty('serviceName', serviceName);
-    App.router.transitionTo('main.services.service', service);
+    App.router.transitionTo('main.services.service.summary', service);
     if (!App.get('testMode')) {
       App.clusterStatus.setClusterStatus({
         clusterName: App.router.getClusterName(),

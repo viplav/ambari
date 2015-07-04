@@ -122,7 +122,7 @@ App.upgradeWizardView = Em.View.extend({
    */
   noActiveItem: function () {
     return (Em.isNone(this.get('failedItem')) && Em.isNone(this.get('runningItem')) && Em.isNone(this.get('manualItem'))) &&
-      !['INIT', 'COMPLETED'].contains(App.get('upgradeState'));
+      !['INIT', 'COMPLETED', 'ABORTED'].contains(App.get('upgradeState'));
   }.property('failedItem', 'runningItem', 'manualItem', 'App.upgradeState'),
 
   /**
@@ -193,6 +193,8 @@ App.upgradeWizardView = Em.View.extend({
         labelKey = 'admin.stackUpgrade.state.completed';
         break;
       case 'ABORTED':
+        labelKey = 'admin.stackUpgrade.state.aborted';
+        break;
       case 'TIMEDOUT':
       case 'FAILED':
       case 'HOLDING_FAILED':
@@ -237,6 +239,47 @@ App.upgradeWizardView = Em.View.extend({
       });
     }
   }.observes('App.clusterName'),
+
+  getSkippedServiceChecks: function () {
+    if (this.get('isFinalizeItem')) {
+      if (!this.get('controller.areSkippedServiceChecksLoaded')) {
+        var self = this;
+        App.ajax.send({
+          name: 'admin.upgrade.service_checks',
+          sender: this,
+          data: {
+            upgradeId: this.get('controller.upgradeId')
+          },
+          success: 'getSkippedServiceChecksSuccessCallback'
+        }).complete(function () {
+            self.set('controller.areSkippedServiceChecksLoaded', true);
+          });
+      }
+    } else {
+      this.set('controller.areSkippedServiceChecksLoaded', false);
+    }
+  }.observes('isFinalizeItem'),
+
+  getSkippedServiceChecksSuccessCallback: function (data) {
+    if (data.items && data.items.length) {
+      var lastItemWithChecks = data.items[data.items.length - 1];
+      if (lastItemWithChecks && lastItemWithChecks.upgrade_items && lastItemWithChecks.upgrade_items.length) {
+        var skippedServiceChecks = [];
+        lastItemWithChecks.upgrade_items.forEach(function (item) {
+          if (item.tasks && item.tasks.length) {
+            item.tasks.forEach(function (task) {
+              var detail = Em.get(task, 'Tasks.command_detail');
+              if (detail && detail.startsWith('SERVICE_CHECK ')) {
+                skippedServiceChecks.push(App.format.role(detail.replace('SERVICE_CHECK ', '')));
+              }
+            });
+          }
+        });
+        skippedServiceChecks = skippedServiceChecks.uniq();
+        this.set('controller.skippedServiceChecks', skippedServiceChecks);
+      }
+    }
+  },
 
   /**
    * start polling upgrade data

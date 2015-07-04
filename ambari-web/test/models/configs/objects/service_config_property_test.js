@@ -175,20 +175,24 @@ var serviceConfigProperty,
     {
       initial: {
         displayType: 'password',
-        value: 'value'
+        value: 'value',
+        recommendedValue: 'recommended'
       },
       result: {
-        retypedPassword: 'value'
+        retypedPassword: 'value',
+        recommendedValue: ''
       }
     },
     {
       initial: {
         id: 'puppet var',
         value: '',
-        defaultValue: 'default'
+        savedValue: 'default',
+        recommendedValue: 'recommended'
       },
       result: {
-        value: 'default'
+        value: 'default',
+        recommendedValue: 'recommended'
       }
     }
   ],
@@ -197,17 +201,17 @@ var serviceConfigProperty,
       isEditable: false
     },
     {
-      defaultValue: null
+      savedValue: null
     },
     {
       value: 'value',
-      defaultValue: 'value'
+      savedValue: 'value'
     }
   ],
   notDefaultTrueData = {
     isEditable: true,
     value: 'value',
-    defaultValue: 'default'
+    savedValue: 'default'
   },
   types = ['masterHost', 'slaveHosts', 'masterHosts', 'slaveHost', 'radio button'],
   classCases = [
@@ -500,7 +504,7 @@ describe('App.ServiceConfigProperty', function () {
       },
       {
         m: 'not original config, isFinal equal to parent',
-        e: true,
+        e: false,
         c: {
           value: 'on',
           isOriginalSCP: false,
@@ -527,25 +531,6 @@ describe('App.ServiceConfigProperty', function () {
         }
       },
       {
-        m: 'not original config, parent override has same value',
-        e: true,
-        c: {
-          value: 'on',
-          isOriginalSCP: false,
-          supportsFinal: true,
-          isFinal: false,
-          parentSCP: App.ServiceConfigProperty.create({
-            value: 'off',
-            overrides: [
-              App.ServiceConfigProperty.create({
-                value: 'on',
-                isOriginalSCP: false
-              })
-            ]
-          })
-        }
-      },
-      {
         m: 'not original config, parent override doesn\'t have same value',
         e: false,
         c: {
@@ -564,6 +549,32 @@ describe('App.ServiceConfigProperty', function () {
             ]
           })
         }
+      },
+      {
+        m: '`directories`-config with almost equal value',
+        e: true,
+        c: {
+          value: "/hadoop/hdfs/data\n\n",
+          displayType: 'directories',
+          supportsFinal: false,
+          isOriginalSCP: false,
+          parentSCP: App.ServiceConfigProperty.create({
+            value: "/hadoop/hdfs/data\n"
+          })
+        }
+      },
+      {
+        m: '`directories`-config with almost equal value (2)',
+        e: true,
+        c: {
+          value: "/hadoop/hdfs/data",
+          displayType: 'directories',
+          supportsFinal: false,
+          isOriginalSCP: false,
+          parentSCP: App.ServiceConfigProperty.create({
+            value: "/hadoop/hdfs/data\n"
+          })
+        }
       }
     ]).forEach(function (test) {
       it(test.m, function () {
@@ -573,5 +584,72 @@ describe('App.ServiceConfigProperty', function () {
     });
 
   });
+
+  describe('#undoAvailable', function () {
+
+    Em.A([
+      {
+        cantBeUndone: true,
+        isNotDefaultValue: true,
+        e: false
+      },
+      {
+        cantBeUndone: false,
+        isNotDefaultValue: true,
+        e: true
+      },
+      {
+        cantBeUndone: true,
+        isNotDefaultValue: false,
+        e: false
+      },
+      {
+        cantBeUndone: false,
+        isNotDefaultValue: false,
+        e: false
+      }
+    ]).forEach(function (test) {
+      it('', function () {
+        serviceConfigProperty.reopen({
+          cantBeUndone: test.cantBeUndone,
+          isNotDefaultValue: test.isNotDefaultValue
+        });
+        expect(serviceConfigProperty.get('undoAvailable')).to.equal(test.e);
+      });
+    });
+
+  });
+
+  describe('#_getValueForCheck', function () {
+
+    beforeEach(function () {
+      serviceConfigProperty.setProperties({
+        value: "/hadoop/hdfs/data\n",
+        displayType: 'directories',
+        supportsFinal: false,
+        isOriginalSCP: true,
+        overrides: [
+          Em.Object.create({
+            value: "/hadoop/hdfs/data\n\n"
+          })
+        ]
+      });
+    });
+
+    it('should trim value', function () {
+      expect(serviceConfigProperty._getValueForCheck(serviceConfigProperty.get('value'))).to.equal('/hadoop/hdfs/data');
+    });
+
+    it('should trim value 2', function () {
+      expect(serviceConfigProperty._getValueForCheck(serviceConfigProperty.get('overrides.0.value'))).to.equal('/hadoop/hdfs/data');
+    });
+
+  });
+
+  describe('#overrideIsFinalValues', function () {
+    it('should be defined as empty array', function () {
+      expect(serviceConfigProperty.get('overrideIsFinalValues')).to.eql([]);
+    });
+  })
 
 });

@@ -48,12 +48,22 @@ public class TaskWrapperBuilder {
     List<TaskWrapper> collection = new ArrayList<TaskWrapper>();
     for (Task t : tasks) {
       if (t.getType().equals(Task.Type.EXECUTE)) {
-        if (((ExecuteTask) t).hosts != null && ((ExecuteTask) t).hosts.equalsIgnoreCase("master")) {
+        if (((ExecuteTask) t).hosts != null && ((ExecuteTask) t).hosts == ExecuteHostType.MASTER) {
           if (hostsType.master != null) {
             collection.add(new TaskWrapper(service, component, Collections.singleton(hostsType.master), t));
             continue;
           } else {
             LOG.error(MessageFormat.format("Found an Execute task for {0} and {1} meant to run on a master but could not find any masters to run on. Skipping this task.", service, component));
+            continue;
+          }
+        }
+        // Pick a random host.
+        if (((ExecuteTask) t).hosts != null && ((ExecuteTask) t).hosts == ExecuteHostType.ANY) {
+          if (hostsType.hosts != null && !hostsType.hosts.isEmpty()) {
+            collection.add(new TaskWrapper(service, component, Collections.singleton(hostsType.hosts.iterator().next()), t));
+            continue;
+          } else {
+            LOG.error(MessageFormat.format("Found an Execute task for {0} and {1} meant to run on a any host but could not find host to run on. Skipping this task.", service, component));
             continue;
           }
         }

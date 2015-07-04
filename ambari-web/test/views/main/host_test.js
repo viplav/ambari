@@ -49,11 +49,6 @@ describe('App.MainHostView', function () {
           callCount: 2
         },
         {
-          methodName: 'updateHostsPagination',
-          propertyToChange: 'startIndex',
-          callCount: 1
-        },
-        {
           methodName: 'updatePagination',
           propertyToChange: 'displayLength',
           callCount: 1
@@ -88,23 +83,6 @@ describe('App.MainHostView', function () {
 
   });
 
-  describe('#updateHostsPagination', function () {
-
-    beforeEach(function () {
-      sinon.stub(view, 'updatePagination', Em.K);
-    });
-
-    afterEach(function () {
-      view.updatePagination.restore();
-    });
-
-    it('should execute updatePagination', function () {
-      view.updateHostsPagination();
-      expect(view.updatePagination.calledOnce).to.be.true;
-    });
-
-  });
-
   describe('#HostView', function () {
 
     var hostView;
@@ -120,17 +98,8 @@ describe('App.MainHostView', function () {
 
     describe('#displayComponents', function () {
 
-      beforeEach(function () {
-        sinon.stub(App, 'showHostsTableListPopup', Em.K);
-      });
-
-      afterEach(function () {
-        App.showHostsTableListPopup.restore();
-      });
-
-      it('should display host components in modal popup', function () {
-        hostView.set('content', {
-          hostName: 'h',
+      var cases = [
+        {
           hostComponents: [
             {
               displayName: 'c0'
@@ -138,16 +107,16 @@ describe('App.MainHostView', function () {
             {
               displayName: 'c1'
             }
-          ]
-        });
-        hostView.displayComponents();
-        expect(App.showHostsTableListPopup.calledOnce).to.be.true;
-        expect(App.showHostsTableListPopup.calledWith(Em.I18n.t('common.components'), 'h', ['c0', 'c1'])).to.be.true;
-      });
-
-    });
-
-    describe('#displayVersions', function () {
+          ],
+          showHostsTableListPopupCallCount: 1,
+          title: 'should display host components in modal popup'
+        },
+        {
+          hostComponents: [],
+          showHostsTableListPopupCallCount: 0,
+          title: 'should not display modal popup'
+        }
+      ];
 
       beforeEach(function () {
         sinon.stub(App, 'showHostsTableListPopup', Em.K);
@@ -157,9 +126,26 @@ describe('App.MainHostView', function () {
         App.showHostsTableListPopup.restore();
       });
 
-      it('should display stack versions in modal popup', function () {
-        hostView.set('content', {
-          hostName: 'h',
+      cases.forEach(function (item) {
+        it(item.title, function () {
+          hostView.set('content', {
+            hostName: 'h',
+            hostComponents: item.hostComponents
+          });
+          hostView.displayComponents();
+          expect(App.showHostsTableListPopup.callCount).to.equal(item.showHostsTableListPopupCallCount);
+          if (item.showHostsTableListPopupCallCount) {
+            expect(App.showHostsTableListPopup.calledWith(Em.I18n.t('common.components'), 'h', ['c0', 'c1'])).to.be.true;
+          }
+        });
+      });
+
+    });
+
+    describe('#displayVersions', function () {
+
+      var cases = [
+        {
           stackVersions: [
             Em.Object.create({
               displayName: 'v0',
@@ -176,20 +162,127 @@ describe('App.MainHostView', function () {
               status: 'INSTALL_FAILED',
               isVisible: false
             })
-          ]
-        });
-        hostView.displayVersions();
-        expect(App.showHostsTableListPopup.calledOnce).to.be.true;
-        expect(App.showHostsTableListPopup.calledWith(Em.I18n.t('common.versions'), 'h', [
-          {
-            name: 'v0',
-            status: 'Current'
-          },
-          {
-            name: 'v1',
-            status: 'Out Of Sync'
+          ],
+          showHostsTableListPopupCallCount: 1,
+          title: 'should display stack versions in modal popup'
+        },
+        {
+          stackVersions: [
+            Em.Object.create({
+              displayName: 'v0',
+              status: 'CURRENT',
+              isVisible: true
+            }),
+            Em.Object.create({
+              displayName: 'v2',
+              status: 'INSTALL_FAILED',
+              isVisible: false
+            })
+          ],
+          showHostsTableListPopupCallCount: 0,
+          title: 'should not display modal popup if there\'s only one visible stack version'
+        },
+        {
+          stackVersions: [
+            Em.Object.create({
+              displayName: 'v2',
+              status: 'INSTALL_FAILED',
+              isVisible: false
+            })
+          ],
+          showHostsTableListPopupCallCount: 0,
+          title: 'should not display modal popup if there are no visible stack versions available'
+        },
+        {
+          stackVersions: [],
+          showHostsTableListPopupCallCount: 0,
+          title: 'should not display modal popup if there are no stack versions available'
+        }
+      ];
+
+      beforeEach(function () {
+        sinon.stub(App, 'showHostsTableListPopup', Em.K);
+      });
+
+      afterEach(function () {
+        App.showHostsTableListPopup.restore();
+      });
+
+      cases.forEach(function (item) {
+        it('should display stack versions in modal popup', function () {
+          hostView.set('content', {
+            hostName: 'h',
+            stackVersions: item.stackVersions
+          });
+          hostView.displayVersions();
+          expect(App.showHostsTableListPopup.callCount).to.equal(item.showHostsTableListPopupCallCount);
+          if (item.showHostsTableListPopupCallCount) {
+            expect(App.showHostsTableListPopup.calledWith(Em.I18n.t('common.versions'), 'h', [
+              {
+                name: 'v0',
+                status: 'Current'
+              },
+              {
+                name: 'v1',
+                status: 'Out Of Sync'
+              }
+            ])).to.be.true;
           }
-        ])).to.be.true;
+        });
+      });
+
+    });
+
+    describe('#currentVersion', function () {
+
+      var cases = [
+        {
+          stackVersions: [
+            Em.Object.create({
+              displayName: 'HDP-2.2.0.0-2000'
+            }),
+            Em.Object.create({
+              displayName: 'HDP-2.2.0.0-1000',
+              isCurrent: true
+            })
+          ],
+          currentVersion: 'HDP-2.2.0.0-1000',
+          title: 'current version specified explicitly'
+        },
+        {
+          stackVersions: [
+            Em.Object.create({
+              displayName: 'HDP-2.2.0.0-2000'
+            }),
+            Em.Object.create({
+              displayName: 'HDP-2.3.0.0-1000'
+            })
+          ],
+          currentVersion: 'HDP-2.2.0.0-2000',
+          title: 'current version not specified explicitly'
+        },
+        {
+          stackVersions: [Em.Object.create()],
+          currentVersion: undefined,
+          title: 'version display name isn\'t defined'
+        },
+        {
+          stackVersions: [null],
+          currentVersion: '',
+          title: 'no version data available'
+        },
+        {
+          stackVersions: [],
+          currentVersion: '',
+          title: 'no versions available'
+        }
+      ];
+
+      cases.forEach(function (item) {
+        it(item.title, function () {
+          hostView.set('content.stackVersions', item.stackVersions);
+          expect(hostView.get('currentVersion')).to.equal(item.currentVersion);
+        });
       });
 
     });

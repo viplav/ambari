@@ -60,7 +60,7 @@ BOOTSTRAP_DIR_PROPERTY = "bootstrap.dir"
 
 AMBARI_CONF_VAR = "AMBARI_CONF_DIR"
 AMBARI_PROPERTIES_FILE = "ambari.properties"
-
+AMBARI_KRB_JAAS_LOGIN_FILE = "krb5JAASLogin.conf"
 GET_FQDN_SERVICE_URL = "server.fqdn.service.url"
 
 SERVER_OUT_FILE_KEY = "ambari.output.file.path"
@@ -183,17 +183,18 @@ class ServerConfigDefaults(object):
     self.DEFAULT_LIBS_DIR = ""
 
     self.AMBARI_PROPERTIES_BACKUP_FILE = ""
-
+    self.AMBARI_KRB_JAAS_LOGIN_BACKUP_FILE = ""
     # ownership/permissions mapping
     # path - permissions - user - group - recursive
     # Rules are executed in the same order as they are listed
     # {0} in user/group will be replaced by customized ambari-server username
     self.NR_ADJUST_OWNERSHIP_LIST = []
+    self.NR_CHANGE_OWNERSHIP_LIST = []
     self.NR_USERADD_CMD = ""
 
-    self.MASTER_KEY_FILE_PERMISSIONS = "600"
-    self.CREDENTIALS_STORE_FILE_PERMISSIONS = "600"
-    self.TRUST_STORE_LOCATION_PERMISSIONS = "600"
+    self.MASTER_KEY_FILE_PERMISSIONS = "640"
+    self.CREDENTIALS_STORE_FILE_PERMISSIONS = "640"
+    self.TRUST_STORE_LOCATION_PERMISSIONS = "640"
 
     self.DEFAULT_DB_NAME = "ambari"
 
@@ -224,7 +225,7 @@ class ServerConfigDefaultsWindows(ServerConfigDefaults):
     self.DEFAULT_LIBS_DIR = "lib"
 
     self.AMBARI_PROPERTIES_BACKUP_FILE = "ambari.properties.backup"
-
+    self.AMBARI_KRB_JAAS_LOGIN_BACKUP_FILE = ""  # ToDo: should be adjusted later
     # ownership/permissions mapping
     # path - permissions - user - group - recursive
     # Rules are executed in the same order as they are listed
@@ -280,42 +281,52 @@ class ServerConfigDefaultsLinux(ServerConfigDefaults):
     self.DEFAULT_LIBS_DIR = "/usr/lib/ambari-server"
 
     self.AMBARI_PROPERTIES_BACKUP_FILE = "ambari.properties.rpmsave"
-
+    self.AMBARI_KRB_JAAS_LOGIN_BACKUP_FILE = "krb5JAASLogin.conf.rpmsave"
     # ownership/permissions mapping
     # path - permissions - user - group - recursive
     # Rules are executed in the same order as they are listed
     # {0} in user/group will be replaced by customized ambari-server username
     self.NR_ADJUST_OWNERSHIP_LIST = [
-      ("/var/log/ambari-server", "644", "{0}", True),
-      ("/var/log/ambari-server", "755", "{0}", False),
-      ("/var/run/ambari-server", "644", "{0}", True),
-      ("/var/run/ambari-server", "755", "{0}", False),
+      ("/var/log/ambari-server/", "644", "{0}", True),
+      ("/var/log/ambari-server/", "755", "{0}", False),
+      ("/var/run/ambari-server/", "644", "{0}", True),
+      ("/var/run/ambari-server/", "755", "{0}", False),
       ("/var/run/ambari-server/bootstrap", "755", "{0}", False),
       ("/var/lib/ambari-server/ambari-env.sh", "700", "{0}", False),
-      ("/var/lib/ambari-server/keys", "600", "{0}", True),
-      ("/var/lib/ambari-server/keys", "700", "{0}", False),
-      ("/var/lib/ambari-server/keys/db", "700", "{0}", False),
-      ("/var/lib/ambari-server/keys/db/newcerts", "700", "{0}", False),
+      ("/var/lib/ambari-server/keys/", "600", "{0}", True),
+      ("/var/lib/ambari-server/keys/", "700", "{0}", False),
+      ("/var/lib/ambari-server/keys/db/", "700", "{0}", False),
+      ("/var/lib/ambari-server/keys/db/newcerts/", "700", "{0}", False),
       ("/var/lib/ambari-server/keys/.ssh", "700", "{0}", False),
+      ("/var/lib/ambari-server/resources/common-services/", "755", "{0}", True),
       ("/var/lib/ambari-server/resources/stacks/", "755", "{0}", True),
       ("/var/lib/ambari-server/resources/custom_actions/", "755", "{0}", True),
       ("/var/lib/ambari-server/resources/host_scripts/", "755", "{0}", True),
-      ("/var/lib/ambari-server/resources/views", "644", "{0}", True),
-      ("/var/lib/ambari-server/resources/views", "755", "{0}", False),
-      ("/var/lib/ambari-server/resources/views/work", "755", "{0}", True),
-      ("/etc/ambari-server/conf", "644", "{0}", True),
-      ("/etc/ambari-server/conf", "755", "{0}", False),
+      ("/var/lib/ambari-server/resources/views/", "644", "{0}", True),
+      ("/var/lib/ambari-server/resources/views/", "755", "{0}", False),
+      ("/var/lib/ambari-server/resources/views/work/", "755", "{0}", True),
+      ("/etc/ambari-server/conf/", "644", "{0}", True),
+      ("/etc/ambari-server/conf/", "755", "{0}", False),
       ("/etc/ambari-server/conf/password.dat", "640", "{0}", False),
       ("/var/lib/ambari-server/keys/pass.txt", "600", "{0}", False),
       ("/etc/ambari-server/conf/ldap-password.dat", "640", "{0}", False),
       ("/var/run/ambari-server/stack-recommendations/", "744", "{0}", True),
       ("/var/run/ambari-server/stack-recommendations/", "755", "{0}", False),
+      ("/var/lib/ambari-server/resources/data/", "644", "{0}", False),
+      ("/var/lib/ambari-server/resources/data/", "755", "{0}", False),
       ("/var/lib/ambari-server/data/tmp/", "644", "{0}", True),
       ("/var/lib/ambari-server/data/tmp/", "755", "{0}", False),
       ("/var/lib/ambari-server/data/cache/", "600", "{0}", True),
       ("/var/lib/ambari-server/data/cache/", "700", "{0}", False),
       # Also, /etc/ambari-server/conf/password.dat
       # is generated later at store_password_file
+    ]
+    self.NR_CHANGE_OWNERSHIP_LIST = [
+      ("/var/lib/ambari-server", "{0}", True),
+      ("/usr/lib/ambari-server", "{0}", True),
+      ("/var/log/ambari-server", "{0}", True),
+      ("/var/run/ambari-server", "{0}", True),
+      ("/etc/ambari-server", "{0}", True),
     ]
     self.NR_USERADD_CMD = 'useradd -M --comment "{1}" ' \
                  '--shell %s -d /var/lib/ambari-server/keys/ {0}' % locate_file('nologin', '/sbin')
@@ -369,7 +380,7 @@ def get_conf_dir():
     return conf_dir
   except KeyError:
     default_conf_dir = configDefaults.DEFAULT_CONF_DIR
-    print AMBARI_CONF_VAR + " is not set, using default " + default_conf_dir
+    print_info_msg(AMBARI_CONF_VAR + " is not set, using default " + default_conf_dir)
     return default_conf_dir
 
 def find_properties_file():
@@ -765,6 +776,40 @@ def parse_properties_file(args):
       args.database_password = open(properties[JDBC_PASSWORD_PROPERTY]).read()
     else:
       args.database_password = args.database_password_file
+  return 0
+
+def is_jaas_keytab_exists(conf_file):
+  with open(conf_file, "r") as f:
+    lines = f.read()
+
+  match = re.search("keyTab=(.*)$", lines, re.MULTILINE)
+  return os.path.exists(match.group(1).strip("\"").strip())
+
+def update_krb_jaas_login_properties():
+  """
+  Update configuration files
+  :return: int -2 - skipped, -1 - error, 0 - successful
+  """
+  prev_conf_file = search_file(configDefaults.AMBARI_KRB_JAAS_LOGIN_BACKUP_FILE, get_conf_dir())
+  conf_file = search_file(AMBARI_KRB_JAAS_LOGIN_FILE, get_conf_dir())
+
+  # check if source and target files exists, if not - skip copy action
+  if prev_conf_file is None or conf_file is None:
+    return -2
+
+  # if rpmsave file contains invalid keytab, we can skip restoring
+  if not is_jaas_keytab_exists(prev_conf_file):
+    return -2
+
+  try:
+    # restore original file, destination arg for rename func shouldn't exists
+    os.remove(conf_file)
+    os.rename(prev_conf_file, conf_file)
+    print_warning_msg("Original file %s kept" % AMBARI_KRB_JAAS_LOGIN_FILE)
+  except OSError as e:
+    print "Couldn't move %s file: %s" % (prev_conf_file, e)
+    return -1
+
   return 0
 
 

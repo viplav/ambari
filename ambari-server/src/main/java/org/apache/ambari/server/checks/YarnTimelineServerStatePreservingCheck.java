@@ -42,6 +42,34 @@ public class YarnTimelineServerStatePreservingCheck extends AbstractCheckDescrip
   private final static String YARN_TIMELINE_STATE_RECOVERY_ENABLED_KEY = "yarn.timeline-service.recovery.enabled";
 
   /**
+   * Due to the introduction of YARN Timeline state recovery only from certain
+   * stack-versions onwards, this check is not applicable to earlier versions
+   * of the stack.
+   *
+   * This enumeration lists the minimum stack-versions for which this check is applicable.
+   * If a stack is not specified in this enumeration, this check will be applicable.
+   */
+  private enum MinimumApplicableStackVersion {
+    HDP_STACK("HDP", "2.2.4.2");
+
+    private String stackName;
+    private String stackVersion;
+
+    private MinimumApplicableStackVersion(String stackName, String stackVersion) {
+      this.stackName = stackName;
+      this.stackVersion = stackVersion;
+    }
+
+    public String getStackName() {
+      return stackName;
+    }
+
+    public String getStackVersion() {
+      return stackVersion;
+    }
+  }
+
+  /**
    * Constructor.
    */
   public YarnTimelineServerStatePreservingCheck() {
@@ -63,15 +91,14 @@ public class YarnTimelineServerStatePreservingCheck extends AbstractCheckDescrip
       return false;
     }
 
-    // not applicable if not HDP 2.2.4.2 or later
-    String stackName = cluster.getCurrentStackVersion().getStackName();
-    if (!"HDP".equals(stackName)) {
-      return false;
-    }
-
-    String currentClusterRepositoryVersion = cluster.getCurrentClusterVersion().getRepositoryVersion().getVersion();
-    if (VersionUtils.compareVersions(currentClusterRepositoryVersion, "2.2.4.2") < 0) {
-      return false;
+    // Applicable only if stack not defined in MinimumApplicableStackVersion, or
+    // version equals or exceeds the enumerated version.
+    for (MinimumApplicableStackVersion minimumStackVersion : MinimumApplicableStackVersion.values()) {
+      String stackName = cluster.getCurrentStackVersion().getStackName();
+      if (minimumStackVersion.getStackName().equals(stackName)){
+        String currentClusterRepositoryVersion = cluster.getCurrentClusterVersion().getRepositoryVersion().getVersion();
+        return VersionUtils.compareVersions(currentClusterRepositoryVersion, minimumStackVersion.getStackVersion()) >= 0;
+      }
     }
 
     return true;

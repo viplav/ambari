@@ -161,7 +161,6 @@ limitations under the License.
     <description>Enable user impersonation for HiveServer2</description>
     <value>true</value>
   </property>
-
   <property>
     <name>hive.server2.authentication</name>
     <description>Authentication mode, default NONE. Options are NONE, NOSASL, KERBEROS, LDAP, PAM and CUSTOM</description>
@@ -380,5 +379,72 @@ limitations under the License.
         </entry>
       </entries>
     </value-attributes>
+  </property>
+  
+  <!-- added this as required from 2.2 Hive site xml -->
+  <property>
+    <name>hive.server2.authentication</name>
+    <description>Authentication mode, default NONE. Options are NONE, NOSASL, KERBEROS, LDAP, PAM and CUSTOM</description>
+    <value>NONE</value>
+  </property>
+  <property>
+    <name>hive.server2.authentication.ldap.url</name>
+    <value> </value>
+    <depends-on>
+      <property>
+        <type>hive-site</type>
+        <name>hive.server2.authentication</name>
+      </property>
+    </depends-on>
+  </property>
+  <property>
+    <name>hive.server2.authentication.ldap.baseDN</name>
+    <value></value>
+    <depends-on>
+      <property>
+        <type>hive-site</type>
+        <name>hive.server2.authentication</name>
+      </property>
+    </depends-on>
+  </property>
+  <property>
+    <name>hive.server2.authentication.kerberos.keytab</name>
+    <value></value>
+    <depends-on>
+      <property>
+        <type>hive-site</type>
+        <name>hive.server2.authentication</name>
+      </property>
+    </depends-on>
+  </property>
+  <property>
+    <name>hive.server2.authentication.kerberos.principal</name>
+    <value></value>
+    <depends-on>
+      <property>
+        <type>hive-site</type>
+        <name>hive.server2.authentication</name>
+      </property>
+    </depends-on>
+  </property>
+  <property>
+    <name>hive.server2.authentication.pam.services</name>
+    <value></value>
+    <depends-on>
+      <property>
+        <type>hive-site</type>
+        <name>hive.server2.authentication</name>
+      </property>
+    </depends-on>
+  </property>
+  <property>
+    <name>hive.server2.custom.authentication.class</name>
+    <value></value>
+    <depends-on>
+      <property>
+        <type>hive-site</type>
+        <name>hive.server2.authentication</name>
+      </property>
+    </depends-on>
   </property>
 </configuration>

@@ -59,11 +59,6 @@ class JournalNodeDefault(JournalNode):
 
     env.set_params(params)
     self.configure(env)
-    Directory(params.hadoop_pid_dir_prefix,
-              mode=0755,
-              owner=params.hdfs_user,
-              group=params.user_group
-    )
     service(
       action="start", name="journalnode", user=params.hdfs_user,
       create_pid_dir=True,
@@ -164,6 +159,9 @@ class JournalNodeDefault(JournalNode):
 
 @OsFamilyImpl(os_family=OSConst.WINSRV_FAMILY)
 class JournalNodeWindows(JournalNode):
+  def install(self, env):
+    import install_params
+    self.install_packages(env, install_params.exclude_packages)
 
   def start(self, env):
     import params

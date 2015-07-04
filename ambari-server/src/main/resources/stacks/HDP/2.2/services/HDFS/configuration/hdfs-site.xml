@@ -33,10 +33,16 @@
     <value>/hadoop/hdfs/journalnode</value>
     <description>The path where the JournalNode daemon will store its local state. </description>
   </property>
+  
+  <property>
+    <name>dfs.client.retry.policy.enabled</name>
+    <value>true</value>
+    <description>Enables HDFS client retry in the event of a NameNode failure.</description>
+  </property>
 
   <property>
     <name>dfs.encryption.key.provider.uri</name>
-    <value> </value>
+    <value></value>
     <depends-on>
       <property>
         <type>hadoop-env</type>
@@ -45,6 +51,10 @@
       <property>
         <type>hadoop-env</type>
         <name>keyserver_port</name>
+      </property>
+      <property>
+        <type>ranger-kms-site</type>
+        <name>ranger.service.https.attrib.ssl.enabled</name>
       </property>
     </depends-on>
   </property>

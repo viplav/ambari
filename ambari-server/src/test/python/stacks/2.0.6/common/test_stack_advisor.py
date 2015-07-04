@@ -36,7 +36,7 @@ class TestHDP206StackAdvisor(TestCase):
       stack_advisor_impl = imp.load_module('stack_advisor_impl', fp, hdp206StackAdvisorPath, ('.py', 'rb', imp.PY_SOURCE))
     clazz = getattr(stack_advisor_impl, hdp206StackAdvisorClassName)
     self.stackAdvisor = clazz()
-
+    self.maxDiff = None
     # substitute method in the instance
     self.get_system_min_uid_real = self.stackAdvisor.get_system_min_uid
     self.stackAdvisor.get_system_min_uid = self.get_system_min_uid_magic
@@ -201,7 +201,7 @@ class TestHDP206StackAdvisor(TestCase):
     result = self.stackAdvisor.validateConfigurations(services, hosts)
 
     expectedItems = [
-      {"message": "Value is less than the recommended default of 2048", "level": "WARN"},
+      {"message": "Value is less than the recommended default of 512", "level": "WARN"},
       {"message": "Value should be integer", "level": "ERROR"},
       {"message": "Value should be set", "level": "ERROR"}
     ]
@@ -344,12 +344,82 @@ class TestHDP206StackAdvisor(TestCase):
       "ramPerContainer": 512,
       "mapMemory": 512,
       "reduceMemory": 512,
-      "amMemory": 512
+      "amMemory": 512,
+      "referenceHost": hosts["items"][0]["Hosts"]
     }
 
+    # Test - Cluster data with 1 host
     result = self.stackAdvisor.getConfigurationClusterSummary(servicesList, hosts, components, None)
-
     self.assertEquals(result, expected)
+
+    # Test - Cluster data with 2 hosts - pick minimum memory
+    servicesList.append("YARN")
+    services = services = {"services":
+                  [{"StackServices":
+                      {"service_name" : "YARN",
+                       "service_version" : "2.6.0.2.2"
+                      },
+                    "components":[
+                      {
+                        "StackServiceComponents":{
+                          "advertise_version":"true",
+                          "cardinality":"1+",
+                          "component_category":"SLAVE",
+                          "component_name":"NODEMANAGER",
+                          "custom_commands":[
+
+                          ],
+                          "display_name":"NodeManager",
+                          "is_client":"false",
+                          "is_master":"false",
+                          "service_name":"YARN",
+                          "stack_name":"HDP",
+                          "stack_version":"2.2",
+                          "hostnames":[
+                            "host1",
+                            "host2"
+                          ]
+                        },
+                        "dependencies":[
+                        ]
+                      }
+                      ],
+                    }],
+                "configurations": {}
+    }
+    hosts["items"][0]["Hosts"]["host_name"] = "host1"
+    hosts["items"].append({
+        "Hosts": {
+            "cpu_count" : 4,
+            "total_mem" : 500000,
+            "host_name" : "host2",
+            "disk_info" : [
+              {"mountpoint" : "/"},
+              {"mountpoint" : "/dev/shm"},
+              {"mountpoint" : "/vagrant"},
+              {"mountpoint" : "/"},
+              {"mountpoint" : "/dev/shm"},
+              {"mountpoint" : "/"},
+              {"mountpoint" : "/dev/shm"},
+              {"mountpoint" : "/vagrant"}
+            ]
+          }
+        })
+    expected["referenceHost"] = hosts["items"][1]["Hosts"]
+    expected["referenceNodeManagerHost"] = hosts["items"][1]["Hosts"]
+    expected["amMemory"] = 170.66666666666666
+    expected["containers"] = 3.0
+    expected["cpu"] = 4
+    expected["totalAvailableRam"] = 512
+    expected["mapMemory"] = 170
+    expected["minContainerSize"] = 256
+    expected["reduceMemory"] = 170.66666666666666
+    expected["ram"] = 0
+    expected["ramPerContainer"] = 170.66666666666666
+    expected["reservedRam"] = 1
+    result = self.stackAdvisor.getConfigurationClusterSummary(servicesList, hosts, components, services)
+    self.assertEquals(result, expected)
+
 
   def test_getConfigurationClusterSummary_withHBaseAnd48gbRam(self):
     servicesList = ["HBASE"]
@@ -386,7 +456,8 @@ class TestHDP206StackAdvisor(TestCase):
       "ramPerContainer": 3072,
       "mapMemory": 3072,
       "reduceMemory": 3072,
-      "amMemory": 3072
+      "amMemory": 3072,
+      "referenceHost": hosts["items"][0]["Hosts"]
     }
 
     result = self.stackAdvisor.getConfigurationClusterSummary(servicesList, hosts, components, None)
@@ -458,12 +529,12 @@ class TestHDP206StackAdvisor(TestCase):
       "reservedRam": 1,
       "hbaseRam": 1,
       "minContainerSize": 256,
-      "totalAvailableRam": 2048,
+      "totalAvailableRam": 512,
       "containers": 3,
-      "ramPerContainer": 682.6666666666666,
-      "mapMemory": 682,
-      "reduceMemory": 682.6666666666666,
-      "amMemory": 682.6666666666666
+      "ramPerContainer": 170.66666666666666,
+      "mapMemory": 170,
+      "reduceMemory": 170.66666666666666,
+      "amMemory": 170.66666666666666
     }
 
     self.assertEquals(result, expected)
@@ -779,3 +850,41 @@ class TestHDP206StackAdvisor(TestCase):
     # unknown service
     unknown_component = self.stackAdvisor.getHostWithComponent("UNKNOWN", "NODEMANAGER", services, hosts)
     self.assertEquals(nodemanager, None)
+
+  def test_mergeValidators(self):
+    childValidators = {
+      "HDFS": {"hdfs-site": "validateHDFSConfigurations2.3"},
+      "HIVE": {"hiveserver2-site": "validateHiveServer2Configurations2.3"},
+      "HBASE": {"hbase-site": "validateHBASEConfigurations2.3",
+                "newconf": "new2.3"},
+      "NEWSERVICE" : {"newserviceconf": "abc2.3"}
+    }
+    parentValidators = {
+      "HDFS": {"hdfs-site": "validateHDFSConfigurations2.2",
+               "hadoop-env": "validateHDFSConfigurationsEnv2.2"},
+      "YARN": {"yarn-env": "validateYARNEnvConfigurations2.2"},
+      "HIVE": {"hiveserver2-site": "validateHiveServer2Configurations2.2",
+               "hive-site": "validateHiveConfigurations2.2",
+               "hive-env": "validateHiveConfigurationsEnv2.2"},
+      "HBASE": {"hbase-site": "validateHBASEConfigurations2.2",
+                "hbase-env": "validateHBASEEnvConfigurations2.2"},
+      "MAPREDUCE2": {"mapred-site": "validateMapReduce2Configurations2.2"},
+      "TEZ": {"tez-site": "validateTezConfigurations2.2"}
+    }
+    expected = {
+      "HDFS": {"hdfs-site": "validateHDFSConfigurations2.3",
+               "hadoop-env": "validateHDFSConfigurationsEnv2.2"},
+      "YARN": {"yarn-env": "validateYARNEnvConfigurations2.2"},
+      "HIVE": {"hiveserver2-site": "validateHiveServer2Configurations2.3",
+               "hive-site": "validateHiveConfigurations2.2",
+               "hive-env": "validateHiveConfigurationsEnv2.2"},
+      "HBASE": {"hbase-site": "validateHBASEConfigurations2.3",
+                "hbase-env": "validateHBASEEnvConfigurations2.2",
+                "newconf": "new2.3"},
+      "MAPREDUCE2": {"mapred-site": "validateMapReduce2Configurations2.2"},
+      "TEZ": {"tez-site": "validateTezConfigurations2.2"},
+      "NEWSERVICE" : {"newserviceconf": "abc2.3"}
+    }
+
+    self.stackAdvisor.mergeValidators(parentValidators, childValidators)
+    self.assertEquals(expected, parentValidators)

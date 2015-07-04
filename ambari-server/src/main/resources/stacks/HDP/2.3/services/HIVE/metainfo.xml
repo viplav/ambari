@@ -20,7 +20,7 @@
   <services>
     <service>
       <name>HIVE</name>
-      <version>0.15.0.2.3</version>
+      <version>1.2.0.2.3</version>
 
       <osSpecifics>
         <osSpecific>
@@ -28,6 +28,10 @@
           <packages>
             <package>
               <name>mysql-connector-java</name>
+              <skipUpgrade>true</skipUpgrade>
+            </package>
+            <package>
+              <name>atlas-metadata*-hive-plugin</name>
             </package>
           </packages>
         </osSpecific>
@@ -43,8 +47,27 @@
             <package>
               <name>hive_2_3_*-webhcat</name>
             </package>
+          </packages>
+        </osSpecific>
+        <osSpecific>
+          <osFamily>redhat6,suse11</osFamily>
+          <packages>
             <package>
               <name>mysql</name>
+              <skipUpgrade>true</skipUpgrade>
+            </package>
+          </packages>
+        </osSpecific>
+        <osSpecific>
+          <osFamily>redhat7</osFamily>
+          <packages>
+            <package>
+              <name>mysql-community-release</name>
+              <skipUpgrade>true</skipUpgrade>
+            </package>
+            <package>
+              <name>mysql-community-server</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
           </packages>
         </osSpecific>
@@ -63,10 +86,11 @@
           </packages>
         </osSpecific>
         <osSpecific>
-          <osFamily>redhat7,redhat6,debian7,ubuntu12,ubuntu14</osFamily>
+          <osFamily>redhat6,debian7,ubuntu12,ubuntu14</osFamily>
           <packages>
             <package>
               <name>mysql-server</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
           </packages>
         </osSpecific>
@@ -75,6 +99,7 @@
           <packages>
             <package>
               <name>mysql-client</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
           </packages>
         </osSpecific>

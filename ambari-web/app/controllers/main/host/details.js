@@ -216,6 +216,9 @@ App.MainHostDetailsController = Em.Controller.extend({
    * @method deleteComponent
    */
   deleteComponent: function (event) {
+    if ($(event.target).closest('li').hasClass('disabled')) {
+      return;
+    }
     var self = this;
     var component = event.context;
     var componentName = component.get('componentName');
@@ -436,15 +439,6 @@ App.MainHostDetailsController = Em.Controller.extend({
       batchUtils.restartHostComponents([component], Em.I18n.t('rollingrestart.context.selectedComponentOnSelectedHost').format(component.get('displayName')), "HOST_COMPONENT");
     });
   },
-  /**
-   * get current status of security settings,
-   * if true security is enabled otherwise disabled
-   * @return {Boolean}
-   */
-  securityEnabled: function () {
-    return App.router.get('mainAdminSecurityController.securityEnabled');
-  }.property('App.router.mainAdminSecurityController.securityEnabled'),
-
 
   /**
    * add component as <code>addComponent<code> method but perform
@@ -454,7 +448,9 @@ App.MainHostDetailsController = Em.Controller.extend({
   addComponentWithCheck: function (event) {
     var componentName = event.context ? event.context.get('componentName') : "";
     event.hiveMetastoreHost = (componentName == "HIVE_METASTORE" && !!this.get('content.hostName')) ? this.get('content.hostName') : null;
-    App.get('router.mainAdminKerberosController').getKDCSessionState(this.addComponent.bind(this, event));
+    App.get('router.mainAdminKerberosController').getSecurityType(function (event) {
+      App.get('router.mainAdminKerberosController').getKDCSessionState(this.addComponent.bind(this, event));
+    }.bind(this, event));
   },
   /**
    * Send command to server to install selected host component
@@ -471,7 +467,10 @@ App.MainHostDetailsController = Em.Controller.extend({
       missedComponents = event.selectedHost ? [] : componentsUtils.checkComponentDependencies(componentName, {
         scope: 'host',
         installedComponents: this.get('content.hostComponents').mapProperty('componentName')
-      });
+      }),
+      isManualKerberos = App.get('router.mainAdminKerberosController.isManualKerberos'),
+      manualKerberosWarning = isManualKerberos ? Em.I18n.t('hosts.host.manualKerberosWarning') : '';
+
     if (!!missedComponents.length) {
       var popupMessage = Em.I18n.t('host.host.addComponent.popup.dependedComponents.body').format(component.get('displayName'),
         stringUtils.getFormattedStringFromArray(missedComponents.map(function(cName) {
@@ -484,28 +483,28 @@ App.MainHostDetailsController = Em.Controller.extend({
       case 'ZOOKEEPER_SERVER':
         returnFunc = App.showConfirmationPopup(function () {
           self.primary(component);
-        }, Em.I18n.t('hosts.host.addComponent.' + componentName ));
+        }, Em.I18n.t('hosts.host.addComponent.' + componentName) + manualKerberosWarning);
         break;
       case 'HIVE_METASTORE':
         returnFunc = App.showConfirmationPopup(function () {
           self.set('hiveMetastoreHost', hostName);
           self.loadConfigs("loadHiveConfigs");
-        }, Em.I18n.t('hosts.host.addComponent.' + componentName ));
+        }, Em.I18n.t('hosts.host.addComponent.' + componentName) + manualKerberosWarning);
         break;
       case 'NIMBUS':
         returnFunc = App.showConfirmationPopup(function() {
             self.set('nimbusHost', hostName);
             self.loadConfigs("loadStormConfigs");
-        }, Em.I18n.t('hosts.host.addComponent.' + componentName));
+        }, Em.I18n.t('hosts.host.addComponent.' + componentName) + manualKerberosWarning);
         break;
       case 'RANGER_KMS_SERVER':
         returnFunc = App.showConfirmationPopup(function() {
           self.set('rangerKMSServerHost', hostName);
           self.loadConfigs("loadRangerConfigs");
-        }, Em.I18n.t('hosts.host.addComponent.' + componentName));
+        }, Em.I18n.t('hosts.host.addComponent.' + componentName) + manualKerberosWarning);
         break;
       default:
-        returnFunc = this.addClientComponent(component);
+        returnFunc = this.addClientComponent(component, isManualKerberos);
       }
     return returnFunc;
   },
@@ -513,21 +512,28 @@ App.MainHostDetailsController = Em.Controller.extend({
    * Send command to server to install client on selected host
    * @param component
    */
-  addClientComponent: function (component) {
+  addClientComponent: function (component, isManualKerberos) {
     var self = this;
     var message = this.formatClientsMessage(component);
-    return this.showAddComponentPopup(message, function () {
+
+    return this.showAddComponentPopup(message, isManualKerberos, function () {
       self.primary(component);
     });
   },
 
-  showAddComponentPopup: function (message, primary) {
+  showAddComponentPopup: function (message, isManualKerberos, primary) {
+    isManualKerberos = isManualKerberos || false;
+
     return App.ModalPopup.show({
       primary: Em.I18n.t('hosts.host.addComponent.popup.confirm'),
       header: Em.I18n.t('popup.confirmation.commonHeader'),
 
       addComponentMsg: function () {
         return Em.I18n.t('hosts.host.addComponent.msg').format(message);
+      }.property(),
+
+      manualKerberosWarning: function () {
+        return isManualKerberos ? Em.I18n.t('hosts.host.manualKerberosWarning') : '';
       }.property(),
 
       bodyClass: Em.View.extend({
@@ -690,18 +696,7 @@ App.MainHostDetailsController = Em.Controller.extend({
       attributes[item.type] = item.properties_attributes || {};
     }, this);
 
-    configs['storm-site']['nimbus.seeds'] = stormNimbusHosts.join(',');
-
-    if (stormNimbusHosts.length > 1) {
-      // for HA Nimbus
-      configs['storm-site']['topology.max.replication.wait.time.sec'] = '-1';
-      configs['storm-site']['topology.min.replication.count'] = '2';
-    } else {
-      // for non-HA Nimbus
-      configs['storm-site']['topology.max.replication.wait.time.sec'] = App.StackConfigProperty.find().findProperty('name', 'topology.max.replication.wait.time.sec').get('value');
-      configs['storm-site']['topology.min.replication.count'] = App.StackConfigProperty.find().findProperty('name', 'topology.min.replication.count').get('value');
-    }
-
+    configs['storm-site']['nimbus.seeds'] = JSON.stringify(stormNimbusHosts).replace(/"/g, "'");
     var groups = [
       {
         properties: {
@@ -915,11 +910,8 @@ App.MainHostDetailsController = Em.Controller.extend({
       }
     ];
 
-    for (var i = 0; i < rkmsHosts.length; i++) {
-      rkmsHosts[i] = rkmsHosts[i] + ':' + rkmsPort;
-    }
-    coreSiteConfigs.properties['hadoop.security.key.provider.path'] = 'kms://http@' + rkmsHosts.join(',') + '/kms';
-    hdfsSiteConfigs.properties['dfs.encryption.key.provider.uri'] = 'kms://http@' + rkmsHosts.join(',') + '/kms';
+    coreSiteConfigs.properties['hadoop.security.key.provider.path'] = 'kms://http@' + rkmsHosts.join(';') + ':' + rkmsPort + '/kms';
+    hdfsSiteConfigs.properties['dfs.encryption.key.provider.uri'] = 'kms://http@' + rkmsHosts.join(';') + ':' + rkmsPort + '/kms';
     this.saveConfigsBatch(groups, 'RANGER_KMS_SERVER', hostToInstall);
   },
 
@@ -1856,8 +1848,8 @@ App.MainHostDetailsController = Em.Controller.extend({
       runningComponents: [],
       nonDeletableComponents: [],
       unknownComponents: []
-    };
-
+    }; 
+    var self = this;
     if (componentsOnHost && componentsOnHost.get('length') > 0) {
       componentsOnHost.forEach(function (cInstance) {
         if (cInstance.get('componentName') === 'ZOOKEEPER_SERVER') {
@@ -1875,6 +1867,21 @@ App.MainHostDetailsController = Em.Controller.extend({
         }
         if (!cInstance.get('isDeletable')) {
           container.nonDeletableComponents.push(cInstance.get('displayName'));
+        }
+        // if is deletable, but with cardinality 1+ and is the only instance on server
+        if (cInstance.get('isMaster') && cInstance.get('isDeletable')) {
+          var displayName = cInstance.get('displayName'),
+            componentName = cInstance.get('componentName');
+          var stackComponentCount = App.StackServiceComponent.find(componentName).get('minToInstall');
+          var installedCount = App.StackServiceComponent.find(componentName).get('isMaster')
+            ? App.HostComponent.find().filterProperty('componentName', componentName).length
+            : App.SlaveComponent.find().findProperty('componentName', componentName).get('totalCount');
+          var  isDeleteComponentDisabled = (installedCount <= stackComponentCount)
+            || ![App.HostComponentStatus.stopped, App.HostComponentStatus.unknown, App.HostComponentStatus.install_failed, App.HostComponentStatus.upgrade_failed, App.HostComponentStatus.init].contains(self.get('workStatus'));
+          if (isDeleteComponentDisabled) {
+            if (!container.masterComponents.contains(displayName))
+              container.masterComponents.push(displayName);
+          }
         }
         if (workStatus === App.HostComponentStatus.unknown) {
           container.unknownComponents.push(cInstance.get('displayName'));
@@ -2081,6 +2088,9 @@ App.MainHostDetailsController = Em.Controller.extend({
    * @method moveComponent
    */
   moveComponent: function (event) {
+    if ($(event.target).closest('li').hasClass('disabled')) {
+      return;
+    }
     return App.showConfirmationPopup(function () {
       var component = event.context;
       var reassignMasterController = App.router.get('reassignMasterController');
@@ -2156,24 +2166,27 @@ App.MainHostDetailsController = Em.Controller.extend({
         })));
       App.showAlertPopup(Em.I18n.t('host.host.addComponent.popup.dependedComponents.header'), popupMessage);
     } else {
-      App.get('router.mainAdminKerberosController').getKDCSessionState(function () {
-        var sendInstallCommand = function () {
-          if (clientsToInstall.length) {
-            self.sendComponentCommand(clientsToInstall, Em.I18n.t('host.host.details.installClients'), 'INSTALLED');
-          }
-        };
-        if (clientsToAdd.length) {
-          var message = stringUtils.getFormattedStringFromArray(clientsToAdd.mapProperty('displayName'));
-          self.showAddComponentPopup(message, function () {
+      App.get('router.mainAdminKerberosController').getSecurityType(function () {
+        App.get('router.mainAdminKerberosController').getKDCSessionState(function () {
+          var sendInstallCommand = function () {
+            if (clientsToInstall.length) {
+              self.sendComponentCommand(clientsToInstall, Em.I18n.t('host.host.details.installClients'), 'INSTALLED');
+            }
+          };
+          if (clientsToAdd.length) {
+            var message = stringUtils.getFormattedStringFromArray(clientsToAdd.mapProperty('displayName'));
+            var isManualKerberos = App.get('router.mainAdminKerberosController.isManualKerberos');
+            self.showAddComponentPopup(message, isManualKerberos, function () {
+              sendInstallCommand();
+              clientsToAdd.forEach(function (component) {
+                this.primary(component);
+              }, self);
+            });
+          } else {
             sendInstallCommand();
-            clientsToAdd.forEach(function (component) {
-              this.primary(component);
-            }, self);
-          });
-        } else {
-          sendInstallCommand();
-        }
-      });
+          }
+        });
+      }.bind(this));
     }
   },
 

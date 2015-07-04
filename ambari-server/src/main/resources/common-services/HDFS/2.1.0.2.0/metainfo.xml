@@ -164,6 +164,7 @@
             </package>
             <package>
               <name>hadoop-lzo</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
           </packages>
         </osSpecific>
@@ -179,15 +180,14 @@
             </package>
             <package>
               <name>lzo</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
             <package>
               <name>hadoop-lzo-native</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
             <package>
               <name>hadoop-libhdfs</name>
-            </package>
-            <package>
-              <name>ambari-log4j</name>
             </package>
           </packages>
         </osSpecific>
@@ -203,6 +203,7 @@
             </package>
             <package>
               <name>liblzo2-2</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
             <package>
               <name>hadoop-hdfs</name>
@@ -237,6 +238,9 @@
         <config-type>ranger-hdfs-plugin-properties</config-type>
         <config-type>ssl-client</config-type>
         <config-type>ssl-server</config-type>
+        <config-type>ranger-hdfs-audit</config-type>
+        <config-type>ranger-hdfs-policymgr-ssl</config-type>
+        <config-type>ranger-hdfs-security</config-type>
       </configuration-dependencies>
       <restartRequiredAfterRackChange>true</restartRequiredAfterRackChange>
     </service>

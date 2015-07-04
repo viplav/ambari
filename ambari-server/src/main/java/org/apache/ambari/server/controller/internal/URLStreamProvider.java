@@ -54,9 +54,9 @@ public class URLStreamProvider implements StreamProvider {
 
   private final int connTimeout;
   private final int readTimeout;
-  private final String path;
-  private final String password;
-  private final String type;
+  private final String trustStorePath;
+  private final String trustStorePassword;
+  private final String trustStoreType;
   private volatile SSLSocketFactory sslSocketFactory = null;
   private AppCookieManager appCookieManager = null;
 
@@ -65,36 +65,38 @@ public class URLStreamProvider implements StreamProvider {
 
   /**
    * Provide the connection timeout for the underlying connection.
-   * 
+   *
    * @param connectionTimeout
    *          time, in milliseconds, to attempt a connection
    * @param readTimeout
    *          the read timeout in milliseconds
    * @param configuration configuration holding TrustStore information
    */
-  public URLStreamProvider(int connectionTimeout, int readTimeout, 
-      ComponentSSLConfiguration configuration) {  
+  public URLStreamProvider(int connectionTimeout, int readTimeout,
+                           ComponentSSLConfiguration configuration) {
     this(connectionTimeout, readTimeout,
         configuration.getTruststorePath(),
         configuration.getTruststorePassword(),
         configuration.getTruststoreType());
   }
+
   /**
    * Provide the connection timeout for the underlying connection.
-   * 
-   * @param connectionTimeout
-   *          time, in milliseconds, to attempt a connection
-   * @param readTimeout
-   *          the read timeout in milliseconds
+   *
+   * @param connectionTimeout   time, in milliseconds, to attempt a connection
+   * @param readTimeout         the read timeout in milliseconds
+   * @param trustStorePath      the path to the truststore required for secure connections
+   * @param trustStorePassword  the truststore password
+   * @param trustStoreType      the truststore type (e.g. "JKS")
    */
-  public URLStreamProvider(int connectionTimeout, int readTimeout, String path,
-      String password, String type) {
+  public URLStreamProvider(int connectionTimeout, int readTimeout, String trustStorePath,
+                           String trustStorePassword, String trustStoreType) {
 
-    this.connTimeout = connectionTimeout;
-    this.readTimeout = readTimeout;
-    this.path        = path;      // truststroe path
-    this.password    = password;  // truststore password
-    this.type        = type;      // truststroe type
+    this.connTimeout        = connectionTimeout;
+    this.readTimeout        = readTimeout;
+    this.trustStorePath     = trustStorePath;
+    this.trustStorePassword = trustStorePassword;
+    this.trustStoreType     = trustStoreType;
   }
 
 
@@ -118,14 +120,50 @@ public class URLStreamProvider implements StreamProvider {
    *
    * @param spec           the String to parse as a URL
    * @param requestMethod  the HTTP method (GET,POST,PUT,etc.).
-   * @param params         the body of the request; may be null
+   * @param body           the body of the request; may be null
    * @param headers        the headers of the request; may be null
    *
    * @return a URL connection
    *
    * @throws IOException if the URL connection can not be established
    */
-  public HttpURLConnection processURL(String spec, String requestMethod, Object params, Map<String, List<String>> headers)
+  public HttpURLConnection processURL(String spec, String requestMethod, String body, Map<String, List<String>> headers)
+      throws IOException {
+
+    return processURL(spec, requestMethod, body == null ? null : body.getBytes(), headers);
+  }
+
+  /**
+   * Get a URL connection from the given spec.
+   *
+   * @param spec           the String to parse as a URL
+   * @param requestMethod  the HTTP method (GET,POST,PUT,etc.).
+   * @param body           the body of the request; may be null
+   * @param headers        the headers of the request; may be null
+   *
+   * @return a URL connection
+   *
+   * @throws IOException if the URL connection can not be established
+   */
+  public HttpURLConnection processURL(String spec, String requestMethod, InputStream body, Map<String, List<String>> headers)
+      throws IOException {
+
+    return processURL(spec, requestMethod, body == null ? null : IOUtils.toByteArray(body), headers);
+  }
+
+  /**
+   * Get a URL connection from the given spec.
+   *
+   * @param spec           the String to parse as a URL
+   * @param requestMethod  the HTTP method (GET,POST,PUT,etc.).
+   * @param body           the body of the request; may be null
+   * @param headers        the headers of the request; may be null
+   *
+   * @return a URL connection
+   *
+   * @throws IOException if the URL connection can not be established
+   */
+  public HttpURLConnection processURL(String spec, String requestMethod, byte[] body, Map<String, List<String>> headers)
           throws IOException {
     if (LOG.isDebugEnabled()) {
       LOG.debug("readFrom spec:" + spec);
@@ -147,7 +185,7 @@ public class URLStreamProvider implements StreamProvider {
         headers = new HashMap<String, List<String>>(headers);
 
         List<String> cookieList = headers.get(COOKIE);
-        String       cookies    = cookieList.isEmpty() ? null : cookieList.get(0);
+        String       cookies    = cookieList == null || cookieList.isEmpty() ? null : cookieList.get(0);
 
         headers.put(COOKIE, Collections.singletonList(appendCookie(cookies, appCookie)));
       }
@@ -164,14 +202,8 @@ public class URLStreamProvider implements StreamProvider {
       }
     }
 
-    if (params != null) {
-      byte[] info;
-      if (params instanceof InputStream) {
-        info = IOUtils.toByteArray((InputStream)params);
-      } else {
-        info = ((String)params).getBytes();
-      }
-      connection.getOutputStream().write(info);
+    if (body != null) {
+      connection.getOutputStream().write(body);
     }
 
     int statusCode = connection.getResponseCode();
@@ -240,29 +272,37 @@ public class URLStreamProvider implements StreamProvider {
   }
 
   // Get an ssl connection
-  protected HttpsURLConnection getSSLConnection(String spec) throws IOException {
+  protected HttpsURLConnection getSSLConnection(String spec) throws IOException, IllegalStateException {
 
     if (sslSocketFactory == null) {
       synchronized (this) {
         if (sslSocketFactory == null) {
+
+          if (trustStorePath == null || trustStorePassword == null) {
+            String msg =
+                String.format("Can't get secure connection to %s.  Truststore path or password is not set.", spec);
+
+            LOG.error(msg);
+            throw new IllegalStateException(msg);
+          }
+          FileInputStream in = null;
           try {
-            FileInputStream in = new FileInputStream(new File(path));
-            KeyStore store = KeyStore.getInstance(type == null ? KeyStore
-                .getDefaultType() : type);
-
-            store.load(in, password.toCharArray());
-            in.close();
-
+            in = new FileInputStream(new File(trustStorePath));
+            KeyStore store = KeyStore.getInstance(trustStoreType == null ?
+                KeyStore.getDefaultType() : trustStoreType);
+            store.load(in, trustStorePassword.toCharArray());
             TrustManagerFactory tmf = TrustManagerFactory
                 .getInstance(TrustManagerFactory.getDefaultAlgorithm());
-
             tmf.init(store);
             SSLContext context = SSLContext.getInstance("TLS");
             context.init(null, tmf.getTrustManagers(), null);
-
             sslSocketFactory = context.getSocketFactory();
           } catch (Exception e) {
             throw new IOException("Can't get connection.", e);
+          } finally {
+            if (in != null) {
+              in.close();
+            }
           }
         }
       }

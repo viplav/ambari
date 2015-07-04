@@ -31,6 +31,7 @@
           <category>MASTER</category>
           <cardinality>1</cardinality>
           <versionAdvertised>false</versionAdvertised>
+          <timelineAppid>AMS-HBASE</timelineAppid>
           <dependencies>
             <dependency>
               <name>ZOOKEEPER/ZOOKEEPER_SERVER</name>
@@ -69,12 +70,15 @@
           <packages>
             <package>
               <name>ambari-metrics-collector</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
             <package>
               <name>ambari-metrics-monitor</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
             <package>
               <name>ambari-metrics-hadoop-sink</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
             <package>
               <name>gcc</name>
@@ -86,6 +90,7 @@
           <packages>
             <package>
               <name>ambari-metrics-assembly</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
             <package>
               <name>gcc</name>
@@ -97,12 +102,15 @@
           <packages>
             <package>
               <name>ambari-metrics-collector</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
             <package>
               <name>ambari-metrics-monitor</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
             <package>
               <name>ambari-metrics-hadoop-sink</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
           </packages>
         </osSpecific>

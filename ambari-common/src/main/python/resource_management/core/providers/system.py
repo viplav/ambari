@@ -23,10 +23,10 @@ Ambari Agent
 from __future__ import with_statement
 
 import re
-import grp
 import os
-import pwd
 import time
+import pwd
+import grp
 from resource_management.core import shell
 from resource_management.core import sudo
 from resource_management.core.base import Fail
@@ -34,48 +34,30 @@ from resource_management.core import ExecuteTimeoutException
 from resource_management.core.providers import Provider
 from resource_management.core.logger import Logger
 
-
-def _coerce_uid(user):
-  try:
-    uid = int(user)
-  except ValueError:
-    try:
-      uid = pwd.getpwnam(user).pw_uid
-    except KeyError:
-      raise Fail("User %s doesn't exist." % user)
-  return uid
-
-
-def _coerce_gid(group):
-  try:
-    gid = int(group)
-  except ValueError:
-    try:
-      gid = grp.getgrnam(group).gr_gid
-    except KeyError:
-      raise Fail("Group %s doesn't exist." % group)
-  return gid
-
-
 def _ensure_metadata(path, user, group, mode=None, cd_access=None):
-  stat = sudo.stat(path)
+  user_entity = group_entity = None
+
+  if user or group:
+    stat = sudo.stat(path)
 
   if user:
-    uid = _coerce_uid(user)
-    if stat.st_uid != uid:
+    _user_entity = pwd.getpwnam(user)
+    if stat.st_uid != _user_entity.pw_uid:
+      user_entity = _user_entity
       Logger.info(
         "Changing owner for %s from %d to %s" % (path, stat.st_uid, user))
       
-      sudo.chown(path, user, None)
-      
   if group:
-    gid = _coerce_gid(group)
-    if stat.st_gid != gid:
+    _group_entity = grp.getgrnam(group)
+    if stat.st_gid != _group_entity.gr_gid:
+      group_entity = _group_entity
       Logger.info(
         "Changing group for %s from %d to %s" % (path, stat.st_gid, group))
-      sudo.chown(path, None, group)
-      
+  
+  sudo.chown(path, user_entity, group_entity)
+
   if mode:
+    stat = sudo.stat(path)
     if stat.st_mode != mode:
       Logger.info("Changing permission for %s from %o to %o" % (
       path, stat.st_mode, mode))
@@ -149,9 +131,18 @@ class FileProvider(Provider):
 class DirectoryProvider(Provider):
   def action_create(self):
     path = self.resource.path
-
+    
     if not sudo.path_exists(path):
       Logger.info("Creating directory %s" % self.resource)
+      
+      # dead links should be followed, else we gonna have failures on trying to create directories on top of them.
+      if self.resource.follow:
+        while sudo.path_lexists(path):
+          path = sudo.readlink(path)
+          
+        if path != self.resource.path:
+          Logger.info("Following the link {0} to {1} to create the directory".format(self.resource.path, path))
+      
       if self.resource.recursive:
         if self.resource.recursive_permission:
           DirectoryProvider.makedirs_and_set_permission_recursively(path, self.resource.owner,
@@ -237,7 +228,7 @@ class LinkProvider(Provider):
 def _preexec_fn(resource):
   def preexec():
     if resource.group:
-      gid = _coerce_gid(resource.group)
+      gid = grp.getgrnam(resource.group).gr_gid
       os.setgid(gid)
       os.setegid(gid)
 
@@ -251,33 +242,16 @@ class ExecuteProvider(Provider):
         Logger.info("Skipping %s due to creates" % self.resource)
         return
       
-    env = self.resource.environment
-          
-    for i in range (0, self.resource.tries):
-      try:
-        shell.checked_call(self.resource.command, logoutput=self.resource.logoutput,
-                            cwd=self.resource.cwd, env=env,
-                            preexec_fn=_preexec_fn(self.resource), user=self.resource.user,
-                            wait_for_finish=self.resource.wait_for_finish,
-                            timeout=self.resource.timeout,
-                            path=self.resource.path,
-                            sudo=self.resource.sudo,
-                            on_new_line=self.resource.on_new_line)
-        break
-      except Fail as ex:
-        if i == self.resource.tries-1: # last try
-          raise ex
-        else:
-          Logger.info("Retrying after %d seconds. Reason: %s" % (self.resource.try_sleep, str(ex)))
-          time.sleep(self.resource.try_sleep)
-      except ExecuteTimeoutException:
-        err_msg = ("Execution of '%s' was killed due timeout after %d seconds") % (self.resource.command, self.resource.timeout)
-        
-        if self.resource.on_timeout:
-          Logger.info("Executing '%s'. Reason: %s" % (self.resource.on_timeout, err_msg))
-          shell.checked_call(self.resource.on_timeout)
-        else:
-          raise Fail(err_msg)
+    shell.checked_call(self.resource.command, logoutput=self.resource.logoutput,
+                        cwd=self.resource.cwd, env=self.resource.environment,
+                        preexec_fn=_preexec_fn(self.resource), user=self.resource.user,
+                        wait_for_finish=self.resource.wait_for_finish,
+                        timeout=self.resource.timeout,on_timeout=self.resource.on_timeout,
+                        path=self.resource.path,
+                        sudo=self.resource.sudo,
+                        on_new_line=self.resource.on_new_line,
+                        stdout=self.resource.stdout,stderr=self.resource.stderr,
+                        tries=self.resource.tries, try_sleep=self.resource.try_sleep)
        
 
 class ExecuteScriptProvider(Provider):

@@ -535,9 +535,7 @@ public class ConfigGroupResourceProvider extends
     return configGroupResponses;
   }
 
-  private synchronized void updateConfigGroups
-    (Set<ConfigGroupRequest> requests) throws AmbariException {
-
+  private synchronized void updateConfigGroups (Set<ConfigGroupRequest> requests) throws AmbariException {
     if (requests.isEmpty()) {
       LOG.warn("Received an empty requests set");
       return;
@@ -584,8 +582,8 @@ public class ConfigGroupResourceProvider extends
       if (request.getHosts() != null && !request.getHosts().isEmpty()) {
         for (String hostname : request.getHosts()) {
           Host host = clusters.getHost(hostname);
-          HostEntity hostEntity = hostDAO.findByName(hostname);
-          if (host == null || hostEntity == null) {
+          HostEntity hostEntity = hostDAO.findById(host.getHostId());
+          if (hostEntity == null) {
             throw new HostNotFoundException(hostname);
           }
           hosts.put(hostEntity.getHostId(), host);

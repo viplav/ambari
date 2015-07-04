@@ -100,7 +100,7 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
 
   private final ServiceComponent serviceComponent;
   private final Host host;
-  private boolean persisted = false;
+  private volatile boolean persisted = false;
 
   @Inject
   HostComponentStateDAO hostComponentStateDAO;
@@ -799,7 +799,7 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   public String getVersion() {
     readLock.lock();
     try {
-      return getStateEntity().getVersion();
+      return stateEntity.getVersion();
     } finally {
       readLock.unlock();
     }
@@ -820,7 +820,7 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   public SecurityState getSecurityState() {
     readLock.lock();
     try {
-      return getStateEntity().getSecurityState();
+      return stateEntity.getSecurityState();
     } finally {
       readLock.unlock();
     }
@@ -841,7 +841,7 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   public SecurityState getDesiredSecurityState() {
     readLock.lock();
     try {
-      return getDesiredStateEntity().getSecurityState();
+      return desiredStateEntity.getSecurityState();
     } finally {
       readLock.unlock();
     }
@@ -883,7 +883,6 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   }
 
   @Override
-  @Transactional
   public void handleEvent(ServiceComponentHostEvent event)
       throws InvalidStateTransitionException {
     if (LOG.isDebugEnabled()) {
@@ -902,7 +901,7 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
           saveIfPersisted();
           // TODO Audit logs
         } catch (InvalidStateTransitionException e) {
-          LOG.debug("Can't handle ServiceComponentHostEvent event at"
+          LOG.error("Can't handle ServiceComponentHostEvent event at"
               + " current state"
               + ", serviceComponentName=" + getServiceComponentName()
               + ", hostName=" + getHostName()
@@ -919,6 +918,11 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
     }
 
     if (!oldState.equals(getState())) {
+      LOG.info("Host role transitioned to a new state"
+               + ", serviceComponentName=" + getServiceComponentName()
+               + ", hostName=" + getHostName()
+               + ", oldState=" + oldState
+               + ", currentState=" + getState());
       if (LOG.isDebugEnabled()) {
         LOG.debug("ServiceComponentHost transitioned to a new state"
             + ", serviceComponentName=" + getServiceComponentName()
@@ -939,6 +943,11 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   @Override
   public String getHostName() {
     return host.getHostName();
+  }
+
+  @Override
+  public Host getHost() {
+    return host;
   }
 
   /**
@@ -1027,7 +1036,7 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   public StackId getStackVersion() {
     readLock.lock();
     try {
-      HostComponentStateEntity schStateEntity = getStateEntity();
+      HostComponentStateEntity schStateEntity = stateEntity;
       if (schStateEntity == null) {
         return new StackId();
       }
@@ -1058,7 +1067,7 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   public State getDesiredState() {
     readLock.lock();
     try {
-      return getDesiredStateEntity().getDesiredState();
+      return desiredStateEntity.getDesiredState();
     } finally {
       readLock.unlock();
     }
@@ -1079,7 +1088,7 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   public StackId getDesiredStackVersion() {
     readLock.lock();
     try {
-      StackEntity desiredStackEntity = getDesiredStateEntity().getDesiredStack();
+      StackEntity desiredStackEntity = desiredStateEntity.getDesiredStack();
       return new StackId(desiredStackEntity.getStackName(),
           desiredStackEntity.getStackVersion());
     } finally {
@@ -1105,7 +1114,7 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   public HostComponentAdminState getComponentAdminState() {
     readLock.lock();
     try {
-      HostComponentAdminState adminState = getDesiredStateEntity().getAdminState();
+      HostComponentAdminState adminState = desiredStateEntity.getAdminState();
       if (adminState == null && !serviceComponent.isClientComponent()
           && !serviceComponent.isMasterComponent()) {
         adminState = HostComponentAdminState.INSERVICE;
@@ -1446,7 +1455,7 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   public MaintenanceState getMaintenanceState() {
     readLock.lock();
     try {
-      return getDesiredStateEntity().getMaintenanceState();
+      return desiredStateEntity.getMaintenanceState();
     } finally {
       readLock.unlock();
     }
@@ -1476,7 +1485,7 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   public boolean isRestartRequired() {
     readLock.lock();
     try {
-      return getDesiredStateEntity().isRestartRequired();
+      return desiredStateEntity.isRestartRequired();
     } finally {
       readLock.unlock();
     }

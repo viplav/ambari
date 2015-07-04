@@ -17,7 +17,12 @@
  */
 package org.apache.ambari.server.agent;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.apache.ambari.server.RoleCommand;
 import org.apache.ambari.server.utils.StageUtils;
@@ -41,6 +46,12 @@ public class ExecutionCommand extends AgentCommand {
 
   @SerializedName("clusterName")
   private String clusterName;
+
+  @SerializedName("requestId")
+  private long requestId;
+
+  @SerializedName("stageId")
+  private long stageId;
 
   @SerializedName("taskId")
   private long taskId;
@@ -79,6 +90,9 @@ public class ExecutionCommand extends AgentCommand {
   @SerializedName("forceRefreshConfigTags")
   private Set<String> forceRefreshConfigTags = new HashSet<String>();
 
+  @SerializedName("forceRefreshConfigTagsBeforeExecution")
+  private Set<String> forceRefreshConfigTagsBeforeExecution = new HashSet<String>();
+
   @SerializedName("commandParams")
   private Map<String, String> commandParams = new HashMap<String, String>();
 
@@ -95,8 +109,20 @@ public class ExecutionCommand extends AgentCommand {
     return commandId;
   }
 
-  public void setCommandId(String commandId) {
-    this.commandId = commandId;
+  /**
+   * Sets the request and stage on this command. The {@code commandId} field is
+   * automatically constructed from these as requestId-stageId.
+   *
+   * @param requestId
+   *          the ID of the execution request.
+   * @param stageId
+   *          the ID of the stage request.
+   */
+  public void setRequestAndStage(long requestId, long stageId) {
+    this.requestId = requestId;
+    this.stageId = stageId;
+
+    commandId = StageUtils.getActionId(requestId, stageId);
   }
 
   @Override
@@ -208,6 +234,19 @@ public class ExecutionCommand extends AgentCommand {
     this.forceRefreshConfigTags = forceRefreshConfigTags;
   }
 
+  /**
+   * Comma separated list of config-types whose tags have be refreshed
+   * at runtime before being executed. If all config-type tags have to be
+   * refreshed, "*" can be specified.
+   */
+  public Set<String> getForceRefreshConfigTagsBeforeExecution() {
+    return forceRefreshConfigTagsBeforeExecution;
+  }
+
+  public void setForceRefreshConfigTagsBeforeExecution(Set<String> forceRefreshConfigTagsBeforeExecution) {
+    this.forceRefreshConfigTagsBeforeExecution = forceRefreshConfigTagsBeforeExecution;
+  }
+
   public Map<String, Map<String, Map<String, String>>> getConfigurationAttributes() {
     return configurationAttributes;
   }
@@ -267,7 +306,7 @@ public class ExecutionCommand extends AgentCommand {
    * @param  params for kerberos commands
    */
   public void setKerberosCommandParams(List<Map<String, String>> params) {
-    this.kerberosCommandParams =  params;
+    kerberosCommandParams =  params;
   }
 
   /**
@@ -307,8 +346,14 @@ public class ExecutionCommand extends AgentCommand {
     String VERSION = "version";
     String REFRESH_TOPOLOGY = "refresh_topology";
     String HOST_SYS_PREPPED = "host_sys_prepped";
-    String COMMAND_RETRY_MAX_ATTEMPT_COUNT = "command_retry_max_attempt_count";
+    String MAX_DURATION_OF_RETRIES = "max_duration_for_retries";
     String COMMAND_RETRY_ENABLED = "command_retry_enabled";
+    /**
+     * Comma separated list of config-types whose tags have be refreshed
+     * at runtime before being executed. If all config-type tags have to be
+     * refreshed, "*" can be specified.
+     */
+    String REFRESH_CONFIG_TAGS_BEFORE_EXECUTION = "forceRefreshConfigTagsBeforeExecution";
 
     String SERVICE_CHECK = "SERVICE_CHECK"; // TODO: is it standard command? maybe add it to RoleCommand enum?
     String CUSTOM_COMMAND = "custom_command";

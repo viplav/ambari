@@ -158,18 +158,16 @@ public class ClustersImpl implements Clusters {
   }
 
   private void checkLoaded() {
-    if (clustersLoaded) {
-      return;
-    }
-
-    w.lock();
-    try {
-      if (!clustersLoaded) {
-        loadClustersAndHosts();
+    if (!clustersLoaded) {
+      w.lock();
+      try {
+        if (!clustersLoaded) {
+          loadClustersAndHosts();
+        }
+        clustersLoaded = true;
+      } finally {
+        w.unlock();
       }
-      clustersLoaded = true;
-    } finally {
-      w.unlock();
     }
   }
 
@@ -256,7 +254,10 @@ public class ClustersImpl implements Clusters {
       throws AmbariException {
     checkLoaded();
 
-    Cluster cluster = clusters.get(clusterName);
+    Cluster cluster = null;
+    if (clusterName != null) {
+      cluster = clusters.get(clusterName);
+    }
     if (null == cluster) {
       throw new ClusterNotFoundException(clusterName);
     }
@@ -340,6 +341,13 @@ public class ClustersImpl implements Clusters {
     }
 
     return hosts.get(hostname);
+  }
+
+  @Override
+  public boolean hostExists(String hostname){
+    checkLoaded();
+
+    return hosts.containsKey(hostname);
   }
 
   @Override
@@ -450,10 +458,14 @@ public class ClustersImpl implements Clusters {
     checkLoaded();
 
     Map<String, Host> hostMap = new HashMap<String, Host>();
-
+    Host host = null;
     for (String hostName : hostSet) {
-      Host host = hosts.get(hostName);
-      if (null == hostName) {
+      if (null != hostName) {
+          host= hosts.get(hostName);
+        if (host == null) {
+          throw new HostNotFoundException(hostName);
+        }
+      } else {
         throw new HostNotFoundException(hostName);
       }
 

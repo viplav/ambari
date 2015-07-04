@@ -37,15 +37,13 @@
             </package>
             <package>
               <name>lzo</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
             <package>
               <name>hadooplzo_2_3_*</name>
             </package>
             <package>
               <name>hadoop_2_3_*-libhdfs</name>
-            </package>
-            <package>
-              <name>ambari-log4j</name>
             </package>
           </packages>
         </osSpecific>

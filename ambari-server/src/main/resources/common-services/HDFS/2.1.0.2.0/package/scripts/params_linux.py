@@ -19,13 +19,14 @@ limitations under the License.
 
 import status_params
 import utils
-import json
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
 import os
 import re
 
 from ambari_commons.os_check import OSCheck
 
 from resource_management.libraries.functions import conf_select
+from resource_management.libraries.functions import hdp_select
 from resource_management.libraries.functions import format
 from resource_management.libraries.functions.version import format_hdp_stack_version
 from resource_management.libraries.functions.default import default
@@ -36,6 +37,8 @@ from resource_management.libraries.resources.hdfs_resource import HdfsResource
 
 from resource_management.libraries.functions.format_jvm_option import format_jvm_option
 from resource_management.libraries.functions.get_lzo_packages import get_lzo_packages
+from resource_management.libraries.functions.is_empty import is_empty
+
 
 config = Script.get_config()
 tmp_dir = Script.get_tmp_dir()
@@ -63,17 +66,18 @@ secure_dn_ports_are_in_use = False
 
 # hadoop default parameters
 mapreduce_libs_path = "/usr/lib/hadoop-mapreduce/*"
-hadoop_libexec_dir = conf_select.get_hadoop_dir("libexec")
-hadoop_bin = conf_select.get_hadoop_dir("sbin")
-hadoop_bin_dir = conf_select.get_hadoop_dir("bin")
-hadoop_home = "/usr/lib/hadoop"
+hadoop_libexec_dir = hdp_select.get_hadoop_dir("libexec")
+hadoop_bin = hdp_select.get_hadoop_dir("sbin")
+hadoop_bin_dir = hdp_select.get_hadoop_dir("bin")
+hadoop_home = hdp_select.get_hadoop_dir("home")
 hadoop_secure_dn_user = hdfs_user
 hadoop_conf_dir = conf_select.get_hadoop_conf_dir()
+hadoop_conf_secure_dir = os.path.join(hadoop_conf_dir, "secure")
+hadoop_lib_home = hdp_select.get_hadoop_dir("lib")
 
 # hadoop parameters for 2.2+
 if Script.is_hdp_stack_greater_or_equal("2.2"):
   mapreduce_libs_path = "/usr/hdp/current/hadoop-mapreduce-client/*"
-  hadoop_home = "/usr/hdp/current/hadoop-client"
 
   if not security_enabled:
     hadoop_secure_dn_user = '""'
@@ -93,9 +97,10 @@ if Script.is_hdp_stack_greater_or_equal("2.2"):
     else:
       hadoop_secure_dn_user = '""'
 
-
 ambari_libs_dir = "/var/lib/ambari-agent/lib"
 limits_conf_dir = "/etc/security/limits.d"
+
+create_lib_snappy_symlinks = not Script.is_hdp_stack_greater_or_equal("2.2")
 
 if Script.is_hdp_stack_greater_or_equal("2.0") and Script.is_hdp_stack_less_than("2.1") and not OSCheck.is_suse_family():
   # deprecated rhel jsvc_path
@@ -105,6 +110,16 @@ else:
 
 execute_path = os.environ['PATH'] + os.pathsep + hadoop_bin_dir
 ulimit_cmd = "ulimit -c unlimited ; "
+
+snappy_so = "libsnappy.so"
+so_target_dir_x86 = format("{hadoop_lib_home}/native/Linux-i386-32")
+so_target_dir_x64 = format("{hadoop_lib_home}/native/Linux-amd64-64")
+so_target_x86 = format("{so_target_dir_x86}/{snappy_so}")
+so_target_x64 = format("{so_target_dir_x64}/{snappy_so}")
+so_src_dir_x86 = format("{hadoop_home}/lib")
+so_src_dir_x64 = format("{hadoop_home}/lib64")
+so_src_x86 = format("{so_src_dir_x86}/{snappy_so}")
+so_src_x64 = format("{so_src_dir_x64}/{snappy_so}")
 
 #security params
 smoke_user_keytab = config['configurations']['cluster-env']['smokeuser_keytab']
@@ -212,7 +227,7 @@ if 'dfs.namenode.rpc-address' in config['configurations']['hdfs-site']:
 else:
   namenode_address = config['configurations']['core-site']['fs.defaultFS']
 
-fs_checkpoint_dirs = config['configurations']['hdfs-site']['dfs.namenode.checkpoint.dir'].split(',')
+fs_checkpoint_dirs = default("/configurations/hdfs-site/dfs.namenode.checkpoint.dir", "").split(',')
 
 dfs_data_dir = config['configurations']['hdfs-site']['dfs.datanode.data.dir']
 dfs_data_dir = ",".join([re.sub(r'^\[.+\]', '', dfs_dir.strip()) for dfs_dir in dfs_data_dir.split(",")])
@@ -280,6 +295,10 @@ else:
   dn_kinit_cmd = ""
   nn_kinit_cmd = ""
   jn_kinit_cmd = ""
+  
+
+hdfs_site = config['configurations']['hdfs-site']
+default_fs = config['configurations']['core-site']['fs.defaultFS']
 
 import functools
 #create partial functions with common arguments for every HdfsResource call
@@ -291,7 +310,10 @@ HdfsResource = functools.partial(
   keytab = hdfs_user_keytab,
   kinit_path_local = kinit_path_local,
   hadoop_bin_dir = hadoop_bin_dir,
-  hadoop_conf_dir = hadoop_conf_dir
+  hadoop_conf_dir = hadoop_conf_dir,
+  principal_name = hdfs_principal_name,
+  hdfs_site = hdfs_site,
+  default_fs = default_fs
 )
 
 
@@ -306,10 +328,6 @@ if not lzo_enabled:
   
 name_node_params = default("/commandParams/namenode", None)
 
-#hadoop params
-hadoop_env_sh_template = config['configurations']['hadoop-env']['content']
-
-#hadoop-env.sh
 java_home = config['hostLevelParams']['java_home']
 java_version = int(config['hostLevelParams']['java_version'])
 
@@ -332,16 +350,14 @@ mapred_log_dir_prefix = default("/configurations/mapred-env/mapred_log_dir_prefi
 # ranger host
 ranger_admin_hosts = default("/clusterHostInfo/ranger_admin_hosts", [])
 has_ranger_admin = not len(ranger_admin_hosts) == 0
-
+xml_configurations_supported = config['configurations']['ranger-env']['xml_configurations_supported']
 ambari_server_hostname = config['clusterHostInfo']['ambari_server_host'][0]
 
 #ranger hdfs properties
 policymgr_mgr_url = config['configurations']['admin-properties']['policymgr_external_url']
 sql_connector_jar = config['configurations']['admin-properties']['SQL_CONNECTOR_JAR']
-xa_audit_db_flavor = config['configurations']['admin-properties']['DB_FLAVOR']
 xa_audit_db_name = config['configurations']['admin-properties']['audit_db_name']
 xa_audit_db_user = config['configurations']['admin-properties']['audit_db_user']
-xa_audit_db_password = config['configurations']['admin-properties']['audit_db_password']
 xa_db_host = config['configurations']['admin-properties']['db_host']
 repo_name = str(config['clusterName']) + '_hadoop'
 
@@ -353,7 +369,6 @@ hadoop_rpc_protection = config['configurations']['ranger-hdfs-plugin-properties'
 common_name_for_certificate = config['configurations']['ranger-hdfs-plugin-properties']['common.name.for.certificate']
 
 repo_config_username = config['configurations']['ranger-hdfs-plugin-properties']['REPOSITORY_CONFIG_USERNAME']
-repo_config_password = config['configurations']['ranger-hdfs-plugin-properties']['REPOSITORY_CONFIG_PASSWORD']
 
 if security_enabled:
   sn_principal_name = default("/configurations/hdfs-site/dfs.secondary.namenode.kerberos.principal", "nn/_HOST@EXAMPLE.COM")
@@ -366,24 +381,38 @@ policy_user = config['configurations']['ranger-hdfs-plugin-properties']['policy_
 #For curl command in ranger plugin to get db connector
 jdk_location = config['hostLevelParams']['jdk_location']
 java_share_dir = '/usr/share/java'
+
+is_https_enabled = config['configurations']['hdfs-site']['dfs.https.enable'] if \
+  not is_empty(config['configurations']['hdfs-site']['dfs.https.enable']) else False
+
 if has_ranger_admin:
   enable_ranger_hdfs = (config['configurations']['ranger-hdfs-plugin-properties']['ranger-hdfs-plugin-enabled'].lower() == 'yes')
-  
-  if xa_audit_db_flavor.lower() == 'mysql':
+  xa_audit_db_password = unicode(config['configurations']['admin-properties']['audit_db_password'])
+  repo_config_password = unicode(config['configurations']['ranger-hdfs-plugin-properties']['REPOSITORY_CONFIG_PASSWORD'])
+  xa_audit_db_flavor = (config['configurations']['admin-properties']['DB_FLAVOR']).lower()
+
+  if xa_audit_db_flavor == 'mysql':
     jdbc_symlink_name = "mysql-jdbc-driver.jar"
     jdbc_jar_name = "mysql-connector-java.jar"
-  elif xa_audit_db_flavor.lower() == 'oracle':
+    audit_jdbc_url = format('jdbc:mysql://{xa_db_host}/{xa_audit_db_name}')
+    jdbc_driver = "com.mysql.jdbc.Driver"
+  elif xa_audit_db_flavor == 'oracle':
     jdbc_jar_name = "ojdbc6.jar"
     jdbc_symlink_name = "oracle-jdbc-driver.jar"
-  elif xa_audit_db_flavor.lower() == 'postgres':
+    audit_jdbc_url = format('jdbc:oracle:thin:\@//{xa_db_host}')
+    jdbc_driver = "oracle.jdbc.OracleDriver"
+  elif xa_audit_db_flavor == 'postgres':
     jdbc_jar_name = "postgresql.jar"
     jdbc_symlink_name = "postgres-jdbc-driver.jar"
-  elif xa_audit_db_flavor.lower() == 'sqlserver':
+    audit_jdbc_url = format('jdbc:postgresql://{xa_db_host}/{xa_audit_db_name}')
+    jdbc_driver = "org.postgresql.Driver"
+  elif xa_audit_db_flavor == 'mssql':
     jdbc_jar_name = "sqljdbc4.jar"
     jdbc_symlink_name = "mssql-jdbc-driver.jar"
+    audit_jdbc_url = format('jdbc:sqlserver://{xa_db_host};databaseName={xa_audit_db_name}')
+    jdbc_driver = "com.microsoft.sqlserver.jdbc.SQLServerDriver"
 
   downloaded_custom_connector = format("{tmp_dir}/{jdbc_jar_name}")
-  
   driver_curl_source = format("{jdk_location}/{jdbc_symlink_name}")
   driver_curl_target = format("{java_share_dir}/{jdbc_jar_name}")
 
@@ -400,7 +429,7 @@ if has_ranger_admin:
     'dfs.namenode.kerberos.principal': nn_principal_name if security_enabled else '',
     'dfs.secondary.namenode.kerberos.principal': sn_principal_name if security_enabled else ''
   }
-  
+
   hdfs_ranger_plugin_repo = {
     'isActive': 'true',
     'config': json.dumps(hdfs_ranger_plugin_config),
@@ -409,3 +438,9 @@ if has_ranger_admin:
     'repositoryType': 'hdfs',
     'assetType': '1'
   }
+  
+  ranger_audit_solr_urls = config['configurations']['ranger-admin-site']['ranger.audit.solr.urls']
+  xa_audit_db_is_enabled = config['configurations']['ranger-hdfs-audit']['xasecure.audit.destination.db'] if xml_configurations_supported else None
+  ssl_keystore_password = unicode(config['configurations']['ranger-hdfs-policymgr-ssl']['xasecure.policymgr.clientssl.keystore.password']) if xml_configurations_supported else None
+  ssl_truststore_password = unicode(config['configurations']['ranger-hdfs-policymgr-ssl']['xasecure.policymgr.clientssl.truststore.password']) if xml_configurations_supported else None
+  credential_file = format('/etc/ranger/{repo_name}/cred.jceks') if xml_configurations_supported else None

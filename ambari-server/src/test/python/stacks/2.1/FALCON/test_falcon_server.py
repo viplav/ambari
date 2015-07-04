@@ -33,34 +33,37 @@ class TestFalconServer(RMFTestCase):
 
   def test_start_default(self):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/falcon_server.py",
-                       classname="FalconServer",
-                       command="start",
-                       config_file="default.json",
-                       hdp_stack_version = self.STACK_VERSION,
-                       target = RMFTestCase.TARGET_COMMON_SERVICES
-    )
+      classname="FalconServer",
+      command="start",
+      config_file="default.json",
+      hdp_stack_version = self.STACK_VERSION,
+      target = RMFTestCase.TARGET_COMMON_SERVICES)
+
     self.assert_configure_default()
+
     self.assertResourceCalled('Execute', '/usr/lib/falcon/bin/falcon-start -port 15000',
-                              path = ['/usr/bin'],
-                              user = 'falcon',
-                              )
+      path = ['/usr/bin'],
+      user = 'falcon',
+      environment = {'HADOOP_HOME': '/usr/lib/hadoop'})
+
     self.assertNoMoreResources()
 
   def test_stop_default(self):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/falcon_server.py",
-                       classname="FalconServer",
-                       command="stop",
-                       config_file="default.json",
-                       hdp_stack_version = self.STACK_VERSION,
-                       target = RMFTestCase.TARGET_COMMON_SERVICES
-    )
+      classname="FalconServer",
+      command="stop",
+      config_file="default.json",
+      hdp_stack_version = self.STACK_VERSION,
+      target = RMFTestCase.TARGET_COMMON_SERVICES)
+
     self.assertResourceCalled('Execute', '/usr/lib/falcon/bin/falcon-stop',
-                              path = ['/usr/bin'],
-                              user = 'falcon',
-                              )
+      path = ['/usr/bin'],
+      user = 'falcon',
+      environment = {'HADOOP_HOME': '/usr/lib/hadoop'})
+
     self.assertResourceCalled('File', '/var/run/falcon/falcon.pid',
-                              action = ['delete'],
-                              )
+      action = ['delete'])
+
     self.assertNoMoreResources()
 
   def test_configure_default(self):
@@ -131,20 +134,37 @@ class TestFalconServer(RMFTestCase):
         owner = 'falcon',
         hadoop_conf_dir = '/etc/hadoop/conf',
         type = 'directory',
-        action = ['create_on_execute'],
+        action = ['create_on_execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name=UnknownConfigurationMock(), default_fs='hdfs://c6401.ambari.apache.org:8020',
         mode = 0777,
     )
     self.assertResourceCalled('Directory', '/hadoop/falcon/store',
         owner = 'falcon',
         recursive = True,
     )
+    self.assertResourceCalled('HdfsResource', '/apps/data-mirroring',
+        security_enabled = False,
+        hadoop_bin_dir = '/usr/bin',
+        keytab = UnknownConfigurationMock(),
+        kinit_path_local = '/usr/bin/kinit',
+        user = 'hdfs',
+        owner = 'falcon',
+        group='users',
+        hadoop_conf_dir = '/etc/hadoop/conf',
+        type = 'directory',
+        recursive_chown = True,
+        recursive_chmod = True,
+        action = ['create_on_execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name=UnknownConfigurationMock(), default_fs='hdfs://c6401.ambari.apache.org:8020',
+        mode = 0770,
+        source='/usr/hdp/current/falcon-server/data-mirroring'
+    )
+
     self.assertResourceCalled('HdfsResource', None,
         security_enabled = False,
         hadoop_bin_dir = '/usr/bin',
         keytab = UnknownConfigurationMock(),
         kinit_path_local = '/usr/bin/kinit',
         user = 'hdfs',
-        action = ['execute'],
+        action = ['execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name=UnknownConfigurationMock(), default_fs='hdfs://c6401.ambari.apache.org:8020',
         hadoop_conf_dir = '/etc/hadoop/conf',
     )
     self.assertResourceCalled('Directory', '/hadoop/falcon',
@@ -181,16 +201,25 @@ class TestFalconServer(RMFTestCase):
 
     self.assertResourceCalled('Execute',
       '/usr/hdp/current/falcon-server/bin/falcon-stop',
-      path = ['/usr/hdp/current/hadoop-client/bin'], user='falcon')
+      path = ['/usr/hdp/current/hadoop-client/bin'], user='falcon',
+      environment = {'HADOOP_HOME': '/usr/hdp/current/hadoop-client'})
 
     self.assertResourceCalled('File', '/var/run/falcon/falcon.pid',
       action = ['delete'])
 
-    self.assertResourceCalled('Execute', 'hdp-select set falcon-server 2.2.1.0-2135')
+    self.assertResourceCalled('Execute', ('hdp-select', 'set', 'falcon-server', '2.2.1.0-2135'), sudo=True)
 
     # 4 calls to tarfile.open (2 directories * read + write)
     self.assertTrue(tarfile_open_mock.called)
     self.assertEqual(tarfile_open_mock.call_count,4)
+
+    # check the call args for creation of the tarfile
+    call_args = tarfile_open_mock.call_args_list[0]
+    call_argument_tarfile = call_args[0][0]
+    call_kwargs = call_args[1]
+
+    self.assertTrue("falcon-upgrade-backup/falcon-conf-backup.tar" in call_argument_tarfile)
+    self.assertEquals(True, call_kwargs["dereference"])
     
   @patch("resource_management.libraries.functions.security_commons.build_expectations")
   @patch("resource_management.libraries.functions.security_commons.get_params_from_filesystem")
@@ -305,10 +334,12 @@ class TestFalconServer(RMFTestCase):
   @patch.object(tarfile, 'open')
   @patch.object(shutil, 'rmtree')
   def test_pre_rolling_restart(self, tarfile_open_mock, rmtree_mock):
-    config_file = self.get_src_folder()+"/test/python/stacks/2.0.6/configs/default.json"
+    config_file = self.get_src_folder()+"/test/python/stacks/2.2/configs/falcon-upgrade.json"
     tarfile_open_mock.return_value = MagicMock()
+
     with open(config_file, "r") as f:
       json_content = json.load(f)
+
     version = '2.2.1.0-3242'
     json_content['commandParams']['version'] = version
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/falcon_server.py",
@@ -318,7 +349,7 @@ class TestFalconServer(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES)
     self.assertResourceCalled('Execute',
-                              'hdp-select set falcon-server %s' % version,)
+                              ('hdp-select', 'set', 'falcon-server', version), sudo=True,)
     self.assertTrue(tarfile_open_mock.called)
     self.assertTrue(rmtree_mock.called)
     self.printResources()
@@ -328,9 +359,11 @@ class TestFalconServer(RMFTestCase):
   @patch.object(shutil, 'rmtree')
   @patch("resource_management.core.shell.call")
   def test_pre_rolling_restart_23(self, tarfile_open_mock, rmtree_mock, call_mock):
-    config_file = self.get_src_folder()+"/test/python/stacks/2.0.6/configs/default.json"
+    config_file = self.get_src_folder()+"/test/python/stacks/2.2/configs/falcon-upgrade.json"
+
     with open(config_file, "r") as f:
       json_content = json.load(f)
+
     version = '2.3.0.0-1234'
     json_content['commandParams']['version'] = version
 
@@ -345,7 +378,7 @@ class TestFalconServer(RMFTestCase):
                        mocks_dict = mocks_dict)
 
     self.assertResourceCalled('Execute',
-                              'hdp-select set falcon-server %s' % version,)
+                              ('hdp-select', 'set', 'falcon-server', version), sudo=True,)
     self.assertNoMoreResources()
 
     self.assertEquals(2, mocks_dict['call'].call_count)

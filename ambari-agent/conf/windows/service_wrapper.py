@@ -66,8 +66,6 @@ class AmbariAgentService(AmbariService):
   AmbariService._svc_display_name_ = "Ambari Agent"
   AmbariService._svc_description_ = "Ambari Agent"
 
-  AmbariService._AdjustServiceVersion()
-
   heartbeat_stop_handler = None
 
   # Adds the necessary script dir to the Python's modules path
@@ -141,8 +139,9 @@ def setup(options):
 #     possibly run.
 #
 def svcstart(options):
-  if 0 != AmbariAgentService.Start(15):
-    options.exit_message = None
+  (ret, msg) = AmbariAgentService.Start(15)
+  if 0 != ret:
+    options.exit_message = msg
   pass
 
 
@@ -150,8 +149,9 @@ def svcstart(options):
 # Stops the Ambari Agent.
 #
 def svcstop(options):
-  if 0 != AmbariAgentService.Stop():
-    options.exit_message = None
+  (ret, msg) = AmbariAgentService.Stop()
+  if 0 != ret:
+    options.exit_message = msg
 
 
 #

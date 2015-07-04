@@ -40,8 +40,9 @@ class HDP21StackAdvisor(HDP206StackAdvisor):
   def recommendHiveConfigurations(self, configurations, clusterData, services, hosts):
     containerSize = clusterData['mapMemory'] if clusterData['mapMemory'] > 2048 else int(clusterData['reduceMemory'])
     containerSize = min(clusterData['containers'] * clusterData['ramPerContainer'], containerSize)
+    container_size_bytes = int(containerSize)*1024*1024
     putHiveProperty = self.putProperty(configurations, "hive-site", services)
-    putHiveProperty('hive.auto.convert.join.noconditionaltask.size', int(round(containerSize / 3)) * 1048576)
+    putHiveProperty('hive.auto.convert.join.noconditionaltask.size', int(round(container_size_bytes / 3)))
     putHiveProperty('hive.tez.java.opts', "-server -Xmx" + str(int(round((0.8 * containerSize) + 0.5)))
                     + "m -Djava.net.preferIPv4Stack=true -XX:NewRatio=8 -XX:+UseNUMA -XX:+UseParallelGC -XX:+PrintGCDetails -verbose:gc -XX:+PrintGCTimeStamps")
     putHiveProperty('hive.tez.container.size', containerSize)
@@ -52,6 +53,7 @@ class HDP21StackAdvisor(HDP206StackAdvisor):
     putTezProperty("tez.am.java.opts",
                    "-server -Xmx" + str(int(0.8 * clusterData["amMemory"]))
                    + "m -Djava.net.preferIPv4Stack=true -XX:+UseNUMA -XX:+UseParallelGC")
+
 
   def getNotPreferableOnServerComponents(self):
     return ['STORM_UI_SERVER', 'DRPC_SERVER', 'STORM_REST_API', 'NIMBUS', 'GANGLIA_SERVER']
@@ -74,13 +76,19 @@ class HDP21StackAdvisor(HDP206StackAdvisor):
       "HIVE": {"hive-site": self.validateHiveConfigurations},
       "TEZ": {"tez-site": self.validateTezConfigurations}
     }
-    parentValidators.update(childValidators)
+    self.mergeValidators(parentValidators, childValidators)
     return parentValidators
 
   def validateHiveConfigurations(self, properties, recommendedDefaults, configurations, services, hosts):
     validationItems = [ {"config-name": 'hive.tez.container.size', "item": self.validatorLessThenDefaultValue(properties, recommendedDefaults, 'hive.tez.container.size')},
                         {"config-name": 'hive.tez.java.opts', "item": self.validateXmxValue(properties, recommendedDefaults, 'hive.tez.java.opts')},
                         {"config-name": 'hive.auto.convert.join.noconditionaltask.size', "item": self.validatorLessThenDefaultValue(properties, recommendedDefaults, 'hive.auto.convert.join.noconditionaltask.size')} ]
+    yarnSiteProperties = getSiteProperties(configurations, "yarn-site")
+    if yarnSiteProperties:
+      yarnSchedulerMaximumAllocationMb = to_number(yarnSiteProperties["yarn.scheduler.maximum-allocation-mb"])
+      hiveTezContainerSize = to_number(properties['hive.tez.container.size'])
+      if hiveTezContainerSize is not None and yarnSchedulerMaximumAllocationMb is not None and hiveTezContainerSize > yarnSchedulerMaximumAllocationMb:
+        validationItems.append({"config-name": 'hive.tez.container.size', "item": self.getWarnItem("hive.tez.container.size is greater than the maximum container size specified in yarn.scheduler.maximum-allocation-mb")})
     return self.toConfigurationValidationProblems(validationItems, "hive-site")
 
   def validateTezConfigurations(self, properties, recommendedDefaults, configurations, services, hosts):

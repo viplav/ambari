@@ -19,11 +19,11 @@ limitations under the License.
 """
 
 import logging
-import json
+import ambari_simplejson as json
 import os
 import threading
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 class ClusterConfiguration():
   """

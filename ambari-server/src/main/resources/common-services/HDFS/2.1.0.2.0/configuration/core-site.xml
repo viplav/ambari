@@ -60,16 +60,19 @@
     <!-- cluster variant -->
     <value>hdfs://localhost:8020</value>
     <description>The name of the default file system.  Either the
-  literal string "local" or a host:port for NDFS.</description>
+  literal string "local" or a host:port for HDFS.</description>
     <final>true</final>
   </property>
 
   <property>
     <name>fs.trash.interval</name>
     <value>360</value>
-    <description>Number of minutes between trash checkpoints.
-  If zero, the trash feature is disabled.
-  </description>
+    <description>Number of minutes after which the checkpoint gets deleted.
+        If zero, the trash feature is disabled.
+        This option may be configured both on the server and the client.
+        If trash is disabled server side then the client side configuration is checked.
+        If trash is enabled on the server side then the value configured on the server is used and the client configuration value is ignored.
+    </description>
   </property>
 
   <!-- ipc properties: copied from kryptonite configuration -->
@@ -135,9 +138,7 @@
 
   <property>
     <name>hadoop.security.auth_to_local</name>
-    <value>
-        DEFAULT
-    </value>
+    <value>DEFAULT</value>
 <description>The mapping from kerberos principal names to local OS mapreduce.job.user.names.
   So the default rule is just "DEFAULT" which takes all principals in your default domain to their first component.
   "omalley@APACHE.ORG" and "omalley/admin@APACHE.ORG" to "omalley", if your default domain is APACHE.ORG.

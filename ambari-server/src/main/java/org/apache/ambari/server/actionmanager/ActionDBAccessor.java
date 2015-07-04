@@ -144,7 +144,7 @@ public interface ActionDBAccessor {
   /**
    * Bulk abort commands
    */
-  void bulkAbortHostRole(Stage s, List<ExecutionCommand> commands);
+  void bulkAbortHostRole(Stage s, Map<ExecutionCommand, String> commands);
 
   /**
    * Updates scheduled stage.
@@ -215,6 +215,13 @@ public interface ActionDBAccessor {
    * Gets request objects by ids
    */
   public List<Request> getRequests(Collection<Long> requestIds);
+
+  /**
+   * Resubmits a series of tasks
+   * @param taskIds
+   */
+  public void resubmitTasks(List<Long> taskIds);
+
 
 
 }

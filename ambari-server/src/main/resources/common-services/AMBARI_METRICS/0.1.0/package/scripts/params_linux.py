@@ -21,6 +21,7 @@ limitations under the License.
 from resource_management import *
 from resource_management.libraries.functions import conf_select
 from ambari_commons import OSCheck
+from ambari_commons.constants import AMBARI_SUDO_BINARY
 
 config = Script.get_config()
 
@@ -44,3 +45,6 @@ hbase_cmd = "/usr/lib/ams-hbase/bin/hbase"
 
 hadoop_conf_dir = conf_select.get_hadoop_conf_dir()
 hbase_conf_dir = "/etc/ams-hbase/conf"
+
+limits_conf_dir = "/etc/security/limits.d"
+sudo = AMBARI_SUDO_BINARY

@@ -22,6 +22,7 @@ import os
 from mock.mock import MagicMock, call, patch
 from stacks.utils.RMFTestCase import *
 
+@patch("platform.linux_distribution", new = MagicMock(return_value="Linux"))
 class TestHiveMetastore(RMFTestCase):
   COMMON_SERVICES_PACKAGE_DIR = "HIVE/0.12.0.2.0/package"
   STACK_VERSION = "2.0.6"
@@ -48,8 +49,10 @@ class TestHiveMetastore(RMFTestCase):
     self.assert_configure_default()
 
     self.assertResourceCalled('Execute', '/tmp/start_metastore_script /var/log/hive/hive.out /var/log/hive/hive.log /var/run/hive/hive.pid /etc/hive/conf.server /var/log/hive',
-        environment = {'HADOOP_HOME': '/usr', 'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_45'},
-        not_if = 'ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `cat /var/run/hive/hive.pid` >/dev/null 2>&1',
+        environment = {'HADOOP_HOME': '/usr',
+           'HIVE_BIN': 'hive',
+           'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_45'},
+        not_if = "ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'` >/dev/null 2>&1",
         user = 'hive',
         path = ['/bin:/usr/lib/hive/bin:/usr/bin'],
     )
@@ -76,8 +79,10 @@ class TestHiveMetastore(RMFTestCase):
     self.assert_configure_default()
 
     self.assertResourceCalled('Execute', '/tmp/start_metastore_script /var/log/hive/hive.out /var/log/hive/hive.log /var/run/hive/hive.pid /etc/hive/conf.server /var/log/hive',
-        environment = {'HADOOP_HOME': '/usr', 'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_45'},
-        not_if = 'ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `cat /var/run/hive/hive.pid` >/dev/null 2>&1',
+        environment = {'HADOOP_HOME': '/usr',
+           'HIVE_BIN': 'hive',
+           'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_45'},
+        not_if = "ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'` >/dev/null 2>&1",
         user = 'hive',
         path = ['/bin:/usr/lib/hive/bin:/usr/bin'],
     )
@@ -98,15 +103,15 @@ class TestHiveMetastore(RMFTestCase):
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
 
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill `cat /var/run/hive/hive.pid`',
-                              not_if = '! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `cat /var/run/hive/hive.pid` >/dev/null 2>&1)',
-                              )
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `cat /var/run/hive/hive.pid`',
-                              not_if = '! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `cat /var/run/hive/hive.pid` >/dev/null 2>&1) || ( sleep 5 && ! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `cat /var/run/hive/hive.pid` >/dev/null 2>&1) )',
-                              )
-    self.assertResourceCalled('Execute', '! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `cat /var/run/hive/hive.pid` >/dev/null 2>&1)',
-      tries = 20,
-      try_sleep = 3,
+    self.assertResourceCalled('Execute', "ambari-sudo.sh kill `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'`",
+        not_if = "! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'` >/dev/null 2>&1)",
+    )
+    self.assertResourceCalled('Execute', "ambari-sudo.sh kill -9 `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'`",
+        not_if = "! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'` >/dev/null 2>&1) || ( sleep 5 && ! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'` >/dev/null 2>&1) )",
+    )
+    self.assertResourceCalled('Execute', "! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'` >/dev/null 2>&1)",
+        tries = 20,
+        try_sleep = 3,
     )
     self.assertResourceCalled('File', '/var/run/hive/hive.pid',
                               action = ['delete'],
@@ -139,8 +144,10 @@ class TestHiveMetastore(RMFTestCase):
                               )
 
     self.assertResourceCalled('Execute', '/tmp/start_metastore_script /var/log/hive/hive.out /var/log/hive/hive.log /var/run/hive/hive.pid /etc/hive/conf.server /var/log/hive',
-        environment = {'HADOOP_HOME': '/usr', 'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_45'},
-        not_if = 'ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `cat /var/run/hive/hive.pid` >/dev/null 2>&1',
+        environment = {'HADOOP_HOME': '/usr',
+           'HIVE_BIN': 'hive',
+           'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_45'},
+        not_if = "ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'` >/dev/null 2>&1",
         user = 'hive',
         path = ['/bin:/usr/lib/hive/bin:/usr/bin'],
     )
@@ -160,15 +167,15 @@ class TestHiveMetastore(RMFTestCase):
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
 
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill `cat /var/run/hive/hive.pid`',
-      not_if = '! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `cat /var/run/hive/hive.pid` >/dev/null 2>&1)',
+    self.assertResourceCalled('Execute', "ambari-sudo.sh kill `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'`",
+        not_if = "! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'` >/dev/null 2>&1)",
     )
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `cat /var/run/hive/hive.pid`',
-      not_if = '! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `cat /var/run/hive/hive.pid` >/dev/null 2>&1) || ( sleep 5 && ! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `cat /var/run/hive/hive.pid` >/dev/null 2>&1) )',
+    self.assertResourceCalled('Execute', "ambari-sudo.sh kill -9 `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'`",
+        not_if = "! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'` >/dev/null 2>&1) || ( sleep 5 && ! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'` >/dev/null 2>&1) )",
     )
-    self.assertResourceCalled('Execute', '! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `cat /var/run/hive/hive.pid` >/dev/null 2>&1)',
-      tries = 20,
-      try_sleep = 3,
+    self.assertResourceCalled('Execute', "! (ls /var/run/hive/hive.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hive -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/hive/hive.pid'` >/dev/null 2>&1)",
+        tries = 20,
+        try_sleep = 3,
     )
     self.assertResourceCalled('File', '/var/run/hive/hive.pid',
       action = ['delete'],
@@ -239,6 +246,7 @@ class TestHiveMetastore(RMFTestCase):
     )
     self.assertResourceCalled('File', '/usr/lib/ambari-agent/DBConnectionVerification.jar',
         content = DownloadSource('http://c6401.ambari.apache.org:8080/resources/DBConnectionVerification.jar'),
+        mode = 0644,
     )
     self.assertResourceCalled('File', '/tmp/start_metastore_script',
                               content = StaticFile('startMetastore.sh'),
@@ -334,6 +342,7 @@ class TestHiveMetastore(RMFTestCase):
     )
     self.assertResourceCalled('File', '/usr/lib/ambari-agent/DBConnectionVerification.jar',
         content = DownloadSource('http://c6401.ambari.apache.org:8080/resources/DBConnectionVerification.jar'),
+        mode = 0644,
     )
     self.assertResourceCalled('File', '/tmp/start_metastore_script',
                               content = StaticFile('startMetastore.sh'),
@@ -491,7 +500,7 @@ class TestHiveMetastore(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES)
     self.assertResourceCalled('Execute',
-                              'hdp-select set hive-metastore %s' % version,)
+                              ('hdp-select', 'set', 'hive-metastore', version), sudo=True,)
     self.assertNoMoreResources()
 
   @patch("resource_management.core.shell.call")
@@ -513,7 +522,7 @@ class TestHiveMetastore(RMFTestCase):
                        mocks_dict = mocks_dict)
 
     self.assertResourceCalled('Execute',
-                              'hdp-select set hive-metastore %s' % version,)
+                              ('hdp-select', 'set', 'hive-metastore', version), sudo=True,)
     self.assertNoMoreResources()
 
     self.assertEquals(2, mocks_dict['call'].call_count)
@@ -523,3 +532,54 @@ class TestHiveMetastore(RMFTestCase):
     self.assertEquals(
       "conf-select set-conf-dir --package hive --stack-version 2.3.0.0-1234 --conf-version 0",
        mocks_dict['call'].call_args_list[1][0][0])
+
+
+  @patch("os.path.exists")
+  @patch("resource_management.core.shell.call")
+  @patch("resource_management.libraries.functions.get_hdp_version")
+  def test_upgrade_metastore_schema(self, get_hdp_version_mock, call_mock, os_path_exists_mock):
+
+    get_hdp_version_mock.return_value = '2.3.0.0-1234'
+
+    def side_effect(path):
+      if path == "/usr/hdp/current/hive-server2/lib/mysql-connector-java.jar":
+        return True
+      return False
+
+    os_path_exists_mock.side_effect = side_effect
+
+    config_file = self.get_src_folder()+"/test/python/stacks/2.0.6/configs/default.json"
+
+    with open(config_file, "r") as f:
+      json_content = json.load(f)
+
+    # must be HDP 2.3+
+    version = '2.3.0.0-1234'
+    json_content['commandParams']['version'] = version
+    json_content['hostLevelParams']['stack_version'] = "2.3"
+
+    # trigger the code to think it needs to copy the JAR
+    json_content['configurations']['hive-site']['javax.jdo.option.ConnectionDriverName'] = "com.mysql.jdbc.Driver"
+    json_content['configurations']['hive-env']['hive_database'] = "Existing"
+
+    mocks_dict = {}
+    self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/hive_metastore.py",
+      classname = "HiveMetastore",
+      command = "pre_rolling_restart",
+      config_dict = json_content,
+      hdp_stack_version = self.STACK_VERSION,
+      target = RMFTestCase.TARGET_COMMON_SERVICES,
+      call_mocks = [(0, None), (0, None)],
+      mocks_dict = mocks_dict)
+
+    self.assertResourceCalled('Execute',
+      ('cp', '/usr/hdp/current/hive-server2/lib/mysql-connector-java.jar', '/usr/hdp/2.3.0.0-1234/hive/lib'),
+      path = ['/bin', '/usr/bin/'], sudo = True)
+
+    self.assertResourceCalled('Execute', "/usr/hdp/2.3.0.0-1234/hive/bin/schematool -dbType mysql -upgradeSchema",
+     logoutput = True, environment = {'HIVE_CONF_DIR': '/usr/hdp/current/hive-server2/conf/conf.server'},
+      tries = 1, user = 'hive')
+
+    self.assertResourceCalled('Execute', ('hdp-select', 'set', 'hive-metastore', version), sudo=True,)
+
+    self.assertNoMoreResources()

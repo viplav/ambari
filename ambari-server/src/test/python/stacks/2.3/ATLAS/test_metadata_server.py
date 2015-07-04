@@ -28,8 +28,73 @@ class TestMetadataServer(RMFTestCase):
   COMMON_SERVICES_PACKAGE_DIR = "ATLAS/0.1.0.2.3/package"
   STACK_VERSION = "2.3"
 
-  def test_configure_default(self):
+  def configureResourcesCalled(self):
+      self.assertResourceCalled('Directory', '/var/run/atlas',
+                                owner='atlas',
+                                group='hadoop',
+                                recursive=True,
+                                cd_access='a',
+                                mode=0755
+      )
+      self.assertResourceCalled('Directory', '/etc/atlas/conf',
+                                owner='atlas',
+                                group='hadoop',
+                                recursive=True,
+                                cd_access='a',
+                                mode=0755
+      )
+      self.assertResourceCalled('Directory', '/var/log/atlas',
+                                owner='atlas',
+                                group='hadoop',
+                                recursive=True,
+                                cd_access='a',
+                                mode=0755
+      )
+      self.assertResourceCalled('Directory', '/var/lib/atlas/data',
+                                owner='atlas',
+                                group='hadoop',
+                                recursive=True,
+                                cd_access='a',
+                                mode=0644
+      )
+      self.assertResourceCalled('Directory', '/var/lib/atlas/server/webapp',
+                                owner='atlas',
+                                group='hadoop',
+                                recursive=True,
+                                cd_access='a',
+                                mode=0644
+      )
+      self.assertResourceCalled('File', '/var/lib/atlas/server/webapp/atlas.war',
+          content = StaticFile('/usr/hdp/current/atlas-server/server/webapp/atlas.war'),
+      )
+      appprops =  dict(self.getConfig()['configurations'][
+          'application-properties'])
+      appprops['atlas.http.authentication.kerberos.name.rules'] = ' \\ \n'.join(appprops['atlas.http.authentication.kerberos.name.rules'].splitlines())
+      appprops['atlas.server.bind.address'] = 'c6401.ambari.apache.org'
 
+      self.assertResourceCalled('PropertiesFile',
+                                '/etc/atlas/conf/application.properties',
+                                properties=appprops,
+                                owner='atlas',
+                                group='hadoop',
+                                mode=0644,
+      )
+      self.assertResourceCalled('File', '/etc/atlas/conf/atlas-env.sh',
+                                content=InlineTemplate(
+                                    self.getConfig()['configurations'][
+                                        'atlas-env']['content']),
+                                owner='atlas',
+                                group='hadoop',
+                                mode=0755,
+      )
+      self.assertResourceCalled('File', '/etc/atlas/conf/log4j.xml',
+                                content=StaticFile('log4j.xml'),
+                                owner='atlas',
+                                group='hadoop',
+                                mode=0644,
+      )
+
+  def test_configure_default(self):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/metadata_server.py",
                        classname = "MetadataServer",
                        command = "configure",
@@ -38,66 +103,10 @@ class TestMetadataServer(RMFTestCase):
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
 
-    self.assertResourceCalled('Directory', '/var/run/atlas',
-                              owner = 'atlas',
-                              group = 'hadoop',
-                              recursive = True,
-                              cd_access = 'a',
-                              mode=0755
-    )
-    self.assertResourceCalled('Directory', '/etc/atlas/conf',
-                              owner = 'atlas',
-                              group = 'hadoop',
-                              recursive = True,
-                              cd_access = 'a',
-                              mode=0755
-    )
-    self.assertResourceCalled('Directory', '/var/log/atlas',
-                              owner = 'atlas',
-                              group = 'hadoop',
-                              recursive = True,
-                              cd_access = 'a',
-                              mode=0755
-    )
-    self.assertResourceCalled('Directory', '/var/lib/atlas/data',
-                              owner = 'atlas',
-                              group = 'hadoop',
-                              recursive = True,
-                              cd_access = 'a',
-                              mode=0644
-    )
-    self.assertResourceCalled('Directory', '/var/lib/atlas/server/webapp',
-                              owner = 'atlas',
-                              group = 'hadoop',
-                              recursive = True,
-                              cd_access = 'a',
-                              mode=0644
-    )
-    self.assertResourceCalled('File', '/etc/atlas/conf/application.properties',
-                              content = InlineTemplate(self.getConfig()['configurations']['application-properties']['content']),
-                              owner = 'atlas',
-                              group = 'hadoop',
-                              mode = 0644,
-                              )
-    self.assertResourceCalled('File', '/etc/atlas/conf/metadata-env.sh',
-                              content = InlineTemplate(self.getConfig()['configurations']['metadata-env']['content']),
-                              owner = 'atlas',
-                              group = 'hadoop',
-                              mode = 0755,
-                              )
-    self.assertResourceCalled('File', '/etc/atlas/conf/log4j.xml',
-                              content = StaticFile('log4j.xml'),
-                              owner = 'atlas',
-                              group = 'hadoop',
-                              mode = 0644,
-                              )
+    self.configureResourcesCalled()
     self.assertNoMoreResources()
 
-  @patch("shutil.copy2", new = MagicMock())
-  @patch("os.path.isfile")
-  def test_start_default(self, isfile_mock):
-    isfile_mock.return_value = True
-
+  def test_start_default(self):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/metadata_server.py",
                        classname = "MetadataServer",
                        command = "start",
@@ -105,8 +114,9 @@ class TestMetadataServer(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assertResourceCalled('Execute', 'source /etc/atlas/conf/metadata-env.sh ; /usr/hdp/current/atlas-server/bin/metadata_start.py --port 21000',
-                              not_if = 'ls /var/run/atlas/metadata.pid >/dev/null 2>&1 && ps -p `cat /var/run/atlas/metadata.pid` >/dev/null 2>&1',
+    self.configureResourcesCalled()
+    self.assertResourceCalled('Execute', 'source /etc/atlas/conf/atlas-env.sh ; /usr/hdp/current/atlas-server/bin/atlas_start.py --port 21000',
+                              not_if = 'ls /var/run/atlas/atlas.pid >/dev/null 2>&1 && ps -p `cat /var/run/atlas/atlas.pid` >/dev/null 2>&1',
                               user = 'atlas',
     )
 
@@ -118,8 +128,8 @@ class TestMetadataServer(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assertResourceCalled('Execute', 'source /etc/atlas/conf/metadata-env.sh; /usr/hdp/current/atlas-server/bin/metadata_stop.py',
+    self.assertResourceCalled('Execute', 'source /etc/atlas/conf/atlas-env.sh; /usr/hdp/current/atlas-server/bin/atlas_stop.py',
                               user = 'atlas',
     )
-    self.assertResourceCalled('Execute', 'rm -f /var/run/atlas/metadata.pid',
+    self.assertResourceCalled('Execute', 'rm -f /var/run/atlas/atlas.pid',
     )

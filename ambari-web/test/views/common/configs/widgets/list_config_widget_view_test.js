@@ -27,9 +27,10 @@ describe('App.ListConfigWidgetView', function () {
       initPopover: Em.K,
       config: Em.Object.create({
         _validateOverrides: App.ServiceConfigProperty.prototype._validateOverrides,
+        _getValueForCheck: App.ServiceConfigProperty.prototype._getValueForCheck,
         validate: App.ServiceConfigProperty.prototype.validate,
         name: 'a.b.c',
-        defaultValue: '2,1',
+        savedValue: '2,1',
         value: '2,1',
         filename: 'f1',
         isFinal: false,
@@ -152,7 +153,7 @@ describe('App.ListConfigWidgetView', function () {
       view.restoreDependentConfigs.restore();
       view.get('controller.removeCurrentFromDependentList').restore();
     });
-    it('should restore default value', function () {
+    it('should restore saved value', function () {
       view.toggleOption({context: view.get('options')[0]});
       view.toggleOption({context: view.get('options')[1]});
       view.toggleOption({context: view.get('options')[2]});

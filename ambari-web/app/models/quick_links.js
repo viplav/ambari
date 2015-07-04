@@ -299,7 +299,13 @@ App.QuickLinks.FIXTURES = [
     label:'Ranger Admin UI',
     url:'%@://%@:6080/',
     service_id: 'RANGER',
-    template:'%@://%@:6080/'
+    template:'%@://%@:%@/',
+    http_config: 'ranger.service.http.port',
+    https_config: 'ranger.service.https.port',
+    regex: '(\\d*)+',
+    site: 'ranger-admin-site',
+    default_http_port: 6080,
+    default_https_port: 6182
   },
   {
     id: 34,
@@ -319,8 +325,24 @@ App.QuickLinks.FIXTURES = [
     service_id: 'ACCUMULO',
     template:'%@://%@:%@/',
     http_config: 'monitor.port.client',
+    https_config: 'monitor.port.client',
     site: 'accumulo-site',
     regex: '^(\\d+)$',
-    default_http_port: 50095
+    default_http_port: 50095,
+    default_https_port: 50095
+  },
+  {
+    id:36,
+    label:'Atlas Dashboard',
+    url:'%@://%@:%@/#!/search?user.name=%@',
+    service_id: 'ATLAS',
+    template:'%@://%@:%@/#!/search?user.name=%@',
+    http_config: 'metadata_port',
+    https_config: 'metadata_port',
+    site: 'atlas-env',
+    regex: '^(\\d+)$',
+    default_http_port: 21000,
+    default_https_port: 21443
   }
+
 ];

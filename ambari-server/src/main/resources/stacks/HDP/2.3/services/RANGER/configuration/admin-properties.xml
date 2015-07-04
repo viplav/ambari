@@ -22,15 +22,68 @@
 <configuration supports_final="false">
 
   <property>
-    <name>audit_store</name>
-    <value>db</value>
-    <description>audit_db is solr or db</description>
+    <name>policymgr_http_enabled</name>
+    <deleted>true</deleted>
   </property>
 
   <property>
-    <name>audit_solr_url</name>
-    <value>http://localhost:6083/solr/ranger_audits</value>
-    <description>URL to Solr. E.g. http://solr_host:6083/solr/ranger_audits</description>
+    <name>authentication_method</name>
+    <deleted>true</deleted>
+  </property>
+
+  <property>
+    <name>remoteLoginEnabled</name>
+    <deleted>true</deleted>
+  </property>
+
+  <property>
+    <name>authServiceHostName</name>
+    <deleted>true</deleted>
+  </property>
+
+  <property>
+    <name>authServicePort</name>
+    <deleted>true</deleted>
+  </property>
+
+  <property>
+    <name>xa_ldap_url</name>
+    <deleted>true</deleted>
+  </property>
+
+  <property>
+    <name>xa_ldap_userDNpattern</name>
+    <deleted>true</deleted>
+  </property>
+
+  <property>
+    <name>xa_ldap_groupSearchBase</name>
+    <deleted>true</deleted>
+  </property>
+
+  <property>
+    <name>xa_ldap_groupSearchFilter</name>
+    <deleted>true</deleted>
+  </property>
+
+  <property>
+    <name>xa_ldap_groupRoleAttribute</name>
+    <deleted>true</deleted>
+  </property>
+
+  <property>
+    <name>xa_ldap_ad_domain</name>
+    <deleted>true</deleted>
+  </property>
+
+  <property>
+    <name>xa_ldap_ad_url</name>
+    <deleted>true</deleted>
+  </property>
+
+  <property>
+    <name>SQL_COMMAND_INVOKER</name>
+    <deleted>true</deleted>
   </property>
 
 </configuration>

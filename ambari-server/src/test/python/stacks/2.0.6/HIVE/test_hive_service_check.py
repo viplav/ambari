@@ -17,11 +17,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 '''
+import json
 import os
 from mock.mock import MagicMock, call, patch
 from stacks.utils.RMFTestCase import *
 import datetime, sys, socket
-import  resource_management.libraries.functions
+import resource_management.libraries.functions
+
 @patch.object(resource_management.libraries.functions, "get_unique_id_and_date", new = MagicMock(return_value=''))
 @patch("socket.socket")
 @patch("time.time", new=MagicMock(return_value=1431110511.43))
@@ -48,7 +50,7 @@ class TestServiceCheck(RMFTestCase):
                         content = StaticFile('hcatSmoke.sh'),
                         mode = 0755,
     )
-    self.assertResourceCalled('Execute', 'env JAVA_HOME=/usr/jdk64/jdk1.7.0_45 /tmp/hcatSmoke.sh hcatsmoke prepare',
+    self.assertResourceCalled('Execute', 'env JAVA_HOME=/usr/jdk64/jdk1.7.0_45 /tmp/hcatSmoke.sh hcatsmoke prepare false',
         logoutput = True,
         path = ['/usr/sbin',
            '/usr/local/bin',
@@ -68,7 +70,7 @@ class TestServiceCheck(RMFTestCase):
         user = 'hdfs',
         bin_dir = '/bin:/usr/lib/hive/bin:/usr/bin',
     )
-    self.assertResourceCalled('Execute', ' /tmp/hcatSmoke.sh hcatsmoke cleanup',
+    self.assertResourceCalled('Execute', ' /tmp/hcatSmoke.sh hcatsmoke cleanup false',
         logoutput = True,
         path = ['/usr/sbin',
            '/usr/local/bin',
@@ -85,13 +87,17 @@ class TestServiceCheck(RMFTestCase):
                               )
     self.assertResourceCalled('File', '/tmp/idtest.ambari-qa.1431110511.43.pig',
         content = Template('templeton_smoke.pig.j2', templeton_test_input='/tmp/idtest.ambari-qa.1431110511.43.in', templeton_test_output='/tmp/idtest.ambari-qa.1431110511.43.out'),
+        owner="hdfs"
     )
     self.assertResourceCalled('HdfsResource', '/tmp/idtest.ambari-qa.1431110511.43.pig',
         security_enabled = False,
         hadoop_bin_dir = '/usr/bin',
         keytab = UnknownConfigurationMock(),
-        kinit_path_local = '/usr/bin/kinit',
         source = '/tmp/idtest.ambari-qa.1431110511.43.pig',
+        default_fs = 'hdfs://c6401.ambari.apache.org:8020',
+        hdfs_site = self.getConfig()['configurations']['hdfs-site'],
+        kinit_path_local = '/usr/bin/kinit',
+        principal_name = 'missing_principal',
         user = 'hdfs',
         owner = 'ambari-qa',
         hadoop_conf_dir = '/etc/hadoop/conf',
@@ -102,8 +108,11 @@ class TestServiceCheck(RMFTestCase):
         security_enabled = False,
         hadoop_bin_dir = '/usr/bin',
         keytab = UnknownConfigurationMock(),
-        kinit_path_local = '/usr/bin/kinit',
         source = '/etc/passwd',
+        default_fs = 'hdfs://c6401.ambari.apache.org:8020',
+        hdfs_site = self.getConfig()['configurations']['hdfs-site'],
+        kinit_path_local = '/usr/bin/kinit',
+        principal_name = 'missing_principal',
         user = 'hdfs',
         owner = 'ambari-qa',
         hadoop_conf_dir = '/etc/hadoop/conf',
@@ -114,7 +123,10 @@ class TestServiceCheck(RMFTestCase):
         security_enabled = False,
         hadoop_bin_dir = '/usr/bin',
         keytab = UnknownConfigurationMock(),
+        default_fs = 'hdfs://c6401.ambari.apache.org:8020',
+        hdfs_site = self.getConfig()['configurations']['hdfs-site'],
         kinit_path_local = '/usr/bin/kinit',
+        principal_name = 'missing_principal',
         user = 'hdfs',
         action = ['execute'],
         hadoop_conf_dir = '/etc/hadoop/conf',
@@ -150,7 +162,7 @@ class TestServiceCheck(RMFTestCase):
                         mode = 0755,
     )
     self.maxDiff = None
-    self.assertResourceCalled('Execute', '/usr/bin/kinit -kt /etc/security/keytabs/smokeuser.headless.keytab ambari-qa; env JAVA_HOME=/usr/jdk64/jdk1.7.0_45 /tmp/hcatSmoke.sh hcatsmoke prepare',
+    self.assertResourceCalled('Execute', '/usr/bin/kinit -kt /etc/security/keytabs/smokeuser.headless.keytab ambari-qa@EXAMPLE.COM; env JAVA_HOME=/usr/jdk64/jdk1.7.0_45 /tmp/hcatSmoke.sh hcatsmoke prepare false',
         logoutput = True,
         path = ['/usr/sbin','/usr/local/bin','/bin','/usr/bin', '/bin:/usr/lib/hive/bin:/usr/bin'],
         tries = 3,
@@ -167,7 +179,7 @@ class TestServiceCheck(RMFTestCase):
         bin_dir = '/bin:/usr/lib/hive/bin:/usr/bin',
         principal = 'hdfs',
     )
-    self.assertResourceCalled('Execute', '/usr/bin/kinit -kt /etc/security/keytabs/smokeuser.headless.keytab ambari-qa;  /tmp/hcatSmoke.sh hcatsmoke cleanup',
+    self.assertResourceCalled('Execute', '/usr/bin/kinit -kt /etc/security/keytabs/smokeuser.headless.keytab ambari-qa@EXAMPLE.COM;  /tmp/hcatSmoke.sh hcatsmoke cleanup false',
         logoutput = True,
         path = ['/usr/sbin',
            '/usr/local/bin',
@@ -185,36 +197,46 @@ class TestServiceCheck(RMFTestCase):
     
     self.assertResourceCalled('File', '/tmp/idtest.ambari-qa.1431110511.43.pig',
         content = Template('templeton_smoke.pig.j2', templeton_test_input='/tmp/idtest.ambari-qa.1431110511.43.in', templeton_test_output='/tmp/idtest.ambari-qa.1431110511.43.out'),
+        owner = "hdfs"
     )
     self.assertResourceCalled('HdfsResource', '/tmp/idtest.ambari-qa.1431110511.43.pig',
-        action = ['create_on_execute'],
         security_enabled = True,
         hadoop_bin_dir = '/usr/bin',
         keytab = '/etc/security/keytabs/hdfs.headless.keytab',
-        kinit_path_local = '/usr/bin/kinit',
         source = '/tmp/idtest.ambari-qa.1431110511.43.pig',
+        default_fs = 'hdfs://c6401.ambari.apache.org:8020',
+        hdfs_site = self.getConfig()['configurations']['hdfs-site'],
+        kinit_path_local = '/usr/bin/kinit',
+        principal_name = 'hdfs',
         user = 'hdfs',
         owner = 'ambari-qa',
         hadoop_conf_dir = '/etc/hadoop/conf',
         type = 'file',
+        action = ['create_on_execute'],
     )
     self.assertResourceCalled('HdfsResource', '/tmp/idtest.ambari-qa.1431110511.43.in',
-        action = ['create_on_execute'],
         security_enabled = True,
         hadoop_bin_dir = '/usr/bin',
         keytab = '/etc/security/keytabs/hdfs.headless.keytab',
-        kinit_path_local = '/usr/bin/kinit',
         source = '/etc/passwd',
+        default_fs = 'hdfs://c6401.ambari.apache.org:8020',
+        hdfs_site = self.getConfig()['configurations']['hdfs-site'],
+        kinit_path_local = '/usr/bin/kinit',
+        principal_name = 'hdfs',
         user = 'hdfs',
         owner = 'ambari-qa',
         hadoop_conf_dir = '/etc/hadoop/conf',
         type = 'file',
+        action = ['create_on_execute'],
     )
     self.assertResourceCalled('HdfsResource', None,
         security_enabled = True,
         hadoop_bin_dir = '/usr/bin',
         keytab = '/etc/security/keytabs/hdfs.headless.keytab',
+        default_fs = 'hdfs://c6401.ambari.apache.org:8020',
+        hdfs_site = self.getConfig()['configurations']['hdfs-site'],
         kinit_path_local = '/usr/bin/kinit',
+        principal_name = 'hdfs',
         user = 'hdfs',
         action = ['execute'],
         hadoop_conf_dir = '/etc/hadoop/conf',
@@ -226,3 +248,35 @@ class TestServiceCheck(RMFTestCase):
         try_sleep = 5,
     )
     self.assertNoMoreResources()
+
+
+  
+  def test_service_check_during_upgrade(self, socket_mock):
+    config_file = self.get_src_folder() + "/test/python/stacks/2.2/configs/hive-upgrade.json"
+    with open(config_file, 'r') as f:
+      json_content = json.load(f)
+
+    json_content['commandParams']['version'] = "2.3.0.0-1234"
+
+    self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/service_check.py",
+      classname="HiveServiceCheck",
+      command="service_check",
+      config_dict = json_content,
+      hdp_stack_version = self.STACK_VERSION,
+      target = RMFTestCase.TARGET_COMMON_SERVICES)
+
+    self.assertResourceCalled('Execute', "! beeline -u 'jdbc:hive2://c6402.ambari.apache.org:10010/;transportMode=binary' -e '' 2>&1| awk '{print}'|grep -i -e 'Connection refused' -e 'Invalid URL'",
+      path = ['/bin/', '/usr/bin/', '/usr/lib/hive/bin/', '/usr/sbin/'],
+      timeout = 30,
+      user = 'ambari-qa')
+
+    self.assertResourceCalled('File', '/tmp/hcatSmoke.sh',
+      content = StaticFile('hcatSmoke.sh'),
+      mode = 0755)
+
+    self.assertResourceCalled('Execute', "env JAVA_HOME=/usr/jdk64/jdk1.7.0_45 /tmp/hcatSmoke.sh hcatsmoke prepare false",
+        logoutput = True,
+        path = ['/usr/sbin','/usr/local/bin','/bin','/usr/bin', '/bin:/usr/hdp/current/hadoop-client/bin:/usr/hdp/2.3.0.0-1234/hive/bin'],
+        tries = 3,
+        user = 'ambari-qa',
+        try_sleep = 5)

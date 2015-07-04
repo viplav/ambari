@@ -24,55 +24,34 @@ moduleFor('controller:settings', 'SettingsController', {
     'controller:databases',
     'controller:index',
     'controller:open-queries',
-    'controller:loaded-files',
     'controller:index/history-query/results',
     'controller:index/history-query/explain',
-    'controller:columns',
     'controller:udfs',
     'controller:index/history-query/logs',
     'controller:visual-explain',
     'controller:tez-ui',
-    'controller:tables',
     'adapter:database',
-    'adapter:application'
+    'adapter:application',
+    'service:settings',
+    'service:notify',
+    'service:database',
+    'service:file',
+    'service:session',
+    'service:job',
+    'service:job-progress'
   ]
 });
 
 test('can add a setting', function() {
   var controller = this.subject();
 
-  ok(!controller.get('currentSettings.settings.length'), 'No initial settings');
+  ok(!controller.get('settings.length'), 'No initial settings');
 
   Ember.run(function() {
     controller.send('add');
   });
 
-  equal(controller.get('currentSettings.settings.length'), 1, 'Can add settings');
-});
-
-test('hasSettings return true if there are settings', function() {
-  var controller = this.subject();
-
-  controller.get('currentSettings');
-  ok(!controller.hasSettings(null), 'No settings => return false');
-
-  Ember.run(function() {
-    controller.send('add');
-  });
-
-  ok(controller.hasSettings(null), '1 setting => returns true');
-});
-
-test('setSettingForQuery', function() {
-  var controller = this.subject();
-
-  var settings = [ Ember.Object.create({key: 'key', value: 'value'}) ];
-
-  Ember.run(function() {
-    controller.setSettingForQuery(1, settings);
-  });
-
-  equal(controller.get('currentSettings.settings.firstObject.key'), settings.get('key'), 'It sets the settings for specified query');
+  equal(controller.get('settings.length'), 1, 'Can add settings');
 });
 
 test('validate', function() {
@@ -100,12 +79,58 @@ test('validate', function() {
   ];
 
   Ember.run(function() {
-    controller.set('index.model', Ember.Object.create({ id: 1 }));
-    controller.get('currentSettings');
-    controller.setSettingForQuery(1, settings);
+    controller.set('settings', settings);
   });
 
-  var currentSettings = controller.get('model.firstObject.settings');
+  var currentSettings = controller.get('settings');
   ok(!currentSettings.get('firstObject.valid'), "First setting doesn\' pass validataion");
   ok(currentSettings.get('lastObject.valid'), 'Second setting passes validation');
+});
+
+test('Actions', function(assert) {
+  assert.expect(5);
+
+  var settingsService = Ember.Object.create({
+    add: function() {
+      assert.ok(true, 'add called');
+    },
+    remove: function(setting) {
+      assert.ok(setting, 'Setting param is sent');
+    },
+    createKey: function(name) {
+      assert.ok(name, 'Name param is sent');
+    },
+    removeAll: function() {
+      assert.ok(true, 'removeAll called');
+    },
+    saveDefaultSettings: function() {
+      assert.ok(true, 'saveDefaultSettings called');
+    }
+  });
+
+  var controller = this.subject();
+  controller.set('settingsService', settingsService);
+
+  Ember.run(function() {
+    controller.send('add');
+    controller.send('remove', {});
+    controller.send('addKey', {});
+    controller.send('removeAll');
+    controller.send('saveDefaultSettings');
+  });
+});
+
+
+test('Excluded settings', function(assert) {
+  var controller = this.subject();
+
+  console.log(controller.get('predefinedSettings'));
+  assert.equal(controller.get('excluded').length, 0, 'Initially there are no excluded settings');
+
+  Ember.run(function() {
+    controller.get('settings').pushObject(Ember.Object.create({ key: { name: 'hive.tez.container.size' }}));
+    controller.get('settings').pushObject(Ember.Object.create({ key: { name: 'hive.prewarm.enabled' }}));
+  });
+
+  assert.equal(controller.get('excluded').length, 2, 'Two settings are excluded');
 });

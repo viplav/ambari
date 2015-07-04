@@ -52,27 +52,38 @@ App.MainServiceInfoSummaryController = Em.Controller.extend(App.WidgetSectionMix
     {
       serviceName: 'HDFS',
       type: 'ranger-hdfs-plugin-properties',
-      propertyName: 'ranger-hdfs-plugin-enabled'
-    },
-    {
-      serviceName: 'HIVE',
-      type: 'ranger-hive-plugin-properties',
-      propertyName: 'ranger-hive-plugin-enabled'
+      propertyName: 'ranger-hdfs-plugin-enabled',
+      valueForEnable: 'Yes'
     },
     {
       serviceName: 'HBASE',
       type: 'ranger-hbase-plugin-properties',
-      propertyName: 'ranger-hbase-plugin-enabled'
+      propertyName: 'ranger-hbase-plugin-enabled',
+      valueForEnable: 'Yes'
+    },
+    {
+      serviceName: 'HIVE',
+      type: 'hive-env',
+      propertyName: 'hive_security_authorization',
+      valueForEnable: 'Ranger'
     },
     {
       serviceName: 'KNOX',
       type: 'ranger-knox-plugin-properties',
-      propertyName: 'ranger-knox-plugin-enabled'
+      propertyName: 'ranger-knox-plugin-enabled',
+      valueForEnable: 'Yes'
     },
     {
       serviceName: 'STORM',
       type: 'ranger-storm-plugin-properties',
-      propertyName: 'ranger-storm-plugin-enabled'
+      propertyName: 'ranger-storm-plugin-enabled',
+      valueForEnable: 'Yes'
+    },
+    {
+      serviceName: 'YARN',
+      type: 'ranger-yarn-plugin-properties',
+      propertyName: 'ranger-yarn-plugin-enabled',
+      valueForEnable: 'Yes'
     }
   ],
 
@@ -95,7 +106,8 @@ App.MainServiceInfoSummaryController = Em.Controller.extend(App.WidgetSectionMix
           var displayName = (stackService) ? stackService.get('displayName') : item.serviceName;
           return $.extend(item, {
             pluginTitle: Em.I18n.t('services.service.summary.ranger.plugin.title').format(displayName),
-            isDisplayed: App.Service.find().someProperty('serviceName', item.serviceName),
+            isDisplayed: App.Service.find().someProperty('serviceName', item.serviceName) &&
+              stackService.get('configTypes').hasOwnProperty(item.type),
             status: Em.I18n.t('services.service.summary.ranger.plugin.loadingStatus')
           });
         }),
@@ -126,7 +138,7 @@ App.MainServiceInfoSummaryController = Em.Controller.extend(App.WidgetSectionMix
   getRangerPluginsStatus: function (data) {
     var urlParams = [];
     this.get('rangerPlugins').forEach(function (item) {
-      if (App.Service.find().someProperty('serviceName', item.serviceName)) {
+      if (App.Service.find().someProperty('serviceName', item.serviceName) && data.Clusters.desired_configs.hasOwnProperty(item.type)) {
         var currentTag = data.Clusters.desired_configs[item.type].tag;
         var isTagChanged = item.tag != currentTag;
         Em.set(item, 'isDisplayed', true);
@@ -162,11 +174,15 @@ App.MainServiceInfoSummaryController = Em.Controller.extend(App.WidgetSectionMix
     data.items.forEach(function (item) {
       var serviceName = this.get('rangerPlugins').findProperty('type', item.type).serviceName;
       var propertyName = this.get('rangerPlugins').findProperty('type', item.type).propertyName;
-      var statusMap = {
-        Yes: 'alerts.table.state.enabled',
-        No: 'alerts.table.state.disabled'
-      };
-      var statusString = statusMap[item.properties[propertyName]] || 'common.unknown';
+      var propertyValue = this.get('rangerPlugins').findProperty('type', item.type).valueForEnable;
+      var statusString;
+
+      if (item.properties[propertyName]) {
+        statusString = item.properties[propertyName] == propertyValue ? 'alerts.table.state.enabled' : 'alerts.table.state.disabled';
+      }
+      else {
+        statusString = 'common.unknown';
+      }
       Em.set(this.get('rangerPlugins').findProperty('serviceName', serviceName), 'status', Em.I18n.t(statusString));
     }, this);
   },
@@ -431,6 +447,8 @@ App.MainServiceInfoSummaryController = Em.Controller.extend(App.WidgetSectionMix
           });
         })
       );
+    } else {
+      this.set("mineWidgets", []);
     }
     this.set('isMineWidgetsLoaded', true);
   },
@@ -478,7 +496,7 @@ App.MainServiceInfoSummaryController = Em.Controller.extend(App.WidgetSectionMix
   hideWidget: function (event) {
     var widgetToHide = event.context;
     var activeLayout = this.get('activeWidgetLayout');
-    var widgetIds = activeLayout.get('widgets').map(function(widget) {
+    var widgetIds = activeLayout.get('widgets').map(function (widget) {
       return {
         "id": widget.get("id")
       }
@@ -490,8 +508,8 @@ App.MainServiceInfoSummaryController = Em.Controller.extend(App.WidgetSectionMix
         "layout_name": activeLayout.get("layoutName"),
         "scope": activeLayout.get("scope"),
         "section_name": activeLayout.get("sectionName"),
-        "widgets": widgetIds.filter(function(widget) {
-          return widget.id != widgetToHide.id;
+        "widgets": widgetIds.filter(function (widget) {
+          return widget.id !== widgetToHide.id;
         })
       }
     };
@@ -504,9 +522,26 @@ App.MainServiceInfoSummaryController = Em.Controller.extend(App.WidgetSectionMix
         layoutId: activeLayout.get("id"),
         data: data
       },
-      success: 'updateActiveLayout'
+      success: 'hideWidgetSuccessCallback'
     });
 
+  },
+
+  /**
+   * @param {object|null} data
+   * @param {object} opt
+   * @param {object} params
+   */
+  hideWidgetSuccessCallback: function (data, opt, params) {
+    params.data.WidgetLayoutInfo.widgets = params.data.WidgetLayoutInfo.widgets.map(function (widget) {
+      return {
+        WidgetInfo: {
+          id: widget.id
+        }
+      }
+    });
+    App.widgetLayoutMapper.map({items: [params.data]});
+    this.propertyDidChange('widgets');
   },
 
   /**
@@ -580,7 +615,10 @@ App.MainServiceInfoSummaryController = Em.Controller.extend(App.WidgetSectionMix
    * create widget
    */
   createWidget: function () {
-    App.router.send('addServiceWidget', this.get('activeWidgetLayout.widgets').objectAt(0));
+    App.router.send('createServiceWidget', Em.Object.create({
+      layout: this.get('activeWidgetLayout'),
+      serviceName: this.get('content.serviceName')
+    }));
   },
 
   /**
@@ -588,6 +626,7 @@ App.MainServiceInfoSummaryController = Em.Controller.extend(App.WidgetSectionMix
    * @param {App.Widget} content
    */
   editWidget: function (content) {
+    content.set('serviceName', this.get('content.serviceName'));
     App.router.send('editServiceWidget', content);
   },
 

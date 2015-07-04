@@ -18,21 +18,10 @@
 
 package org.apache.ambari.server.state.cluster;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import org.apache.ambari.server.AmbariException;
-import org.apache.ambari.server.ServiceComponentNotFoundException;
-import org.apache.ambari.server.ServiceNotFoundException;
-import org.apache.ambari.server.events.listeners.upgrade.HostVersionOutOfSyncListener;
-import org.apache.ambari.server.orm.GuiceJpaInitializer;
-import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
-import org.apache.ambari.server.orm.OrmTestHelper;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
+import org.apache.ambari.server.state.Config;
+import org.apache.ambari.server.state.ConfigFactory;
 import org.apache.ambari.server.state.Host;
 import org.apache.ambari.server.state.MaintenanceState;
 import org.apache.ambari.server.state.RepositoryVersionState;
@@ -44,6 +33,23 @@ import org.apache.ambari.server.state.ServiceComponentHostFactory;
 import org.apache.ambari.server.state.ServiceFactory;
 import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.State;
+import org.apache.ambari.server.testing.DeadlockWarningThread;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.apache.ambari.server.AmbariException;
+import org.apache.ambari.server.ServiceComponentNotFoundException;
+import org.apache.ambari.server.ServiceNotFoundException;
+import org.apache.ambari.server.events.listeners.upgrade.HostVersionOutOfSyncListener;
+import org.apache.ambari.server.orm.GuiceJpaInitializer;
+import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
+import org.apache.ambari.server.orm.OrmTestHelper;
 import org.easymock.EasyMock;
 import org.junit.After;
 import org.junit.Assert;
@@ -84,6 +90,9 @@ public class ClusterDeadlockTest {
   private ServiceComponentHostFactory serviceComponentHostFactory;
 
   @Inject
+  private ConfigFactory configFactory;
+
+  @Inject
   private OrmTestHelper helper;
 
   private StackId stackId = new StackId("HDP-0.1");
@@ -116,6 +125,16 @@ public class ClusterDeadlockTest {
     cluster.createClusterVersion(stackId,
         stackId.getStackVersion(), "admin", RepositoryVersionState.UPGRADING);
 
+    Config config1 = configFactory.createNew(cluster, "test-type1", new HashMap<String, String>(), new HashMap<String,
+        Map<String, String>>());
+    Config config2 = configFactory.createNew(cluster, "test-type2", new HashMap<String, String>(), new HashMap<String,
+        Map<String, String>>());
+    config1.persist();
+    config2.persist();
+    cluster.addConfig(config1);
+    cluster.addConfig(config2);
+    cluster.addDesiredConfig("test user", new HashSet<Config>(Arrays.asList(config1, config2)));
+
     // 100 hosts
     for (int i = 0; i < NUMBER_OF_HOSTS; i++) {
       String hostName = "c64-" + i;
@@ -143,7 +162,7 @@ public class ClusterDeadlockTest {
    *
    * @throws Exception
    */
-  @Test(timeout = 30000)
+  @Test()
   public void testDeadlockBetweenImplementations() throws Exception {
     Service service = cluster.getService("HDFS");
     ServiceComponent nameNodeComponent = service.getServiceComponent("NAMENODE");
@@ -168,8 +187,17 @@ public class ClusterDeadlockTest {
       threads.add(thread);
     }
 
-    for (Thread thread : threads) {
-      thread.join();
+    DeadlockWarningThread wt = new DeadlockWarningThread(threads);
+    
+    while (true) {
+      if(!wt.isAlive()) {
+          break;
+      }
+    }
+    if (wt.isDeadlocked()){
+      Assert.assertFalse(wt.getErrorMessages().toString(), wt.isDeadlocked());
+    } else {
+      Assert.assertFalse(wt.isDeadlocked());
     }
   }
 
@@ -179,7 +207,7 @@ public class ClusterDeadlockTest {
    *
    * @throws Exception
    */
-  @Test(timeout = 35000)
+  @Test()
   public void testAddingHostComponentsWhileReading() throws Exception {
     Service service = cluster.getService("HDFS");
     ServiceComponent nameNodeComponent = service.getServiceComponent("NAMENODE");
@@ -194,8 +222,17 @@ public class ClusterDeadlockTest {
       threads.add(thread);
     }
 
-    for (Thread thread : threads) {
-      thread.join();
+    DeadlockWarningThread wt = new DeadlockWarningThread(threads);
+    
+    while (true) {
+      if(!wt.isAlive()) {
+          break;
+      }
+    }
+    if (wt.isDeadlocked()){
+      Assert.assertFalse(wt.getErrorMessages().toString(), wt.isDeadlocked());
+    } else {
+      Assert.assertFalse(wt.isDeadlocked());
     }
   }
 
@@ -205,7 +242,7 @@ public class ClusterDeadlockTest {
    *
    * @throws Exception
    */
-  @Test(timeout = 75000)
+  @Test()
   public void testDeadlockWhileRestartingComponents() throws Exception {
     // for each host, install both components
     List<ServiceComponentHost> serviceComponentHosts = new ArrayList<ServiceComponentHost>();
@@ -236,9 +273,79 @@ public class ClusterDeadlockTest {
       clusterWriterThread.start();
       schWriterThread.start();
     }
+    
+    DeadlockWarningThread wt = new DeadlockWarningThread(threads);
+    
+    while (true) {
+      if(!wt.isAlive()) {
+          break;
+      }
+    }
+    if (wt.isDeadlocked()){
+      Assert.assertFalse(wt.getErrorMessages().toString(), wt.isDeadlocked());
+    } else {
+      Assert.assertFalse(wt.isDeadlocked());
+    }
+  }
+
+  @Test
+  public void testDeadlockWithConfigsUpdate() throws Exception {
+    List<Thread> threads = new ArrayList<Thread>();
+    for (int i = 0; i < NUMBER_OF_THREADS; i++) {
+      ClusterDesiredConfigsReaderThread readerThread = null;
+      for (int j = 0; j < NUMBER_OF_THREADS; j++) {
+        readerThread = new ClusterDesiredConfigsReaderThread();
+        threads.add(readerThread);
+      }
+      for (Config config : cluster.getAllConfigs()) {
+        ConfigUpdaterThread configUpdaterThread = new ConfigUpdaterThread(config);
+        threads.add(configUpdaterThread);
+      }
+
+    }
 
     for (Thread thread : threads) {
-      thread.join();
+      thread.start();
+    }
+
+    DeadlockWarningThread wt = new DeadlockWarningThread(threads);
+
+    while (true) {
+      if(!wt.isAlive()) {
+        break;
+      }
+    }
+    if (wt.isDeadlocked()){
+      Assert.assertFalse(wt.getErrorMessages().toString(), wt.isDeadlocked());
+    } else {
+      Assert.assertFalse(wt.isDeadlocked());
+    }
+
+
+  }
+
+
+  private final class ClusterDesiredConfigsReaderThread extends Thread {
+    @Override
+    public void run() {
+      for (int i =0; i<1500; i++) {
+        cluster.getDesiredConfigs();
+      }
+    }
+  }
+
+  private final class ConfigUpdaterThread extends Thread {
+    private Config config;
+
+    public ConfigUpdaterThread(Config config) {
+      this.config = config;
+    }
+
+    @Override
+    public void run() {
+      for (int i =0; i<500; i++) {
+        config.persist(false);
+      }
     }
   }
 

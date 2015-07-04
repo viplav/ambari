@@ -100,6 +100,32 @@ App.MainAlertDefinitionDetailsView = App.TableView.extend({
     tagName: 'tr',
     didInsertElement: function () {
       App.tooltip($("[rel=tooltip]"));
+      App.tooltip($(".alert-text"), {
+        placement: 'left',
+        delay: { "show": 0, "hide": 1500 },
+        template: '<div class="tooltip"><div class="tooltip-arrow"></div><div class="tooltip-inner alert-def-detail-tooltip"></div></div>'
+      });    },
+
+    /**
+     * Router transition to service page
+     * @param event
+     */
+    goToService: function (event) {
+      if (event && event.context) {
+        App.router.transitionTo('main.services.service.summary', event.context);
+      }
+    },
+
+    /**
+     * Router transition to host level alerts page
+     * @param {object} event
+     * @method goToHostAlerts
+     */
+    goToHostAlerts: function (event) {
+      if (event && event.context) {
+        App.router.get('mainHostDetailsController').set('referer', App.router.location.lastSetURL);
+        App.router.transitionTo('main.hosts.hostDetails.alerts', event.context);
+      }
     }
   }),
 
@@ -141,4 +167,24 @@ App.MainAlertDefinitionDetailsView = App.TableView.extend({
     }
   }
 
+});
+
+
+App.AlertInstanceServiceHostView = Em.View.extend({
+
+  templateName: require('templates/main/alerts/instance_service_host'),
+
+  /**
+   * Define whether show link for transition to service page
+   */
+  serviceIsLink: function () {
+    return App.Service.find().someProperty('serviceName', this.get('instance.service.serviceName'));
+  }.property('instance.service.serviceName'),
+
+  /**
+   * Define whether show separator between service and hosts labels
+   */
+  showSeparator: function () {
+    return this.get('instance.serviceDisplayName') && this.get('instance.hostName');
+  }.property('instance.serviceDisplayName', 'instance.hostName')
 });

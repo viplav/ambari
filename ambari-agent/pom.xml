@@ -41,6 +41,7 @@
     <ambari_commons.install.dir>/usr/lib/ambari-agent/lib/ambari_commons</ambari_commons.install.dir>
     <resource_management.install.dir>/usr/lib/ambari-agent/lib/resource_management</resource_management.install.dir>
     <jinja.install.dir>/usr/lib/ambari-agent/lib/ambari_jinja2</jinja.install.dir>
+    <simplejson.install.dir>/usr/lib/ambari-agent/lib/ambari_simplejson</simplejson.install.dir>
     <lib.dir>/usr/lib/ambari-agent/lib</lib.dir>
     <python.ver>python &gt;= 2.6</python.ver>
     <deb.python.ver>python (&gt;= 2.6)</deb.python.ver>
@@ -50,7 +51,6 @@
     <target.cache.dir>${project.build.directory}/cache/</target.cache.dir>
     <resource.keeper.script>${ambari.server.module}/src/main/python/ambari_server/resourceFilesKeeper.py</resource.keeper.script>
     <init.d.dir>/etc/rc.d/init.d</init.d.dir>
-    <sudoers.d.dir>/etc/sudoers.d</sudoers.d.dir>
   </properties>
   <build>
     <plugins>
@@ -192,6 +192,7 @@
           <description>Maven Recipe: RPM Package.</description>
           <requires>
             <require>openssl</require>
+            <require>rpm-python</require>
             <require>zlib</require>
             <require>${python.ver}</require>
           </requires>
@@ -248,7 +249,7 @@
                   <location>conf/unix/ambari-sudo.sh</location>
                 </source>
               </sources>
-            </mapping>
+            </mapping>         
             <mapping>
               <directory>${ambari_commons.install.dir}</directory>
               <username>root</username>
@@ -283,6 +284,17 @@
                 </source>
               </sources>
             </mapping>
+            <mapping>
+              <directory>${simplejson.install.dir}</directory>
+              <filemode>755</filemode>
+              <username>root</username>
+              <groupname>root</groupname>
+              <sources>
+                <source>
+                  <location>${project.basedir}/../ambari-common/src/main/python/ambari_simplejson/</location>
+                </source>
+              </sources>
+            </mapping>
              <mapping>
               <directory>${lib.dir}/examples</directory>
               <filemode>755</filemode>
@@ -306,6 +318,17 @@
               </sources>
             </mapping>
             <mapping>
+              <directory>/etc/ambari-agent/conf</directory>
+              <filemode>755</filemode>
+              <username>root</username>
+              <groupname>root</groupname>
+              <sources>
+                <source>
+                  <location>conf/unix/logging.conf.sample</location>
+                </source>
+              </sources>
+            </mapping>              
+            <mapping>
               <directory>/usr/sbin</directory>
               <filemode>755</filemode>
               <username>root</username>
@@ -320,6 +343,7 @@
             </mapping>
             <mapping>
               <directory>/var/lib/ambari-agent</directory>
+              <configuration>true</configuration>
               <filemode>700</filemode>
               <username>root</username>
               <groupname>root</groupname>
@@ -365,7 +389,7 @@
             </mapping>
             <mapping>
               <directory>/var/lib/${project.artifactId}/data/tmp</directory>
-              <filemode>755</filemode>
+              <filemode>777</filemode>
               <username>root</username>
               <groupname>root</groupname>
             </mapping>
@@ -389,17 +413,6 @@
               <sources>
                 <source>
                   <location>etc/init.d/ambari-agent</location>
-                </source>
-              </sources>
-            </mapping>
-            <mapping>
-              <directory>${sudoers.d.dir}</directory>
-              <username>root</username>
-              <groupname>root</groupname>
-              <directoryIncluded>false</directoryIncluded>
-              <sources>
-                <source>
-                  <location>etc/sudoers.d</location>
                 </source>
               </sources>
             </mapping>
@@ -474,6 +487,17 @@
               </mapper>
             </data>
             <data>
+              <src>${project.basedir}/../ambari-common/src/main/python/ambari_simplejson</src>
+              <type>directory</type>
+              <mapper>
+                <type>perm</type>
+                <prefix>${simplejson.install.dir}</prefix>
+                <user>root</user>
+                <group>root</group>
+                <filemode>755</filemode>
+              </mapper>
+            </data>
+            <data>
               <src>src/examples</src>
               <type>directory</type>
               <mapper>
@@ -495,14 +519,15 @@
                   <filemode>755</filemode>
               </mapper>
             </data>
-           <data>
-              <src>etc/sudoers.d/ambari-agent</src>
+            <data>
+              <src>conf/unix/logging.conf.sample</src>
               <type>file</type>
               <mapper>
                 <type>perm</type>
-                <prefix>${sudoers.d.dir}</prefix>
+                <prefix>/etc/ambari-agent/conf</prefix>
                   <user>root</user>
                   <group>root</group>
+                  <filemode>755</filemode>
               </mapper>
             </data>
             <data>
@@ -710,6 +735,8 @@
         <artifactId>apache-rat-plugin</artifactId>
         <configuration>
           <excludes>
+            <exclude>conf/unix/logging.conf.sample</exclude>
+            <exclude>conf/windows/logging.conf.sample</exclude>
             <exclude>src/test/python/tmp_hostcheck.result</exclude>
             <exclude>src/examples/*</exclude>
             <exclude>src/test/python/dummy*.txt</exclude>
@@ -717,7 +744,6 @@
             <exclude>src/test/python/ambari_agent/dummy*.txt</exclude>
             <exclude>src/main/python/ambari_agent/imports.txt</exclude>
             <exclude>src/main/python/ambari_agent/apscheduler/**</exclude>
-            <exclude>etc/sudoers.d/ambari-agent</exclude>
             <exclude>**/*.erb</exclude>
             <exclude>**/*.json</exclude>
             <exclude>**/*.pydevproject</exclude>

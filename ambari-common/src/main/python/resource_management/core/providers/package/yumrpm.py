@@ -36,24 +36,22 @@ REMOVE_CMD = {
   False: ['/usr/bin/yum', '-d', '0', '-e', '0', '-y', 'erase'],
 }
 
-CHECK_CMD = "installed_pkgs=`rpm -qa '%s'` ; [ ! -z \"$installed_pkgs\" ]"
-CHECK_AVAILABLE_PACKAGES_CMD = "! yum list available '%s'"
-
 class YumProvider(PackageProvider):
-  def install_package(self, name, use_repos=[]):
-    if not self._check_existence(name) or use_repos:
+  def install_package(self, name, use_repos=[], skip_repos=[]):
+    if use_repos or not self._check_existence(name):
       cmd = INSTALL_CMD[self.get_logoutput()]
       if use_repos:
         enable_repo_option = '--enablerepo=' + ",".join(use_repos)
-        cmd = cmd + ['--disablerepo=*', enable_repo_option]
+        disable_repo_option = '--disablerepo=' + "*,".join(skip_repos)
+        cmd = cmd + [disable_repo_option, enable_repo_option]
       cmd = cmd + [name]
       Logger.info("Installing package %s ('%s')" % (name, string_cmd_from_args_list(cmd)))
       shell.checked_call(cmd, sudo=True, logoutput=self.get_logoutput())
     else:
       Logger.info("Skipping installation of existing package %s" % (name))
 
-  def upgrade_package(self, name, use_repos=[]):
-    return self.install_package(name, use_repos)
+  def upgrade_package(self, name, use_repos=[], skip_repos=[]):
+    return self.install_package(name, use_repos, skip_repos)
 
   def remove_package(self, name):
     if self._check_existence(name):
@@ -64,13 +62,26 @@ class YumProvider(PackageProvider):
       Logger.info("Skipping removal of non-existing package %s" % (name))
 
   def _check_existence(self, name):
-    if '.' in name:  # To work with names like 'zookeeper_2_2_1_0_2072.noarch'
-      name = os.path.splitext(name)[0]
-    code, out = shell.call(CHECK_CMD % name)
-    if bool(code):
-      return False
-    elif '*' in name or '?' in name:  # Check if all packages matching pattern are installed
-      code1, out1 = shell.call(CHECK_AVAILABLE_PACKAGES_CMD % name)
-      return not bool(code1)
+    """
+    For regexp names:
+    If only part of packages were installed during early canceling.
+    Let's say:
+    1. install hbase_2_3_*
+    2. Only hbase_2_3_1234 is installed, but is not hbase_2_3_1234_regionserver yet.
+    3. We cancel the yum
+    
+    In that case this is bug of packages we require.
+    And hbase_2_3_*_regionserver should be added to metainfo.xml.
+    
+    Checking existence should never fail in such a case for hbase_2_3_*, otherwise it
+    gonna break things like removing packages and some others.
+    
+    Note: this method SHOULD NOT use yum directly (yum.rpmdb doesn't use it). Because a lot of issues we have, when customer have
+    yum in inconsistant state (locked, used, having invalid repo). Once packages are installed
+    we should not rely on that.
+    """
+    if os.geteuid() == 0: 
+      return self.yum_check_package_available(name)
     else:
-      return True
+      return self.rpm_check_package_available(name)
+    

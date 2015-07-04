@@ -26,6 +26,7 @@ from stacks.utils.RMFTestCase import *
 class TestHBaseMaster(RMFTestCase):
   COMMON_SERVICES_PACKAGE_DIR = "HBASE/0.96.0.2.0/package"
   STACK_VERSION = "2.0.6"
+  TMP_PATH = "/hadoop"
 
   def test_configure_default(self):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/hbase_master.py",
@@ -70,7 +71,8 @@ class TestHBaseMaster(RMFTestCase):
         user = 'hbase',
     )
     
-    self.assertResourceCalled('Execute', 'rm -f /var/run/hbase/hbase-hbase-master.pid',
+    self.assertResourceCalled('File', '/var/run/hbase/hbase-hbase-master.pid',
+        action = ['delete'],
     )
     self.assertNoMoreResources()
 
@@ -167,7 +169,8 @@ class TestHBaseMaster(RMFTestCase):
         user = 'hbase',
     )
 
-    self.assertResourceCalled('Execute', 'rm -f /var/run/hbase/hbase-hbase-master.pid',
+    self.assertResourceCalled('File', '/var/run/hbase/hbase-hbase-master.pid',
+        action = ['delete'],
     )
     self.assertNoMoreResources()
 
@@ -203,24 +206,13 @@ class TestHBaseMaster(RMFTestCase):
       group = 'hadoop',
       recursive = True,
     )
-    self.assertResourceCalled('Directory', '/hadoop/hbase',
-      owner = 'hbase',
-      mode = 0775,
-      recursive = True,
-      cd_access='a'
-    )
-    self.assertResourceCalled('Directory', '/hadoop/hbase/local',
-      owner = 'hbase',
-      group = 'hadoop',
-      mode=0775,
-      recursive = True,
-    )
-    self.assertResourceCalled('Directory', '/hadoop/hbase/local/jars',
-      owner = 'hbase',
-      group = 'hadoop',
-      mode=0775,
-      recursive = True,
-    )
+    self.assertResourceCalled('Directory', '/hadoop',
+                              recursive = True,
+                              cd_access = 'a',
+                              )
+    self.assertResourceCalled('Execute', ('chmod', '1777', u'/hadoop'),
+                              sudo = True,
+                              )
     self.assertResourceCalled('XmlConfig', 'hbase-site.xml',
       owner = 'hbase',
       group = 'hadoop',
@@ -291,7 +283,7 @@ class TestHBaseMaster(RMFTestCase):
         owner = 'hbase',
         hadoop_conf_dir = '/etc/hadoop/conf',
         type = 'directory',
-        action = ['create_on_execute'],
+        action = ['create_on_execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name=UnknownConfigurationMock(), default_fs='hdfs://c6401.ambari.apache.org:8020',
     )
     self.assertResourceCalled('HdfsResource', '/apps/hbase/staging',
         security_enabled = False,
@@ -303,7 +295,7 @@ class TestHBaseMaster(RMFTestCase):
         owner = 'hbase',
         hadoop_bin_dir = '/usr/bin',
         type = 'directory',
-        action = ['create_on_execute'],
+        action = ['create_on_execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name=UnknownConfigurationMock(), default_fs='hdfs://c6401.ambari.apache.org:8020',
         mode = 0711,
     )
     self.assertResourceCalled('HdfsResource', None,
@@ -313,7 +305,7 @@ class TestHBaseMaster(RMFTestCase):
         
         kinit_path_local = '/usr/bin/kinit',
         user = 'hdfs',
-        action = ['execute'],
+        action = ['execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name=UnknownConfigurationMock(), default_fs='hdfs://c6401.ambari.apache.org:8020',
         hadoop_conf_dir = '/etc/hadoop/conf',
     )
 
@@ -326,24 +318,13 @@ class TestHBaseMaster(RMFTestCase):
       group = 'hadoop',
       recursive = True,
     )
-    self.assertResourceCalled('Directory', '/hadoop/hbase',
-      owner = 'hbase',
-      mode = 0775,
-      recursive = True,
-      cd_access='a'
-    )
-    self.assertResourceCalled('Directory', '/hadoop/hbase/local',
-      owner = 'hbase',
-      group = 'hadoop',
-      mode=0775,
-      recursive = True
-    )
-    self.assertResourceCalled('Directory', '/hadoop/hbase/local/jars',
-      owner = 'hbase',
-      group = 'hadoop',
-      mode=0775,
-      recursive = True,
-    )
+    self.assertResourceCalled('Directory', '/hadoop',
+                              recursive = True,
+                              cd_access = 'a',
+                              )
+    self.assertResourceCalled('Execute', ('chmod', '1777', u'/hadoop'),
+                              sudo = True,
+                              )
     self.assertResourceCalled('XmlConfig', 'hbase-site.xml',
       owner = 'hbase',
       group = 'hadoop',
@@ -417,7 +398,7 @@ class TestHBaseMaster(RMFTestCase):
         owner = 'hbase',
         hadoop_conf_dir = '/etc/hadoop/conf',
         type = 'directory',
-        action = ['create_on_execute'],
+        action = ['create_on_execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name='hdfs', default_fs='hdfs://c6401.ambari.apache.org:8020',
     )
     self.assertResourceCalled('HdfsResource', '/apps/hbase/staging',
         security_enabled = True,
@@ -429,7 +410,7 @@ class TestHBaseMaster(RMFTestCase):
         owner = 'hbase',
         hadoop_bin_dir = '/usr/bin',
         type = 'directory',
-        action = ['create_on_execute'],
+        action = ['create_on_execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name='hdfs', default_fs='hdfs://c6401.ambari.apache.org:8020',
         mode = 0711,
     )
     self.assertResourceCalled('HdfsResource', None,
@@ -439,7 +420,7 @@ class TestHBaseMaster(RMFTestCase):
         
         kinit_path_local = '/usr/bin/kinit',
         user = 'hdfs',
-        action = ['execute'],
+        action = ['execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name='hdfs', default_fs='hdfs://c6401.ambari.apache.org:8020',
         hadoop_conf_dir = '/etc/hadoop/conf',
     )
 
@@ -459,23 +440,14 @@ class TestHBaseMaster(RMFTestCase):
       group = 'hadoop',
       recursive = True)
 
-    self.assertResourceCalled('Directory', '/hadoop/hbase',
-      owner = 'hbase',
-      mode = 0775,
-      recursive = True,
-      cd_access='a')
+    self.assertResourceCalled('Directory', '/hadoop',
+                              recursive = True,
+                              cd_access = 'a',
+                              )
 
-    self.assertResourceCalled('Directory', '/hadoop/hbase/local',
-      owner = 'hbase',
-      group = 'hadoop',
-      mode=0775,
-      recursive = True)
-
-    self.assertResourceCalled('Directory', '/hadoop/hbase/local/jars',
-      owner = 'hbase',
-      group = 'hadoop',
-      mode=0775,
-      recursive = True)
+    self.assertResourceCalled('Execute', ('chmod', '1777', u'/hadoop'),
+                              sudo = True,
+                              )
 
     self.assertResourceCalled('XmlConfig', 'hbase-site.xml',
       owner = 'hbase',
@@ -543,7 +515,10 @@ class TestHBaseMaster(RMFTestCase):
         security_enabled = False,
         hadoop_bin_dir = '/usr/hdp/current/hadoop-client/bin',
         keytab = UnknownConfigurationMock(),
+        default_fs = 'hdfs://nn1',
+        hdfs_site = self.getConfig()['configurations']['hdfs-site'],
         kinit_path_local = '/usr/bin/kinit',
+        principal_name = UnknownConfigurationMock(),
         user = 'hdfs',
         owner = 'hbase',
         hadoop_conf_dir = '/usr/hdp/current/hadoop-client/conf',
@@ -554,7 +529,10 @@ class TestHBaseMaster(RMFTestCase):
         security_enabled = False,
         hadoop_bin_dir = '/usr/hdp/current/hadoop-client/bin',
         keytab = UnknownConfigurationMock(),
+        default_fs = 'hdfs://nn1',
+        hdfs_site = self.getConfig()['configurations']['hdfs-site'],
         kinit_path_local = '/usr/bin/kinit',
+        principal_name = UnknownConfigurationMock(),
         user = 'hdfs',
         owner = 'hbase',
         hadoop_conf_dir = '/usr/hdp/current/hadoop-client/conf',
@@ -566,7 +544,10 @@ class TestHBaseMaster(RMFTestCase):
         security_enabled = False,
         hadoop_bin_dir = '/usr/hdp/current/hadoop-client/bin',
         keytab = UnknownConfigurationMock(),
+        default_fs = 'hdfs://nn1',
+        hdfs_site = self.getConfig()['configurations']['hdfs-site'],
         kinit_path_local = '/usr/bin/kinit',
+        principal_name = UnknownConfigurationMock(),
         user = 'hdfs',
         action = ['execute'],
         hadoop_conf_dir = '/usr/hdp/current/hadoop-client/conf',
@@ -712,7 +693,7 @@ class TestHBaseMaster(RMFTestCase):
                        target = RMFTestCase.TARGET_COMMON_SERVICES,
                        mocks_dict = mocks_dict)
     self.assertResourceCalled('Execute',
-                              'hdp-select set hbase-master %s' % version,)
+                              ('hdp-select', 'set', 'hbase-master', version), sudo=True,)
     self.assertFalse(call_mock.called)
     self.assertNoMoreResources()
 
@@ -736,7 +717,7 @@ class TestHBaseMaster(RMFTestCase):
                        call_mocks = [(0, None), (0, None), (0, None), (0, None)],
                        mocks_dict = mocks_dict)
 
-    self.assertResourceCalled('Execute', 'hdp-select set hbase-master %s' % version)
+    self.assertResourceCalled('Execute', ('hdp-select', 'set', 'hbase-master', version), sudo=True)
 
     self.assertEquals(2, mocks_dict['call'].call_count)
     self.assertEquals(

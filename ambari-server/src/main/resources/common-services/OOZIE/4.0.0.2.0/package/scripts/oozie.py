@@ -17,6 +17,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 """
+import hashlib
 import os
 
 from resource_management.core.resources.service import ServiceConfig
@@ -29,6 +30,7 @@ from resource_management.libraries.functions.version import compare_versions
 from resource_management.libraries.resources.xml_config import XmlConfig
 from resource_management.libraries.script.script import Script
 from resource_management.core.resources.packaging import Package
+from resource_management.core.shell import as_user
 from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
 from ambari_commons import OSConst
 from ambari_commons.inet_utils import download_file
@@ -129,7 +131,7 @@ def oozie(is_server=False):
       mode=0644,
       group=params.user_group,
       owner=params.oozie_user,
-      content=Template('adminusers.txt.j2', oozie_user=params.oozie_user)
+      content=Template('adminusers.txt.j2', oozie_admin_users=params.oozie_admin_users)
     )
   else:
     File ( format("{params.conf_dir}/adminusers.txt"),
@@ -177,9 +179,11 @@ def oozie_ownership():
 def oozie_server_specific():
   import params
   
+  no_op_test = as_user(format("ls {pid_file} >/dev/null 2>&1 && ps -p `cat {pid_file}` >/dev/null 2>&1"), user=params.oozie_user)
+  
   File(params.pid_file,
     action="delete",
-    not_if=format("ls {pid_file} >/dev/null 2>&1 && ps -p `cat {pid_file}` >/dev/null 2>&1")
+    not_if=no_op_test
   )
   
   oozie_server_directories = [format("{oozie_home}/{oozie_tmp_dir}"), params.oozie_pid_dir, params.oozie_log_dir, params.oozie_tmp_dir, params.oozie_data_dir, params.oozie_lib_dir, params.oozie_webapps_dir, params.oozie_webapps_conf_dir, params.oozie_server_dir]
@@ -194,19 +198,27 @@ def oozie_server_specific():
   Directory(params.oozie_libext_dir,
             recursive=True,
   )
+  
+  hashcode_file = format("{oozie_home}/.hashcode")
+  hashcode = hashlib.md5(format('{oozie_home}/oozie-sharelib.tar.gz')).hexdigest()
+  skip_recreate_sharelib = format("test -f {hashcode_file} && test -d {oozie_home}/share && [[ `cat {hashcode_file}` == '{hashcode}' ]]")
 
-  no_op_test = format("ls {pid_file} >/dev/null 2>&1 && ps -p `cat {pid_file}` >/dev/null 2>&1")
-  if not params.host_sys_prepped:
-    configure_cmds = []
-    configure_cmds.append(('tar','-xvf',format('{oozie_home}/oozie-sharelib.tar.gz'),'-C',params.oozie_home))
-    configure_cmds.append(('cp', params.ext_js_path, params.oozie_libext_dir))
-    configure_cmds.append(('chown', format('{oozie_user}:{user_group}'), format('{oozie_libext_dir}/{ext_js_file}')))
-    configure_cmds.append(('chown', '-RL', format('{oozie_user}:{user_group}'), params.oozie_webapps_conf_dir))
-
-    Execute( configure_cmds,
-      not_if  = no_op_test,
-      sudo = True,
-    )
+  untar_sharelib = ('tar','-xvf',format('{oozie_home}/oozie-sharelib.tar.gz'),'-C',params.oozie_home)
+  
+  Execute( untar_sharelib,    # time-expensive
+    not_if  = format("{no_op_test} || {skip_recreate_sharelib}"), 
+    sudo = True,
+  )
+    
+  configure_cmds = []
+  configure_cmds.append(('cp', params.ext_js_path, params.oozie_libext_dir))
+  configure_cmds.append(('chown', format('{oozie_user}:{user_group}'), format('{oozie_libext_dir}/{ext_js_file}')))
+  configure_cmds.append(('chown', '-RL', format('{oozie_user}:{user_group}'), params.oozie_webapps_conf_dir))
+  
+  Execute( configure_cmds,
+    not_if  = no_op_test,
+    sudo = True,
+  )
 
   if params.jdbc_driver_name=="com.mysql.jdbc.Driver" or \
      params.jdbc_driver_name == "com.microsoft.sqlserver.jdbc.SQLServerDriver" or \
@@ -240,9 +252,13 @@ def oozie_server_specific():
       not_if  = no_op_test,
     )
 
-  Execute(format("cd {oozie_tmp_dir} && {oozie_setup_sh} prepare-war {oozie_secure}"),
+  Execute(format("cd {oozie_tmp_dir} && {oozie_setup_sh} prepare-war {oozie_secure}"),    # time-expensive
     user = params.oozie_user,
-    not_if  = no_op_test
+    not_if  = format("{no_op_test} || {skip_recreate_sharelib}")
+  )
+  File(hashcode_file,
+       content = hashcode,
+       mode = 0644,
   )
 
   if params.hdp_stack_version != "" and compare_versions(params.hdp_stack_version, '2.2') >= 0:

@@ -17,7 +17,7 @@
 }}
 
 <div class="actions-field row-fluid">
-  {{view App.AddMetricExpressionView}}
+  {{view App.AddMetricExpressionView class="add-metric-menu"}}
   <div class="btn-group span2 add-operator">
     <a class="btn dropdown-toggle" data-toggle="dropdown" href="#">
       {{t dashboard.widgets.wizard.step2.newOperator}}
@@ -29,6 +29,11 @@
       {{/each}}
     </ul>
   </div>
+  <div class="input-append span2 add-number">
+    {{view App.AddNumberExpressionView valueBinding="view.numberValue" class="input-small"}}
+    <button class="btn add-on" {{action addNumber target="view"}} {{bindAttr disabled="view.isNumberValueInvalid"}}>{{t dashboard.widgets.wizard.step2.newNumber}}</button>
+  </div>
+
 </div>
 <div class="metric-field">
   {{#if view.expression.isRemovable}}

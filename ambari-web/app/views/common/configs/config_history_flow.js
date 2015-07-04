@@ -152,13 +152,29 @@ App.ConfigHistoryFlowView = Em.View.extend({
     event.stopPropagation();
     this.set('showFullList', true);
   },
+
   hideFullList: function (event) {
     this.set('showFullList', !(this.get('serviceVersions.length') > this.VERSIONS_IN_DROPDOWN));
   },
 
+  computePosition: function(event) {
+    var $el = Em.$('.dropdown-menu', event.currentTarget);
+    // remove existing style - in case user scrolls the page
+    $el.removeAttr('style');
+    var elHeight = $el.outerHeight(),
+      parentHeight = $el.parent().outerHeight(),
+      pagePosition = window.innerHeight + window.pageYOffset,
+      elBottomPosition = $el.offset().top + elHeight,
+      shouldShowUp = elBottomPosition > pagePosition ;
+    if (shouldShowUp) {
+      $el.css('margin-top', -(elHeight - parentHeight));
+    }
+  },
+
   didInsertElement: function () {
     App.tooltip(this.$('[data-toggle=tooltip]'),{
-      placement: 'bottom'
+      placement: 'bottom',
+      html: false
     });
     App.tooltip(this.$('[data-toggle=arrow-tooltip]'),{
       placement: 'top'
@@ -326,7 +342,11 @@ App.ConfigHistoryFlowView = Em.View.extend({
   compare: function (event) {
     this.set('controller.compareServiceVersion', event.context);
     this.set('compareServiceVersion', event.context);
-    this.get('controller').onConfigGroupChange();
+    var controller = this.get('controller');
+    controller.get('stepConfigs').clear();
+    controller.loadCompareVersionConfigs(controller.get('allConfigs')).done(function() {
+      controller.onLoadOverrides(controller.get('allConfigs'));
+    });
   },
   removeCompareVersionBar: function () {
     var displayedVersion = this.get('displayedServiceVersion.version');
@@ -341,6 +361,7 @@ App.ConfigHistoryFlowView = Em.View.extend({
         serviceVersion.set('isDisplayed', false);
       }
     });
+    this.set('isCompareMode', false);
     this.shiftFlowOnSwitch(versionIndex);
     this.get('controller').loadSelectedVersion(displayedVersion);
   },
@@ -443,7 +464,6 @@ App.ConfigHistoryFlowView = Em.View.extend({
         self.get('controller').setProperties({
           saveConfigsFlag: true,
           serviceConfigVersionNote: this.get('serviceConfigNote'),
-          serviceConfigNote: this.get('serviceConfigNote'),
           preSelectedConfigVersion: Em.Object.create({
             version: newVersionToBeCreated,
             serviceName: self.get('displayedServiceVersion.serviceName'),

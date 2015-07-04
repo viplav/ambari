@@ -23,6 +23,7 @@ from resource_management import *
 import status_params
 from ambari_commons import OSCheck
 
+
 if OSCheck.is_windows_family():
   from params_windows import *
 else:
@@ -109,11 +110,14 @@ if not is_hbase_distributed:
 else:
   hbase_heapsize = master_heapsize
 
+max_open_files_limit = default("/configurations/ams-hbase-env/max_open_files_limit", "32768")
+
 zookeeper_quorum_hosts = ','.join(ams_collector_hosts) if is_hbase_distributed else 'localhost'
 
 ams_checkpoint_dir = config['configurations']['ams-site']['timeline.metrics.aggregator.checkpoint.dir']
 hbase_pid_dir = status_params.hbase_pid_dir
-hbase_tmp_dir = config['configurations']['ams-hbase-site']['hbase.tmp.dir']
+_hbase_tmp_dir = config['configurations']['ams-hbase-site']['hbase.tmp.dir']
+hbase_tmp_dir = substitute_vars(_hbase_tmp_dir, config['configurations']['ams-hbase-site'])
 # TODO UPGRADE default, update site during upgrade
 _local_dir_conf = default('/configurations/ams-hbase-site/hbase.local.dir', "${hbase.tmp.dir}/local")
 local_dir = substitute_vars(_local_dir_conf, config['configurations']['ams-hbase-site'])
@@ -175,14 +179,19 @@ else:
 hbase_env_sh_template = config['configurations']['ams-hbase-env']['content']
 ams_env_sh_template = config['configurations']['ams-env']['content']
 
+hbase_staging_dir = default("/configurations/ams-hbase-site/hbase.bulkload.staging.dir", "/amshbase/staging")
 
-hbase_staging_dir = "/apps/hbase/staging"
 #for create_hdfs_directory
 hostname = config["hostname"]
 hdfs_user_keytab = config['configurations']['hadoop-env']['hdfs_user_keytab']
 hdfs_user = config['configurations']['hadoop-env']['hdfs_user']
 hdfs_principal_name = config['configurations']['hadoop-env']['hdfs_principal_name']
 kinit_path_local = functions.get_kinit_path(default('/configurations/kerberos-env/executable_search_paths', None))
+
+
+
+hdfs_site = config['configurations']['hdfs-site']
+default_fs = config['configurations']['core-site']['fs.defaultFS']
 
 import functools
 #create partial functions with common arguments for every HdfsResource call
@@ -194,7 +203,10 @@ HdfsResource = functools.partial(
   keytab = hdfs_user_keytab,
   kinit_path_local = kinit_path_local,
   hadoop_bin_dir = hadoop_bin_dir,
-  hadoop_conf_dir = hadoop_conf_dir
+  hadoop_conf_dir = hadoop_conf_dir,
+  principal_name = hdfs_principal_name,
+  hdfs_site = hdfs_site,
+  default_fs = default_fs
  )
 
 

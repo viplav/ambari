@@ -21,8 +21,7 @@
   <target>2.3.*.*</target>
 
   <order>
-
-    <group xsi:type="cluster" name="PRE_CLUSTER" title="Prepare Backups">
+    <group xsi:type="cluster" name="PRE_CLUSTER" title="Prepare Upgrade">
       <direction>UPGRADE</direction>
       <execute-stage service="HDFS" component="NAMENODE" title="Pre Upgrade HDFS">
         <task xsi:type="execute" hosts="master">
@@ -50,9 +49,26 @@
         </task>
       </execute-stage>
 
-      <execute-stage service="RANGER" component="RANGER_ADMIN" title="Pre Upgrade Ranger">
+      <execute-stage service="RANGER" component="RANGER_ADMIN" title="Pre Upgrade Ranger Admin">
+        <task xsi:type="execute" hosts="master">
+            <script>scripts/ranger_admin.py</script>
+            <function>pre_rolling_restart</function>
+        </task>
         <task xsi:type="manual">
           <message>Before continuing, please backup the Ranger Admin database and Ranger Audit database</message>
+        </task>
+      </execute-stage>
+
+      <execute-stage service="RANGER_KMS" component="RANGER_KMS_SERVER" title="Pre Upgrade Ranger KMS">
+        <task xsi:type="manual">
+          <message>Before continuing, please backup Ranger KMS database</message>
+        </task>
+      </execute-stage>
+
+      <execute-stage service="TEZ" component="TEZ_CLIENT" title="Check Tez Tarball">
+        <task xsi:type="execute" hosts="any">
+          <script>scripts/pre_upgrade.py</script>
+          <function>prepare</function>
         </task>
       </execute-stage>
 
@@ -69,6 +85,13 @@
       <service name="RANGER">
         <component>RANGER_ADMIN</component>
         <component>RANGER_USERSYNC</component>
+      </service>
+    </group>
+
+    <group name="RANGER_KMS" title="Ranger_KMS">
+      <skippable>true</skippable>
+      <service name="RANGER_KMS">
+        <component>RANGER_KMS_SERVER</component>
       </service>
     </group>
 
@@ -109,6 +132,7 @@
     </group>
     
     <group name="CORE_SLAVES" title="Core Slaves" xsi:type="colocated">
+      <skippable>true</skippable>
       <service-check>false</service-check>
       <service name="HDFS">
         <component>DATANODE</component>
@@ -116,6 +140,7 @@
       
       <service name="HBASE">
         <component>HBASE_REGIONSERVER</component>
+        <component>PHOENIX_QUERY_SERVER</component>
       </service>
 
       <service name="YARN">
@@ -208,6 +233,10 @@
         <component>SQOOP</component>
       </service>
 
+      <service name="MAHOUT">
+        <component>MAHOUT</component>
+      </service>
+
       <service name="HIVE">
         <component>HIVE_CLIENT</component>
         <component>HCAT</component>
@@ -266,6 +295,17 @@
       </service>
     </group>
 
+    <group name="ACCUMULO" title="Accumulo">
+      <skippable>true</skippable>
+      <service name="ACCUMULO">
+        <component>ACCUMULO_MASTER</component>
+        <component>ACCUMULO_TSERVER</component>
+        <component>ACCUMULO_MONITOR</component>
+        <component>ACCUMULO_GC</component>
+        <component>ACCUMULO_TRACER</component>
+        <component>ACCUMULO_CLIENT</component>
+      </service>
+    </group>
 
     <group xsi:type="cluster" name="POST_CLUSTER" title="Finalize {{direction.text.proper}}">
       <skippable>true</skippable>
@@ -288,6 +328,14 @@
           <function>finalize_rolling_upgrade</function>
         </task>
       </execute-stage>
+      
+      <execute-stage title="Update remaining HDP stack to {{version}}">
+        <task xsi:type="execute">
+          <script>scripts/ru_set_all.py</script>
+          <function>actionexecute</function>
+        </task>
+      </execute-stage>
+      
       <execute-stage title="Save Cluster State" service="" component="">
         <task xsi:type="server_action" class="org.apache.ambari.server.serveraction.upgrades.FinalizeUpgradeAction">
         </task>
@@ -318,6 +366,14 @@
       </component>
 
       <component name="RANGER_USERSYNC">
+        <upgrade>
+          <task xsi:type="restart" />
+        </upgrade>
+      </component>
+    </service>
+
+    <service name="RANGER_KMS">
+      <component name="RANGER_KMS_SERVER">
         <upgrade>
           <task xsi:type="restart" />
         </upgrade>
@@ -389,6 +445,7 @@
         </upgrade>
       </component>
     </service>
+
     <service name="HBASE">
       <component name="HBASE_MASTER">
         <upgrade>
@@ -403,6 +460,12 @@
       </component>
 
       <component name="HBASE_CLIENT">
+        <upgrade>
+          <task xsi:type="restart" />
+        </upgrade>
+      </component>
+
+      <component name="PHOENIX_QUERY_SERVER">
         <upgrade>
           <task xsi:type="restart" />
         </upgrade>
@@ -427,6 +490,14 @@
 
     <service name="SQOOP">
       <component name="SQOOP">
+        <upgrade>
+          <task xsi:type="restart" />
+        </upgrade>
+      </component>
+    </service>
+
+    <service name="MAHOUT">
+      <component name="MAHOUT">
         <upgrade>
           <task xsi:type="restart" />
         </upgrade>
@@ -528,10 +599,35 @@
 
     <service name="OOZIE">
       <component name="OOZIE_SERVER">
+        <pre-upgrade>
+          <task xsi:type="execute" hosts="all" summary="Shut down all Oozie servers">
+            <script>scripts/oozie_server.py</script>
+            <function>stop</function>
+          </task>
+
+          <task xsi:type="execute" hosts="any" summary="Upgrading the database and creating a new sharelib">
+            <script>scripts/oozie_server_upgrade.py</script>
+            <function>upgrade_oozie_database_and_sharelib</function>
+          </task>
+        </pre-upgrade>
+
+        <pre-downgrade>
+          <task xsi:type="execute" hosts="all" summary="Shut down all Oozie servers">
+            <script>scripts/oozie_server.py</script>
+            <function>stop</function>
+          </task>
+
+          <task xsi:type="execute" hosts="any" summary="Create a new sharelib">
+            <script>scripts/oozie_server_upgrade.py</script>
+            <function>create_sharelib</function>
+          </task>
+        </pre-downgrade>
+
         <upgrade>
           <task xsi:type="restart" />
         </upgrade>
       </component>
+
       <component name="OOZIE_CLIENT">
         <upgrade>
           <task xsi:type="restart" />
@@ -598,6 +694,39 @@
 
     <service name="FLUME">
       <component name="FLUME_HANDLER">
+        <upgrade>
+          <task xsi:type="restart" />
+        </upgrade>
+      </component>
+    </service>
+
+    <service name="ACCUMULO">
+      <component name="ACCUMULO_MASTER">
+        <upgrade>
+          <task xsi:type="restart" />
+        </upgrade>
+      </component>
+      <component name="ACCUMULO_MONITOR">
+        <upgrade>
+          <task xsi:type="restart" />
+        </upgrade>
+      </component>
+      <component name="ACCUMULO_GC">
+        <upgrade>
+          <task xsi:type="restart" />
+        </upgrade>
+      </component>
+      <component name="ACCUMULO_TRACER">
+        <upgrade>
+          <task xsi:type="restart" />
+        </upgrade>
+      </component>
+      <component name="ACCUMULO_TSERVER">
+        <upgrade>
+          <task xsi:type="restart" />
+        </upgrade>
+      </component>
+      <component name="ACCUMULO_CLIENT">
         <upgrade>
           <task xsi:type="restart" />
         </upgrade>

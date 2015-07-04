@@ -84,8 +84,17 @@ import org.apache.ambari.server.events.publishers.AmbariEventPublisher;
 import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
 import org.apache.ambari.server.orm.OrmTestHelper;
-import org.apache.ambari.server.orm.dao.*;
-import org.apache.ambari.server.orm.entities.*;
+import org.apache.ambari.server.orm.dao.ClusterDAO;
+import org.apache.ambari.server.orm.dao.HostDAO;
+import org.apache.ambari.server.orm.dao.RepositoryVersionDAO;
+import org.apache.ambari.server.orm.dao.ResourceTypeDAO;
+import org.apache.ambari.server.orm.dao.StackDAO;
+import org.apache.ambari.server.orm.entities.ClusterEntity;
+import org.apache.ambari.server.orm.entities.HostEntity;
+import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
+import org.apache.ambari.server.orm.entities.ResourceEntity;
+import org.apache.ambari.server.orm.entities.ResourceTypeEntity;
+import org.apache.ambari.server.orm.entities.StackEntity;
 import org.apache.ambari.server.serveraction.kerberos.KerberosIdentityDataFileWriter;
 import org.apache.ambari.server.serveraction.kerberos.KerberosIdentityDataFileWriterFactory;
 import org.apache.ambari.server.serveraction.kerberos.KerberosServerAction;
@@ -229,7 +238,7 @@ public class TestHeartbeatHandler {
     hostObject.setState(HostState.UNHEALTHY);
 
     ExecutionCommand execCmd = new ExecutionCommand();
-    execCmd.setCommandId("2-34");
+    execCmd.setRequestAndStage(2, 34);
     execCmd.setHostname(DummyHostname1);
     aq.enqueue(DummyHostname1, new ExecutionCommand());
     HeartBeat hb = new HeartBeat();
@@ -285,8 +294,10 @@ public class TestHeartbeatHandler {
     cr.setRoleCommand("START");
     cr.setClusterName(DummyCluster);
 
-    cr.setConfigurationTags(new HashMap<String, Map<String,String>>() {{
-      put("global", new HashMap<String,String>() {{ put("tag", "version1"); }});
+    cr.setConfigurationTags(new HashMap<String, Map<String, String>>() {{
+      put("global", new HashMap<String, String>() {{
+        put("tag", "version1");
+      }});
     }});
 
     reports.add(cr);
@@ -348,8 +359,10 @@ public class TestHeartbeatHandler {
     cr.setStdOut("");
     cr.setExitCode(215);
     cr.setClusterName(DummyCluster);
-    cr.setConfigurationTags(new HashMap<String, Map<String,String>>() {{
-      put("global", new HashMap<String,String>() {{ put("tag", "version1"); }});
+    cr.setConfigurationTags(new HashMap<String, Map<String, String>>() {{
+      put("global", new HashMap<String, String>() {{
+        put("tag", "version1");
+      }});
     }});
     reports.add(cr);
     hb.setReports(reports);
@@ -359,10 +372,10 @@ public class TestHeartbeatHandler {
 
     ActionManager am = getMockActionManager();
     expect(am.getTasks(anyObject(List.class))).andReturn(
-        new ArrayList<HostRoleCommand>() {{
-          add(command);
-          add(command);
-        }});
+      new ArrayList<HostRoleCommand>() {{
+        add(command);
+        add(command);
+      }});
     replay(am);
 
     HeartBeatHandler handler = getHeartBeatHandler(am, aq);
@@ -520,14 +533,14 @@ public class TestHeartbeatHandler {
     assertTrue(serviceComponentHost1.isRestartRequired());
 
     final HostRoleCommand command = hostRoleCommandFactory.create(DummyHostname1,
-            Role.DATANODE, null, null);
+      Role.DATANODE, null, null);
 
     ActionManager am = getMockActionManager();
     expect(am.getTasks(anyObject(List.class))).andReturn(
-            new ArrayList<HostRoleCommand>() {{
-              add(command);
-              add(command);
-            }});
+      new ArrayList<HostRoleCommand>() {{
+        add(command);
+        add(command);
+      }});
     replay(am);
 
     HeartBeatHandler handler = getHeartBeatHandler(am, aq);
@@ -599,10 +612,10 @@ public class TestHeartbeatHandler {
 
     ActionManager am = getMockActionManager();
     expect(am.getTasks(anyObject(List.class))).andReturn(
-            new ArrayList<HostRoleCommand>() {{
-              add(command);
-              add(command);
-            }});
+      new ArrayList<HostRoleCommand>() {{
+        add(command);
+        add(command);
+      }});
     replay(am);
 
     HeartBeatHandler handler = getHeartBeatHandler(am, aq);
@@ -870,6 +883,37 @@ public class TestHeartbeatHandler {
     assertEquals(rc.getMaxLifetimeCount(), "12");
     assertEquals(rc.getRetryGap(), "5");
     assertEquals(rc.getWindowInMinutes(), "60");
+  }
+
+  @Test
+  public void testRegistrationAgentConfig() throws AmbariException,
+      InvalidStateTransitionException {
+    ActionManager am = getMockActionManager();
+    replay(am);
+    Clusters fsm = clusters;
+    HeartBeatHandler handler = new HeartBeatHandler(fsm, new ActionQueue(), am,
+                                                    injector);
+    clusters.addHost(DummyHostname1);
+    Host hostObject = clusters.getHost(DummyHostname1);
+    hostObject.setIPv4("ipv4");
+    hostObject.setIPv6("ipv6");
+
+    Register reg = new Register();
+    HostInfo hi = new HostInfo();
+    hi.setHostName(DummyHostname1);
+    hi.setOS(DummyOsType);
+    reg.setHostname(DummyHostname1);
+    reg.setCurrentPingPort(DummyCurrentPingPort);
+    reg.setHardwareProfile(hi);
+    reg.setAgentVersion(metaInfo.getServerVersion());
+    reg.setPrefix(Configuration.PREFIX_DIR);
+    RegistrationResponse rr = handler.handleRegistration(reg);
+    Map<String, String> config = rr.getAgentConfig();
+    assertFalse(config.isEmpty());
+    assertTrue(config.containsKey(Configuration.CHECK_REMOTE_MOUNTS_KEY));
+    assertTrue("true".equals(config.get(Configuration.CHECK_REMOTE_MOUNTS_KEY)));
+    assertTrue(config.containsKey(Configuration.CHECK_MOUNTS_TIMEOUT_KEY));
+    assertTrue("0".equals(config.get(Configuration.CHECK_MOUNTS_TIMEOUT_KEY)));
   }
 
   @Test
@@ -2283,11 +2327,11 @@ public class TestHeartbeatHandler {
     clusterEntity.setDesiredStack(stackEntity);
 
     clusterDAO.create(clusterEntity);
-    
+
     StackId stackId = new StackId(DummyStackId);
-    
+
     Cluster cluster = clusters.getCluster(DummyCluster);
-    
+
     cluster.setDesiredStackVersion(stackId);
     cluster.setCurrentStackVersion(stackId);
     helper.getOrCreateRepositoryVersion(stackId, stackId.getStackVersion());
@@ -2485,7 +2529,7 @@ public class TestHeartbeatHandler {
     hostObject.setState(HostState.UNHEALTHY);
 
     ExecutionCommand execCmd = new ExecutionCommand();
-    execCmd.setCommandId("2-34");
+    execCmd.setRequestAndStage(2, 34);
     execCmd.setHostname(DummyHostname1);
     aq.enqueue(DummyHostname1, new ExecutionCommand());
 

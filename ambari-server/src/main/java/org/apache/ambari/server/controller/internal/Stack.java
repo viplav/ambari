@@ -38,6 +38,7 @@ import org.apache.ambari.server.orm.entities.StackEntity;
 import org.apache.ambari.server.state.AutoDeployInfo;
 import org.apache.ambari.server.state.ComponentInfo;
 import org.apache.ambari.server.state.DependencyInfo;
+import org.apache.ambari.server.state.PropertyDependencyInfo;
 import org.apache.ambari.server.state.PropertyInfo;
 import org.apache.ambari.server.topology.Cardinality;
 import org.apache.ambari.server.topology.Configuration;
@@ -313,6 +314,10 @@ public class Stack {
     return configMap;
   }
 
+  public Map<String, ConfigProperty> getConfigurationPropertiesWithMetadata(String service, String type) {
+    return serviceConfigurations.get(service).get(type);
+  }
+
   /**
    * Get all required config properties for the specified service.
    *
@@ -332,21 +337,27 @@ public class Stack {
   }
 
   /**
-   * Get required config properties for the specified service and configuration type.
+   * Get required config properties for the specified service which belong to the specified property type.
    *
-   * @param service  service name
-   * @param type     configuration type
+   * @param service       service name
+   * @param propertyType  property type
    *
-   * @return collection of required properties for the given service and type
+   * @return collection of required properties for the given service and property type
    */
-  //todo: change type to PropertyInfo.PropertyType
-  public Collection<ConfigProperty> getRequiredConfigurationProperties(String service, String type) {
-    Collection<ConfigProperty> requiredConfigs = new HashSet<ConfigProperty>();
-    Map<String, ConfigProperty> configProperties = requiredServiceConfigurations.get(service).get(type);
-    if (configProperties != null) {
-      requiredConfigs.addAll(configProperties.values());
+  public Collection<ConfigProperty> getRequiredConfigurationProperties(String service, PropertyInfo.PropertyType propertyType) {
+    Collection<ConfigProperty> matchingProperties = new HashSet<ConfigProperty>();
+    Map<String, Map<String, ConfigProperty>> requiredProperties = requiredServiceConfigurations.get(service);
+    if (requiredProperties != null) {
+      for (Map.Entry<String, Map<String, ConfigProperty>> typePropertiesEntry : requiredProperties.entrySet()) {
+        for (ConfigProperty configProperty : typePropertiesEntry.getValue().values()) {
+          if (configProperty.getPropertyTypes().contains(propertyType)) {
+            matchingProperties.add(configProperty);
+          }
+        }
+
+      }
     }
-    return requiredConfigs;
+    return matchingProperties;
   }
 
   public boolean isPasswordProperty(String service, String type, String propertyName) {
@@ -721,13 +732,16 @@ public class Stack {
     private Map<String, String> attributes;
     private Set<PropertyInfo.PropertyType> propertyTypes;
     private String type;
+    private Set<PropertyDependencyInfo> dependsOnProperties =
+      Collections.emptySet();
 
-    private ConfigProperty(StackConfigurationResponse config) {
+    ConfigProperty(StackConfigurationResponse config) {
       this.name = config.getPropertyName();
       this.value = config.getPropertyValue();
       this.attributes = config.getPropertyAttributes();
       this.propertyTypes = config.getPropertyType();
       this.type = normalizeType(config.getType());
+      this.dependsOnProperties = config.getDependsOnProperties();
     }
 
     public ConfigProperty(String type, String name, String value) {
@@ -766,6 +780,10 @@ public class Stack {
 
     public void setAttributes(Map<String, String> attributes) {
       this.attributes = attributes;
+    }
+
+    Set<PropertyDependencyInfo> getDependsOnProperties() {
+      return this.dependsOnProperties;
     }
 
     private String normalizeType(String type) {

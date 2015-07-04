@@ -21,6 +21,7 @@ from resource_management import *
 from ambari_commons.constants import AMBARI_SUDO_BINARY
 from resource_management.libraries.functions import format
 from resource_management.libraries.functions import conf_select
+from resource_management.libraries.functions import hdp_select
 from resource_management.libraries.functions.version import format_hdp_stack_version
 from resource_management.libraries.functions.default import default
 from resource_management.libraries.functions import get_kinit_path
@@ -48,8 +49,8 @@ stack_version_unformatted = str(config['hostLevelParams']['stack_version'])
 hdp_stack_version = format_hdp_stack_version(stack_version_unformatted)
 
 hadoop_conf_dir = conf_select.get_hadoop_conf_dir()
-hadoop_bin_dir = conf_select.get_hadoop_dir("bin")
-hadoop_lib_home = conf_select.get_hadoop_dir("lib")
+hadoop_bin_dir = hdp_select.get_hadoop_dir("bin")
+hadoop_lib_home = hdp_select.get_hadoop_dir("lib")
 
 #hadoop params
 if Script.is_hdp_stack_greater_or_equal("2.2"):
@@ -93,6 +94,7 @@ execute_path = oozie_bin_dir + os.pathsep + hadoop_bin_dir
 oozie_user = config['configurations']['oozie-env']['oozie_user']
 smokeuser = config['configurations']['cluster-env']['smokeuser']
 smokeuser_principal = config['configurations']['cluster-env']['smokeuser_principal_name']
+oozie_admin_users = format(config['configurations']['oozie-env']['oozie_admin_users'])
 user_group = config['configurations']['cluster-env']['user_group']
 jdk_location = config['hostLevelParams']['jdk_location']
 check_db_connection_jar_name = "DBConnectionVerification.jar"
@@ -130,8 +132,6 @@ oozie_env_sh_template = config['configurations']['oozie-env']['content']
 
 oracle_driver_jar_name = "ojdbc6.jar"
 
-java_home = config['hostLevelParams']['java_home']
-java_version = int(config['hostLevelParams']['java_version'])
 oozie_metastore_user_name = config['configurations']['oozie-site']['oozie.service.JPAService.jdbc.username']
 oozie_metastore_user_passwd = default("/configurations/oozie-site/oozie.service.JPAService.jdbc.password","")
 oozie_jdbc_connection_url = default("/configurations/oozie-site/oozie.service.JPAService.jdbc.url", "")
@@ -144,6 +144,7 @@ if 'oozie.https.port' in config['configurations']['oozie-site'] or 'oozie.https.
 else:
   oozie_secure = ''
 
+hdfs_site = config['configurations']['hdfs-site']
 fs_root = config['configurations']['core-site']['fs.defaultFS']
 
 if Script.is_hdp_stack_greater_or_equal("2.0") and Script.is_hdp_stack_less_than("2.2"):
@@ -179,6 +180,7 @@ else:
   target = format("{oozie_libext_dir}/{jdbc_driver_jar}")
 
 
+hdfs_share_dir = "/user/oozie/share"
 ambari_server_hostname = config['clusterHostInfo']['ambari_server_host'][0]
 falcon_host = default("/clusterHostInfo/falcon_server_hosts", [])
 has_falcon_host = not len(falcon_host)  == 0
@@ -193,9 +195,12 @@ oozie_hdfs_user_mode = 0775
 hdfs_user_keytab = config['configurations']['hadoop-env']['hdfs_user_keytab']
 hdfs_user = config['configurations']['hadoop-env']['hdfs_user']
 hdfs_principal_name = config['configurations']['hadoop-env']['hdfs_principal_name']
+
+hdfs_site = config['configurations']['hdfs-site']
+default_fs = config['configurations']['core-site']['fs.defaultFS']
 import functools
 #create partial functions with common arguments for every HdfsResource call
-#to create hdfs directory we need to call params.HdfsResource in code
+#to create/delete hdfs directory/file/copyfromlocal we need to call params.HdfsResource in code
 HdfsResource = functools.partial(
   HdfsResource,
   user=hdfs_user,
@@ -203,9 +208,13 @@ HdfsResource = functools.partial(
   keytab = hdfs_user_keytab,
   kinit_path_local = kinit_path_local,
   hadoop_bin_dir = hadoop_bin_dir,
-  hadoop_conf_dir = hadoop_conf_dir
- )
+  hadoop_conf_dir = hadoop_conf_dir,
+  principal_name = hdfs_principal_name,
+  hdfs_site = hdfs_site,
+  default_fs = default_fs
+)
 
+is_webhdfs_enabled = config['configurations']['hdfs-site']['dfs.webhdfs.enabled']
 
 # The logic for LZO also exists in HDFS' params.py
 io_compression_codecs = default("/configurations/core-site/io.compression.codecs", None)

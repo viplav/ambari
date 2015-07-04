@@ -71,6 +71,7 @@ import org.junit.Test;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.persist.PersistService;
+import com.google.inject.persist.UnitOfWork;
 
 /**
  * Tests {@link AlertsDAO}.
@@ -100,6 +101,8 @@ public class AlertsDAOTest {
   public void setup() throws Exception {
     m_injector = Guice.createInjector(new InMemoryDefaultTestModule());
     m_injector.getInstance(GuiceJpaInitializer.class);
+    m_injector.getInstance(UnitOfWork.class).begin();
+
     m_helper = m_injector.getInstance(OrmTestHelper.class);
     m_dao = m_injector.getInstance(AlertsDAO.class);
     m_definitionDao = m_injector.getInstance(AlertDefinitionDAO.class);
@@ -194,6 +197,7 @@ public class AlertsDAOTest {
    */
   @After
   public void teardown() {
+    m_injector.getInstance(UnitOfWork.class).end();
     m_injector.getInstance(PersistService.class).stop();
     m_injector = null;
   }
@@ -1285,11 +1289,11 @@ public class AlertsDAOTest {
     assertEquals(5, currentAlerts.size());
 
     // assert none removed for HDFS
-    m_dao.removeCurrentByService("HDFS");
+    m_dao.removeCurrentByService(m_cluster.getClusterId(), "HDFS");
     currentAlerts = m_dao.findCurrent();
     assertEquals(5, currentAlerts.size());
 
-    m_dao.removeCurrentByService("YARN");
+    m_dao.removeCurrentByService(m_cluster.getClusterId(), "YARN");
     currentAlerts = m_dao.findCurrent();
     assertEquals(0, currentAlerts.size());
   }
@@ -1322,7 +1326,7 @@ public class AlertsDAOTest {
 
     assertNotNull(entity);
 
-    m_dao.removeCurrentByServiceComponentHost(
+    m_dao.removeCurrentByServiceComponentHost(m_cluster.getClusterId(),
         entity.getAlertHistory().getServiceName(),
         entity.getAlertHistory().getComponentName(),
         entity.getAlertHistory().getHostName());

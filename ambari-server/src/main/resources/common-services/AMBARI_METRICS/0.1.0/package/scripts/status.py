@@ -37,6 +37,6 @@ def check_service_status(name):
 def check_service_status(name):
   import service_mapping
   if name=='collector':
-    check_windows_service_status(service_mapping.collector_win_service_name)
+    check_windows_service_status(service_mapping.ams_collector_win_service_name)
   elif name == 'monitor':
-    check_windows_service_status(service_mapping.monitor_win_service_name)
+    check_windows_service_status(service_mapping.ams_monitor_win_service_name)

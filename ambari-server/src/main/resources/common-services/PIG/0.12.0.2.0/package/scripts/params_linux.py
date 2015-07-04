@@ -18,15 +18,14 @@ limitations under the License.
 Ambari Agent
 
 """
-from resource_management import *
-from resource_management.libraries.functions import format
+
+from resource_management.libraries.script.script import Script
+from resource_management.libraries.resources.hdfs_resource import HdfsResource
 from resource_management.libraries.functions import conf_select
+from resource_management.libraries.functions import hdp_select
 from resource_management.libraries.functions.version import format_hdp_stack_version
 from resource_management.libraries.functions.default import default
 from resource_management.libraries.functions import get_kinit_path
-from resource_management.libraries.script.script import Script
-
-import os
 
 # server configurations
 config = Script.get_config()
@@ -42,7 +41,7 @@ version = default("/commandParams/version", None)
 
 # hadoop default parameters
 hadoop_conf_dir = conf_select.get_hadoop_conf_dir()
-hadoop_bin_dir = conf_select.get_hadoop_dir("bin")
+hadoop_bin_dir = hdp_select.get_hadoop_dir("bin")
 pig_conf_dir = "/etc/pig/conf"
 hadoop_home = '/usr'
 pig_bin_dir = ""
@@ -50,12 +49,8 @@ pig_bin_dir = ""
 # hadoop parameters for 2.2+
 if Script.is_hdp_stack_greater_or_equal("2.2"):
   pig_conf_dir = "/usr/hdp/current/pig-client/conf"
-  hadoop_home = '/usr/hdp/current/hadoop-client'
+  hadoop_home = hdp_select.get_hadoop_dir("home")
   pig_bin_dir = '/usr/hdp/current/pig-client/bin'
-  
-  tez_tar_source = config['configurations']['cluster-env']['tez_tar_source']
-  tez_tar_destination = config['configurations']['cluster-env']['tez_tar_destination_folder'] + "/" + os.path.basename(tez_tar_source)
-
 
 hdfs_user = config['configurations']['hadoop-env']['hdfs_user']
 hdfs_principal_name = config['configurations']['hadoop-env']['hdfs_principal_name']
@@ -75,16 +70,24 @@ pig_properties = config['configurations']['pig-properties']['content']
 
 log4j_props = config['configurations']['pig-log4j']['content']
 
+
+
+hdfs_site = config['configurations']['hdfs-site']
+default_fs = config['configurations']['core-site']['fs.defaultFS']
+
 import functools
 #create partial functions with common arguments for every HdfsResource call
 #to create hdfs directory we need to call params.HdfsResource in code
 HdfsResource = functools.partial(
   HdfsResource,
-  user=hdfs_principal_name if security_enabled else hdfs_user,
+  user=hdfs_user,
   security_enabled = security_enabled,
   keytab = hdfs_user_keytab,
   kinit_path_local = kinit_path_local,
   hadoop_bin_dir = hadoop_bin_dir,
-  hadoop_conf_dir = hadoop_conf_dir
+  hadoop_conf_dir = hadoop_conf_dir,
+  principal_name = hdfs_principal_name,
+  hdfs_site = hdfs_site,
+  default_fs = default_fs
  )
 

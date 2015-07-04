@@ -20,17 +20,18 @@ limitations under the License.
 import os
 from resource_management import Script
 from resource_management.libraries.functions import  get_kinit_path, format
+from resource_management.libraries.functions.default import default
 
 
 config = Script.get_config()
 
 conf_dir = os.environ['METADATA_CONF'] if 'METADATA_CONF' in os.environ else '/etc/atlas/conf'
-pid_dir = config['configurations']['metadata-env']['metadata_pid_dir']
-pid_file = format("{pid_dir}/metadata.pid")
-metadata_user = config['configurations']['metadata-env']['metadata_user']
+pid_dir = config['configurations']['atlas-env']['metadata_pid_dir']
+pid_file = format("{pid_dir}/atlas.pid")
+metadata_user = config['configurations']['atlas-env']['metadata_user']
 
 # Security related/required params
 hostname = config['hostname']
 security_enabled = config['configurations']['cluster-env']['security_enabled']
-kinit_path_local = get_kinit_path()
+kinit_path_local = get_kinit_path(default('/configurations/kerberos-env/executable_search_paths', None))
 tmp_dir = Script.get_tmp_dir()

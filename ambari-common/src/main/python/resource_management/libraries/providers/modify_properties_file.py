@@ -26,7 +26,7 @@ from resource_management.libraries.functions.format import format
 from resource_management.core.environment import Environment
 from resource_management.core.source import InlineTemplate
 from resource_management.core.logger import Logger
-from resource_management import sudo
+from resource_management.core import sudo
 
 
 class ModifyPropertiesFileProvider(Provider):
@@ -52,14 +52,14 @@ class ModifyPropertiesFileProvider(Provider):
           in_var_value = line.split(delimiter)[1].strip()
           
           if in_var_name in properties:
-            value = InlineTemplate(unicode(properties[in_var_name])).get_content().strip()
+            value = InlineTemplate(unicode(properties[in_var_name])).get_content()
             new_content_lines[line_num] = u"{0}{1}{2}".format(unicode(in_var_name), delimiter, value)
             unsaved_values.remove(in_var_name)
     else:
       Logger.info(format("Creating new properties file as {filename} doesn't exist"))
        
     for property_name in unsaved_values:
-      value = InlineTemplate(unicode(properties[property_name])).get_content().strip()
+      value = InlineTemplate(unicode(properties[property_name])).get_content()
       line = u"{0}{1}{2}".format(unicode(property_name), delimiter, value)
       new_content_lines.append(line)
           

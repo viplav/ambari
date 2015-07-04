@@ -20,26 +20,34 @@ limitations under the License.
 import sys
 import os
 import json
-import  tempfile
-from resource_management import *
+import tempfile
+from datetime import datetime
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
+
+from resource_management import Script
+from resource_management.core.resources.system import Execute
+from resource_management.core import shell
 from resource_management.libraries.functions import conf_select
 from resource_management.libraries.functions import hdp_select
+from resource_management.libraries.functions.version import compare_versions, format_hdp_stack_version
+from resource_management.libraries.functions.format import format
 from resource_management.libraries.functions.security_commons import build_expectations, \
   cached_kinit_executor, get_params_from_filesystem, validate_security_config_properties, \
   FILE_TYPE_XML
-from resource_management.libraries.functions.version import compare_versions, \
-  format_hdp_stack_version
-from resource_management.libraries.functions.format import format
+
 from resource_management.core.exceptions import Fail
-from datetime import datetime
+from resource_management.core.shell import as_user
+from resource_management.core.logger import Logger
+
+from ambari_commons.os_family_impl import OsFamilyImpl
+from ambari_commons import OSConst
 
 import namenode_upgrade
 from hdfs_namenode import namenode
 from hdfs import hdfs
 import hdfs_rebalance
-from utils import failover_namenode
-from ambari_commons.os_family_impl import OsFamilyImpl
-from ambari_commons import OSConst
+from utils import stop_zkfc_during_ru
+
 
 # hashlib is supplied as of Python 2.5 as the replacement interface for md5
 # and other secure hashes.  In 2.6, md5 is deprecated.  Import hashlib if
@@ -78,7 +86,7 @@ class NameNode(Script):
     env.set_params(params)
     if rolling_restart and params.dfs_ha_enabled:
       if params.dfs_ha_automatic_failover_enabled:
-        failover_namenode()
+        stop_zkfc_during_ru()
       else:
         raise Fail("Rolling Upgrade - dfs.ha.automatic-failover.enabled must be enabled to perform a rolling restart")
     namenode(action="stop", rolling_restart=rolling_restart, env=env)
@@ -204,7 +212,7 @@ class NameNodeDefault(NameNode):
       # is in the cache
       klist_cmd = format("{klist_path_local} -s {ccache_file_path}")
       kinit_cmd = format("{kinit_path_local} -c {ccache_file_path} -kt {hdfs_user_keytab} {hdfs_principal_name}")
-      if os.system(klist_cmd) != 0:
+      if shell.call(klist_cmd, user=params.hdfs_user)[0] != 0:
         Execute(kinit_cmd, user=params.hdfs_user)
 
     def calculateCompletePercent(first, current):
@@ -226,7 +234,10 @@ class NameNodeDefault(NameNode):
 
     parser = hdfs_rebalance.HdfsParser()
 
-    def handle_new_line(line):
+    def handle_new_line(line, is_stderr):
+      if is_stderr:
+        return
+      
       _print('[balancer] %s' % (line))
       pl = parser.parseLine(line)
       if pl:
@@ -250,6 +261,11 @@ class NameNodeDefault(NameNode):
 
 @OsFamilyImpl(os_family=OSConst.WINSRV_FAMILY)
 class NameNodeWindows(NameNode):
+  def install(self, env):
+    import install_params
+    self.install_packages(env, install_params.exclude_packages)
+    #TODO we need this for HA because of manual steps
+    self.configure(env)
 
   def rebalancehdfs(self, env):
     from ambari_commons.os_windows import UserHelper, run_os_command_impersonated

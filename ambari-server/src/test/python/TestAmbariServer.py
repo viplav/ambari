@@ -69,7 +69,7 @@ with patch("platform.linux_distribution", return_value = os_distro_value):
           PERSISTENCE_TYPE_PROPERTY, JDBC_URL_PROPERTY, get_conf_dir, JDBC_USER_NAME_PROPERTY, JDBC_PASSWORD_PROPERTY, \
           JDBC_DATABASE_NAME_PROPERTY, OS_TYPE_PROPERTY, validate_jdk, JDBC_POSTGRES_SCHEMA_PROPERTY, \
           RESOURCES_DIR_PROPERTY, JDBC_RCA_PASSWORD_ALIAS, JDBC_RCA_SCHEMA_PROPERTY, IS_LDAP_CONFIGURED, \
-          SSL_API, SSL_API_PORT, \
+          SSL_API, SSL_API_PORT, CLIENT_API_PORT_PROPERTY,\
           LDAP_MGR_PASSWORD_PROPERTY, LDAP_MGR_PASSWORD_ALIAS, JDBC_PASSWORD_FILENAME, NR_USER_PROPERTY, SECURITY_KEY_IS_PERSISTED, \
           SSL_TRUSTSTORE_PASSWORD_PROPERTY, SECURITY_IS_ENCRYPTION_ENABLED, SSL_TRUSTSTORE_PASSWORD_ALIAS, \
           SECURITY_MASTER_KEY_LOCATION, SECURITY_KEYS_DIR, LDAP_PRIMARY_URL_PROPERTY, store_password_file, \
@@ -83,11 +83,11 @@ with patch("platform.linux_distribution", return_value = os_distro_value):
           run_stack_upgrade, run_metainfo_upgrade, run_schema_upgrade, move_user_custom_actions
         from ambari_server.setupHttps import is_valid_https_port, setup_https, import_cert_and_key_action, get_fqdn, \
           generate_random_string, get_cert_info, COMMON_NAME_ATTR, is_valid_cert_exp, NOT_AFTER_ATTR, NOT_BEFORE_ATTR, \
-          SSL_DATE_FORMAT, import_cert_and_key, is_valid_cert_host, setup_component_https, \
+          SSL_DATE_FORMAT, import_cert_and_key, is_valid_cert_host, setup_truststore, \
           SRVR_ONE_WAY_SSL_PORT_PROPERTY, SRVR_TWO_WAY_SSL_PORT_PROPERTY, GANGLIA_HTTPS
         from ambari_server.setupSecurity import adjust_directory_permissions, get_alias_string, get_ldap_event_spec_names, sync_ldap, LdapSyncOptions, \
           configure_ldap_password, setup_ldap, REGEX_HOSTNAME_PORT, REGEX_TRUE_FALSE, REGEX_ANYTHING, setup_master_key, \
-          setup_ambari_krb5_jaas
+          setup_ambari_krb5_jaas, ensure_can_start_under_current_user, generate_env
         from ambari_server.userInput import get_YN_input, get_choice_string_input, get_validated_string_input, \
           read_password
         from ambari_server_main import get_ulimit_open_files, ULIMIT_OPEN_FILES_KEY, ULIMIT_OPEN_FILES_DEFAULT
@@ -285,11 +285,11 @@ class TestAmbariServer(TestCase):
   @patch.object(OSCheck, "os_distribution", new = MagicMock(return_value = os_distro_value))
   @patch.object(_ambari_server_, "setup_ambari_krb5_jaas")
   @patch.object(_ambari_server_, "setup_master_key")
-  @patch("ambari_server.setupHttps.setup_component_https")
+  @patch.object(_ambari_server_, "setup_truststore")
   @patch.object(_ambari_server_, "setup_https")
   @patch.object(_ambari_server_, "get_validated_string_input")
   def test_setup_security(self, get_validated_string_input_mock, setup_https_mock,
-                          setup_component_https_mock, setup_master_key_mock,
+                          setup_truststore_mock, setup_master_key_mock,
                           setup_ambari_krb5_jaas_mock):
 
     args = {}
@@ -304,6 +304,14 @@ class TestAmbariServer(TestCase):
     get_validated_string_input_mock.return_value = '3'
     _ambari_server_.setup_security(args)
     self.assertTrue(setup_ambari_krb5_jaas_mock.called)
+
+    get_validated_string_input_mock.return_value = '4'
+    _ambari_server_.setup_security(args)
+    self.assertTrue(setup_truststore_mock.called)
+
+    get_validated_string_input_mock.return_value = '5'
+    _ambari_server_.setup_security(args)
+    self.assertTrue(setup_truststore_mock.called)
     pass
 
 
@@ -1004,28 +1012,37 @@ class TestAmbariServer(TestCase):
   @patch("os.path.exists")
   @patch("ambari_server.setupSecurity.set_file_permissions")
   @patch("ambari_server.setupSecurity.get_ambari_properties")
+  @patch("ambari_server.setupSecurity.get_resources_location")
   @patch("ambari_server.setupSecurity.get_value_from_properties")
   @patch("os.mkdir")
   @patch("shutil.rmtree")
-  def test_adjust_directory_permissions(self, rmtree_mock, mkdir_mock,
-                                        get_value_from_properties_mock, get_ambari_properties_mock,
-                                        set_file_permissions_mock, exists_mock):
+  @patch("ambari_commons.os_utils.print_info_msg")
+  @patch("ambari_server.setupSecurity.change_owner")
+  def test_adjust_directory_permissions(self, change_owner_mock, print_info_msg_mock, rmtree_mock, mkdir_mock,
+                                        get_value_from_properties_mock, get_resources_location_mock,
+                                        get_ambari_properties_mock, set_file_permissions_mock, exists_mock):
     # Testing boostrap dir wipe
     properties_mock = MagicMock()
     get_value_from_properties_mock.return_value = "dummy_bootstrap_dir"
+    get_resources_location_mock.return_value = "dummy_resources_dir"
     exists_mock.return_value = False
     adjust_directory_permissions("user")
     self.assertEquals(rmtree_mock.call_args_list[0][0][0], os.path.join(os.getcwd(), "dummy_bootstrap_dir"))
     self.assertTrue(mkdir_mock.called)
 
     set_file_permissions_mock.reset_mock()
+    change_owner_mock.reset_mock()
     # Test recursive calls
-    old_list = configDefaults.NR_ADJUST_OWNERSHIP_LIST
-
+    old_adjust_owner_list = configDefaults.NR_ADJUST_OWNERSHIP_LIST
+    old_change_owner_list = configDefaults.NR_CHANGE_OWNERSHIP_LIST
     try:
       configDefaults.NR_ADJUST_OWNERSHIP_LIST = [
         ( "/etc/ambari-server/conf", "755", "{0}", True ),
         ( "/etc/ambari-server/conf/ambari.properties", "644", "{0}", False )
+      ]
+
+      configDefaults.NR_CHANGE_OWNERSHIP_LIST = [
+        ( "/etc/ambari-server", "{0}", True )
       ]
 
       adjust_directory_permissions("user")
@@ -1033,8 +1050,12 @@ class TestAmbariServer(TestCase):
                       len(configDefaults.NR_ADJUST_OWNERSHIP_LIST))
       self.assertEquals(set_file_permissions_mock.call_args_list[0][0][3], True)
       self.assertEquals(set_file_permissions_mock.call_args_list[1][0][3], False)
+      self.assertTrue(len(change_owner_mock.call_args_list) ==
+                      len(configDefaults.NR_CHANGE_OWNERSHIP_LIST))
+      self.assertEquals(change_owner_mock.call_args_list[0][0][2], True)
     finally:
-      configDefaults.NR_ADJUST_OWNERSHIP_LIST = old_list
+      configDefaults.NR_ADJUST_OWNERSHIP_LIST = old_adjust_owner_list
+      configDefaults.NR_CHANGE_OWNERSHIP_LIST = old_change_owner_list
     pass
 
   @not_for_platform(PLATFORM_WINDOWS)
@@ -1365,6 +1386,7 @@ class TestAmbariServer(TestCase):
     pass
 
   @patch("ambari_server.setupHttps.get_validated_filepath_input")
+  @patch("ambari_server.setupHttps.get_validated_string_input")
   @patch("ambari_server.setupHttps.run_os_command")
   @patch("ambari_server.setupHttps.get_truststore_type")
   @patch("__builtin__.open")
@@ -1376,11 +1398,12 @@ class TestAmbariServer(TestCase):
   @patch("ambari_server.setupHttps.get_YN_input")
   @patch("ambari_server.setupHttps.get_ambari_properties")
   @patch("ambari_server.setupHttps.find_jdk")
-  def test_setup_component_https(self, find_jdk_mock, get_ambari_properties_mock, get_YN_input_mock,
+  def test_setup_truststore(self, find_jdk_mock, get_ambari_properties_mock, get_YN_input_mock,
                                  get_truststore_path_mock, get_truststore_password_mock,
                                  get_delete_cert_command_mock, run_component_https_cmd_mock,
                                  find_properties_file_mock, open_mock,
                                  get_truststore_type_mock, run_os_command_mock,
+                                 get_validated_string_input_mock,
                                  get_validated_filepath_input_mock):
     out = StringIO.StringIO()
     sys.stdout = out
@@ -1390,34 +1413,23 @@ class TestAmbariServer(TestCase):
     alias = "alias"
     #Silent mode
     set_silent(True)
-    setup_component_https(component, command, property, alias)
-    self.assertEqual('command is not enabled in silent mode.\n', out.getvalue())
+    setup_truststore()
+    self.assertEqual('setup-security is not enabled in silent mode.\n', out.getvalue())
     sys.stdout = sys.__stdout__
     #Verbouse mode and jdk_path is None
     set_silent(False)
     p = get_ambari_properties_mock.return_value
-    # Use ssl
-    p.get_property.side_effect = ["true"]
     # Dont disable ssl
     get_YN_input_mock.side_effect = [False]
-    setup_component_https(component, command, property, alias)
-    self.assertTrue(p.get_property.called)
-    self.assertTrue(get_YN_input_mock.called)
-    p.get_property.reset_mock()
-    get_YN_input_mock.reset_mock()
-    # Dont use ssl
-    p.get_property.side_effect = ["false"]
-    # Dont enable ssl
-    get_YN_input_mock.side_effect = [False]
-    setup_component_https(component, command, property, alias)
-    self.assertTrue(p.get_property.called)
+    get_validated_string_input_mock.return_value = "alias"
+    setup_truststore()
     self.assertTrue(get_YN_input_mock.called)
     p.get_property.reset_mock()
     get_YN_input_mock.reset_mock()
     # Cant find jdk
     find_jdk_mock.return_value = None
     try:
-        setup_component_https(component, command, property, alias)
+        setup_truststore()
         self.fail("Should throw exception")
     except FatalException as fe:
         # Expected
@@ -1427,13 +1439,12 @@ class TestAmbariServer(TestCase):
     #Verbouse mode and jdk_path is not None (use_https = true)
     find_jdk_mock.return_value = "/jdk_path"
     p.get_property.side_effect = ["true"]
-    get_YN_input_mock.side_effect = [True]
+    get_YN_input_mock.side_effect = [True,True]
     get_truststore_path_mock.return_value = "/truststore_path"
     get_truststore_password_mock.return_value = "/truststore_password"
     get_delete_cert_command_mock.return_value = "rm -f"
-    setup_component_https(component, command, property, alias)
+    setup_truststore(True)
 
-    self.assertTrue(p.process_pair.called)
     self.assertTrue(get_truststore_path_mock.called)
     self.assertTrue(get_truststore_password_mock.called)
     self.assertTrue(get_delete_cert_command_mock.called)
@@ -1451,10 +1462,9 @@ class TestAmbariServer(TestCase):
     p.store.reset_mock()
     #Verbouse mode and jdk_path is not None (use_https = false) and import cert
     p.get_property.side_effect = ["false"]
-    get_YN_input_mock.side_effect = [True]
-    setup_component_https(component, command, property, alias)
+    get_YN_input_mock.side_effect = [True,True]
+    setup_truststore(True)
 
-    self.assertTrue(p.process_pair.called)
     self.assertTrue(get_truststore_type_mock.called)
     self.assertTrue(get_truststore_path_mock.called)
     self.assertTrue(get_truststore_password_mock.called)
@@ -2068,6 +2078,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     pass
 
   @patch.object(OSCheck, "os_distribution", new = MagicMock(return_value = os_distro_value))
+  @patch("ambari_server.serverSetup.read_ambari_user")
   @patch("os.stat")
   @patch("os.path.isfile")
   @patch("os.path.exists")
@@ -2087,7 +2098,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
   def test_download_jdk(self, exit_mock, copyfile_mock, get_ambari_properties_mock, get_JAVA_HOME_mock, \
                         validate_jdk_mock, print_info_msg_mock, get_validated_string_input_mock, update_properties_mock, \
                         run_os_command_mock, get_YN_input_mock, force_download_file_mock, expand_jce_zip_file_mock,
-                        os_chdir_mock, path_existsMock, path_isfileMock, statMock):
+                        os_chdir_mock, path_existsMock, path_isfileMock, statMock, read_ambari_user_mock):
     args = MagicMock()
     args.java_home = "somewhere"
     args.silent = False
@@ -2105,6 +2116,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     validate_jdk_mock.return_value = False
     path_existsMock.return_value = False
     get_JAVA_HOME_mock.return_value = False
+    read_ambari_user_mock.return_value = "ambari"
     get_ambari_properties_mock.return_value = p
     # Test case: ambari.properties not found
     try:
@@ -2444,6 +2456,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     self.assertEqual(dbmsConfig.database_name, "ambari")
     self.assertEqual(dbmsConfig.database_username, "ambari")
     self.assertEqual(dbmsConfig.database_password, "bigdata")
+    self.assertEqual(dbmsConfig.sid_or_sname, "sid")
 
     dbmsConfig.configure_database(props)
 
@@ -2562,7 +2575,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
 
     self.assertEqual(dbmsConfig.database_username, "ambari-server")
     self.assertEqual(dbmsConfig.database_password, "password")
-    self.assertEqual(dbmsConfig.sid_or_sname, "sname")
+    self.assertEqual(dbmsConfig.sid_or_sname, "sid")
     pass
 
   @not_for_platform(PLATFORM_WINDOWS)
@@ -3274,7 +3287,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
   @patch.object(_ambari_server_, "is_server_runing")
   @patch("os.chown")
   @patch("ambari_server.setupSecurity.get_master_key_location")
-  @patch("ambari_server_main.save_master_key")
+  @patch("ambari_server.setupSecurity.save_master_key")
   @patch("ambari_server_main.get_is_persisted")
   @patch("ambari_server_main.get_is_secure")
   @patch('os.chmod', autospec=True)
@@ -3295,6 +3308,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
   @patch("ambari_server_main.print_info_msg")
   @patch.object(PGConfig, "_check_postgre_up")
   @patch("ambari_server_main.read_ambari_user")
+  @patch("ambari_server.setupSecurity.is_root")
   @patch("ambari_server.dbConfiguration_linux.is_root")
   @patch("ambari_server_main.is_root")
   @patch.object(LinuxDBMSConfig, "_find_jdbc_driver")
@@ -3302,7 +3316,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
   @patch("os.chdir")
   @patch.object(ResourceFilesKeeper, "perform_housekeeping")
   def test_start(self, perform_housekeeping_mock, chdir_mock, getuser_mock, find_jdbc_driver_mock,
-                 is_root_mock, is_root_2_mock, read_ambari_user_mock,
+                 is_root_mock, is_root_2_mock, is_root_3_mock, read_ambari_user_mock,
                  check_postgre_up_mock, print_info_msg_mock, print_warning_msg_mock,
                  find_jdk_mock, check_database_name_property_mock, search_file_mock,
                  popenMock, openMock, pexistsMock,
@@ -3395,7 +3409,9 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     args = reset_mocks()
     read_ambari_user_mock.return_value = "dummy-user"
     getuser_mock.return_value = "non_custom_user"
-    is_root_2_mock.return_value = is_root_mock.return_value = False
+    is_root_3_mock.return_value = \
+      is_root_2_mock.return_value = \
+      is_root_mock.return_value = False
     try:
       _ambari_server_.start(args)
       self.fail("Should fail with 'Can not start ambari-server as user...'")
@@ -3406,7 +3422,9 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
 
     # Checking "jdk not found"
     args = reset_mocks()
-    is_root_2_mock.return_value = is_root_mock.return_value = True
+    is_root_3_mock.return_value = \
+      is_root_2_mock.return_value = \
+      is_root_mock.return_value = True
     find_jdk_mock.return_value = None
 
     try:
@@ -3420,7 +3438,9 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     find_jdk_mock.return_value = "somewhere"
 
     ## Testing workflow under root
-    is_root_2_mock.return_value = is_root_mock.return_value = True
+    is_root_3_mock.return_value = \
+      is_root_2_mock.return_value = \
+      is_root_mock.return_value = True
 
     # Remote DB
     p.process_pair(JDBC_DATABASE_PROPERTY, 'oracle')
@@ -3558,7 +3578,9 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     popenMock.reset_mock()
 
     ## Testing workflow under non-root
-    is_root_2_mock.return_value = is_root_mock.return_value = False
+    is_root_3_mock.return_value = \
+      is_root_2_mock.return_value = \
+      is_root_mock.return_value = False
     read_ambari_user_mock.return_value = "not-root-user"
     getuser_mock.return_value = read_ambari_user_mock.return_value
 
@@ -3613,7 +3635,9 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     p.process_pair(JDBC_DATABASE_PROPERTY, 'postgres')
     p.process_pair(PERSISTENCE_TYPE_PROPERTY, 'local')
     read_ambari_user_mock.return_value = "root"
-    is_root_2_mock.return_value = is_root_mock.return_value = True
+    is_root_3_mock.return_value = \
+      is_root_2_mock.return_value = \
+      is_root_mock.return_value = True
 
     _ambari_server_.start(args)
 
@@ -3632,7 +3656,9 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     p.process_pair(JDBC_DATABASE_PROPERTY, 'postgres')
     p.process_pair(PERSISTENCE_TYPE_PROPERTY, 'local')
     read_ambari_user_mock.return_value = "root"
-    is_root_2_mock.return_value = is_root_mock.return_value = True
+    is_root_3_mock.return_value = \
+      is_root_2_mock.return_value = \
+      is_root_mock.return_value = True
     get_validated_string_input_method.return_value = "masterkey"
     os_chmod_method.return_value = None
     get_is_secure_mock.return_value = True
@@ -3807,26 +3833,39 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     pass
 
 
+  @patch("ambari_server.serverUpgrade.ensure_can_start_under_current_user")
+  @patch("ambari_server.serverUpgrade.generate_env")
+  @patch("ambari_server.serverUpgrade.read_ambari_user")
   @patch("ambari_server.serverConfiguration.get_conf_dir")
   @patch("ambari_server.serverConfiguration.get_ambari_classpath")
   @patch("ambari_server.serverUpgrade.run_os_command")
   @patch("ambari_server.serverUpgrade.get_java_exe_path")
   def test_run_schema_upgrade(self, java_exe_path_mock, run_os_command_mock,
-                              get_ambari_classpath_mock, get_conf_dir_mock):
+                              get_ambari_classpath_mock, get_conf_dir_mock,
+                              read_ambari_user_mock, generate_env_mock,
+                              ensure_can_start_under_current_user_mock):
     java_exe_path_mock.return_value = "/usr/lib/java/bin/java"
     run_os_command_mock.return_value = (0, None, None)
     get_ambari_classpath_mock.return_value = 'test:path12'
     get_conf_dir_mock.return_value = '/etc/conf'
+    command = '/usr/lib/java/bin/java -cp /etc/conf:test:path12 ' \
+              'org.apache.ambari.server.upgrade.SchemaUpgradeHelper ' \
+              '> /var/log/ambari-server/ambari-server.out 2>&1'
+    environ = {}
+    generate_env_mock.return_value = environ
+    ensure_can_start_under_current_user_mock.return_value = "root"
+    read_ambari_user_mock.return_value = "ambari"
 
     run_schema_upgrade()
 
     self.assertTrue(java_exe_path_mock.called)
+    self.assertTrue(ensure_can_start_under_current_user_mock.called)
+    self.assertTrue(generate_env_mock.called)
+    self.assertTrue(read_ambari_user_mock.called)
     self.assertTrue(get_ambari_classpath_mock.called)
     self.assertTrue(get_conf_dir_mock.called)
     self.assertTrue(run_os_command_mock.called)
-    run_os_command_mock.assert_called_with('/usr/lib/java/bin/java -cp /etc/conf:test:path12 '
-                                           'org.apache.ambari.server.upgrade.SchemaUpgradeHelper '
-                                           '> /var/log/ambari-server/ambari-server.out 2>&1')
+    run_os_command_mock.assert_called_with(command, env=environ)
     pass
 
 
@@ -3992,7 +4031,8 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
   @patch("ambari_server.serverUpgrade.get_ambari_properties")
   @patch("ambari_server.serverUpgrade.upgrade_local_repo")
   @patch("ambari_server.serverUpgrade.move_user_custom_actions")
-  def test_upgrade_from_161(self, move_user_custom_actions_mock, upgrade_local_repo_mock, get_ambari_properties_mock,
+  @patch("ambari_server.serverUpgrade.update_krb_jaas_login_properties")
+  def test_upgrade_from_161(self, update_krb_jaas_login_properties_mock, move_user_custom_actions_mock, upgrade_local_repo_mock, get_ambari_properties_mock,
                             get_ambari_properties_2_mock, get_ambari_properties_3_mock, get_ambari_version_mock, write_property_mock,
                             is_root_mock, update_ambari_properties_mock, find_properties_file_mock, run_os_command_mock,
                             run_schema_upgrade_mock, read_ambari_user_mock, print_warning_msg_mock,
@@ -4034,6 +4074,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     update_ambari_properties_mock.return_value = 0
     get_ambari_version_mock.return_value = "1.7.0"
     move_user_custom_actions_mock.return_value = None
+    update_krb_jaas_login_properties_mock.return_value = -2
 
     # Local Postgres
     # In Ambari 1.6.1 for an embedded postgres database, the "server.jdbc.database" property stored the DB name,
@@ -4201,7 +4242,8 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
   @patch("ambari_server.serverUpgrade.get_ambari_properties")
   @patch("ambari_server.serverUpgrade.upgrade_local_repo")
   @patch("ambari_server.serverUpgrade.move_user_custom_actions")
-  def test_upgrade(self, move_user_custom_actions, upgrade_local_repo_mock,
+  @patch("ambari_server.serverUpgrade.update_krb_jaas_login_properties")
+  def test_upgrade(self, update_krb_jaas_login_properties_mock, move_user_custom_actions, upgrade_local_repo_mock,
                    get_ambari_properties_mock, get_ambari_properties_2_mock, get_ambari_properties_3_mock,
                    is_root_mock, get_ambari_version_mock, get_ambari_version_2_mock,
                    parse_properties_file_mock,
@@ -4240,6 +4282,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     isfile_mock.return_value = False
     get_ambari_version_2_mock.return_value = get_ambari_version_mock.return_value = CURR_AMBARI_VERSION
     move_user_custom_actions.return_value = None
+    update_krb_jaas_login_properties_mock.return_value = -2
 
     # Testing call under non-root
     is_root_mock.return_value = False
@@ -4326,7 +4369,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     get_ambari_properties_3_mock.reset_mock()
     get_ambari_properties_3_mock.return_value = get_ambari_properties_2_mock.return_value = \
       get_ambari_properties_mock.return_value = p
-    p.__getitem__.side_effect = ["something", "something", "something", KeyError("test exception")]
+    p.__getitem__.side_effect = ["something", "something", "something", "something", KeyError("test exception")]
     exists_mock.return_value = False
     fail = False
 
@@ -5756,6 +5799,7 @@ MIIFHjCCAwYCCQDpHKOBI+Lt0zANBgkqhkiG9w0BAQUFADBRMQswCQYDVQQGEwJV
     is_server_runing_mock.return_value = (True, 0)
     properties = Properties()
     properties.process_pair(IS_LDAP_CONFIGURED, 'true')
+    properties.process_pair(CLIENT_API_PORT_PROPERTY, '8080')
     get_ambari_properties_mock.return_value = properties
     get_validated_string_input_mock.side_effect = ['admin', 'admin']
 

@@ -23,6 +23,7 @@ import os
 import re
 import shutil
 import sys
+import subprocess
 
 from ambari_commons.exceptions import FatalException
 from ambari_commons.firewall import Firewall
@@ -224,16 +225,19 @@ class AmbariUserChecksWindows(AmbariUserChecks):
       self.user = user
       return 0
 
+    if get_silent():
+      password = self.password
+    else:
+      password = get_validated_string_input("Enter password for user {0}:".format(user), "", None, "Password", True, False)
+
     from ambari_commons.os_windows import UserHelper
 
     uh = UserHelper(user)
 
-    if not uh.find_user():
-      if get_silent():
-        password = self.password
-      else:
-        password = get_validated_string_input("Enter password for user {0}:".format(user), "", None, "Password", True, False)
-
+    if uh.find_user():
+      print_info_msg("User {0} already exists, make sure that you typed correct password for user, "
+                     "skipping user creation".format(user))
+    else:
       status, message = uh.create_user(password)
       if status == UserHelper.USER_EXISTS:
         print_info_msg("User {0} already exists, make sure that you typed correct password for user, "
@@ -243,7 +247,7 @@ class AmbariUserChecksWindows(AmbariUserChecks):
         print_warning_msg("Can't create user {0}. Failed with message {1}".format(user, message))
         return UserHelper.ACTION_FAILED
 
-      self.password = password
+    self.password = password
 
     # setting SeServiceLogonRight and SeBatchLogonRight to user
     #This is unconditional
@@ -451,6 +455,11 @@ class JDKSetup(object):
       properties.removeOldProp(JDK_NAME_PROPERTY)
       properties.removeOldProp(JCE_NAME_PROPERTY)
 
+      # Make sure any previously existing JDK and JCE name properties are removed. These will
+      # confuse things in a Custom JDK scenario
+      properties.removeProp(JDK_NAME_PROPERTY)
+      properties.removeProp(JCE_NAME_PROPERTY)
+
       self._ensure_java_home_env_var_is_set(args.java_home)
       return
 
@@ -537,6 +546,7 @@ class JDKSetup(object):
     try:
       jdk_path = properties.get_property(JAVA_HOME_PROPERTY)
       JDKSetup.unpack_jce_policy(jdk_path, resources_dir, jdk_cfg.dest_jcpol_file)
+      self.adjust_jce_permissions(jdk_path)
     except FatalException, e:
       print err_msg_stdout
       print_error_msg("Failed to install JCE policy files:")
@@ -612,7 +622,10 @@ class JDKSetup(object):
   # Base implementation, overriden in the subclasses
   def _install_jdk(self, java_inst_file, java_home_dir):
     pass
-
+  
+  def adjust_jce_permissions(self, jdk_path):
+    pass
+  
   # Base implementation, overriden in the subclasses
   def _ensure_java_home_env_var_is_set(self, java_home_dir):
     pass
@@ -707,6 +720,7 @@ class JDKSetupLinux(JDKSetup):
 
     self.CREATE_JDK_DIR_CMD = "/bin/mkdir -p {0}"
     self.CHMOD_JDK_DIR_CMD = "chmod a+x {0}"
+    self.SET_JCE_PERMISSIONS = "chown {0} {1}/{2}/*"
 
     # use --no-same-owner when running as root to prevent uucp as the user (AMBARI-6478)
     self.UNTAR_JDK_ARCHIVE = "tar --no-same-owner -xvf {0}"
@@ -742,6 +756,17 @@ class JDKSetupLinux(JDKSetup):
   def _ensure_java_home_env_var_is_set(self, java_home_dir):
     #No way to do this in Linux. Best we can is to set the process environment variable.
     os.environ[JAVA_HOME] = java_home_dir
+    
+  def adjust_jce_permissions(self, jdk_path):
+    ambari_user = read_ambari_user()
+    cmd = self.SET_JCE_PERMISSIONS.format(ambari_user, jdk_path,configDefaults.JDK_SECURITY_DIR)
+    process = subprocess.Popen(cmd,
+                           stdout=subprocess.PIPE,
+                           stdin=subprocess.PIPE,
+                           stderr=subprocess.PIPE,
+                           shell=True
+                           )
+    (stdoutdata, stderrdata) = process.communicate()
 
 def download_and_install_jdk(options):
   properties = get_ambari_properties()
@@ -997,7 +1022,7 @@ def check_setup_already_done():
 def setup(options):
   if options.only_silent:
     if check_setup_already_done():
-      print "Nothing was done. Please, use ambari-server setup command without [-s] key, to change configuration."
+      print "Nothing was done. Ambari Setup already performed and cannot re-run setup in silent mode. Use \"ambari-server setup\" command without -s option to change Ambari setup."
       sys.exit(0)
 
   retcode = verify_setup_allowed()

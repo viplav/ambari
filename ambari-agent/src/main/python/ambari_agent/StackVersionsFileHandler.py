@@ -24,7 +24,7 @@ import threading
 import traceback
 import shutil
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 class StackVersionsFileHandler:
 

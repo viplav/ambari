@@ -20,32 +20,25 @@ import Ember from 'ember';
 import { moduleFor, test } from 'ember-qunit';
 
 moduleFor('controller:index', 'IndexController', {
-  needs: ['controller:databases', 'controller:open-queries', 'controller:insert-udfs',
-          'controller:udfs', 'controller:loaded-files',
+  needs: [
+          'controller:open-queries',
+          'controller:udfs',
           'controller:index/history-query/logs',
           'controller:index/history-query/results',
           'controller:index/history-query/explain',
           'controller:settings',
-          'adapter:database', 'controller:tables', 'controller:columns',
-          'controller:visual-explain', 'controller:tez-ui',
-          'adapter:application'
+          'controller:visual-explain',
+          'controller:tez-ui',
+          'service:job',
+          'service:file',
+          'service:database',
+          'service:notify',
+          'service:job-progress',
+          'service:session',
+          'service:settings',
+          'adapter:application',
+          'adapter:database'
         ]
-});
-
-test('when initialized, controller sets the queryProcessTabs.', function () {
-  expect(1);
-
-  var controller = this.subject();
-
-  ok(controller.get('queryProcessTabs', 'queryProcessTabs is initialized.'));
-});
-
-test('databasesChanged sets null the selectedTables property of open-queries if databases controller has not set its selectedDatabase.tables property', function () {
-  expect(1);
-
-  var controller = this.subject();
-
-  equal(controller.get('databases.selectedTables'), null, 'databases controller property selectedDatabase.tables not set. open-queries selectedTables returns null');
 });
 
 test('modelChanged calls update on the open-queries cotnroller.', function () {
@@ -252,7 +245,7 @@ test('donwloadMenu returns only saveToHDFS if csvUrl is false', function() {
       constructor: {
         typeKey: 'notjob'
       },
-      status: 'SUCCEEDED'
+      status: 'SUCCEEDED',
   });
 
   var controller = this.subject({ content: content });
@@ -271,7 +264,7 @@ test('donwloadMenu returns saveToHDFS and csvUrl', function() {
       constructor: {
         typeKey: 'job'
       },
-      status: 'SUCCEEDED'
+      status: 'SUCCEEDED',
   });
 
   var controller = this.subject({ content: content });

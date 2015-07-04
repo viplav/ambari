@@ -57,7 +57,8 @@ class TestTezClient(RMFTestCase):
 
     self.assertResourceCalled('File', '/etc/tez/conf/tez-env.sh',
       owner = 'tez',
-      content = InlineTemplate(self.getConfig()['configurations']['tez-env']['content'])
+      content = InlineTemplate(self.getConfig()['configurations']['tez-env']['content']),
+      mode=0555
     )
 
     self.assertNoMoreResources()
@@ -72,7 +73,7 @@ class TestTezClient(RMFTestCase):
                        target = RMFTestCase.TARGET_COMMON_SERVICES)
 
     get_hdp_version_mock.return_value = "2.2.1.0-2067"
-    self.assertResourceCalled("Execute", "hdp-select set hadoop-client 2.2.1.0-2067")
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'hadoop-client', '2.2.1.0-2067'), sudo=True)
 
     # for now, it's enough that hdp-select is confirmed
 
@@ -86,7 +87,7 @@ class TestTezClient(RMFTestCase):
                        target = RMFTestCase.TARGET_COMMON_SERVICES)
 
     get_hdp_version_mock.return_value = "2.2.1.0-2067"
-    self.assertResourceCalled("Execute", "hdp-select set hadoop-client 2.2.1.0-2067")
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'hadoop-client', '2.2.1.0-2067'), sudo=True)
 
     # for now, it's enough that hdp-select is confirmed
 
@@ -104,16 +105,22 @@ class TestTezClient(RMFTestCase):
                        config_dict = json_content,
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES,
-                       call_mocks = [(0, None), (0, None)],
+                       call_mocks = [(0, None), (0, None), (0, None), (0, None)],
                        mocks_dict = mocks_dict)
 
-    self.assertResourceCalled('Execute', 'hdp-select set hadoop-client %s' % version)
+    self.assertResourceCalled('Execute', ('hdp-select', 'set', 'hadoop-client', version), sudo=True)
     self.assertNoMoreResources()
 
-    self.assertEquals(2, mocks_dict['call'].call_count)
+    self.assertEquals(4, mocks_dict['call'].call_count)
     self.assertEquals(
-      "conf-select create-conf-dir --package hadoop --stack-version 2.3.0.0-1234 --conf-version 0",
+      "conf-select create-conf-dir --package tez --stack-version 2.3.0.0-1234 --conf-version 0",
        mocks_dict['call'].call_args_list[0][0][0])
     self.assertEquals(
-      "conf-select set-conf-dir --package hadoop --stack-version 2.3.0.0-1234 --conf-version 0",
+      "conf-select set-conf-dir --package tez --stack-version 2.3.0.0-1234 --conf-version 0",
        mocks_dict['call'].call_args_list[1][0][0])
+    self.assertEquals(
+      "conf-select create-conf-dir --package hadoop --stack-version 2.3.0.0-1234 --conf-version 0",
+       mocks_dict['call'].call_args_list[2][0][0])
+    self.assertEquals(
+      "conf-select set-conf-dir --package hadoop --stack-version 2.3.0.0-1234 --conf-version 0",
+       mocks_dict['call'].call_args_list[3][0][0])

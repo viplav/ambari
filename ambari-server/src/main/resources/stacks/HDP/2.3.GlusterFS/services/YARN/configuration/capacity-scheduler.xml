@@ -38,7 +38,7 @@
   </property>
   <property>
     <name>yarn.scheduler.capacity.root.default-node-label-expression</name>
-    <value> </value>
+    <value></value>
     <description></description>
   </property>
 

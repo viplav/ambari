@@ -23,10 +23,10 @@ __all__ = ["Script"]
 
 import os
 import sys
-import json
 import logging
 import platform
-from ambari_commons.os_check import OSCheck
+from ambari_commons import OSCheck, OSConst
+from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
 from resource_management.libraries.resources import XmlConfig
 from resource_management.libraries.resources import PropertiesFile
 from resource_management.core.resources import File, Directory
@@ -40,6 +40,8 @@ from resource_management.libraries.functions.version import compare_versions
 from resource_management.libraries.functions.version import format_hdp_stack_version
 from resource_management.libraries.script.config_dictionary import ConfigDictionary, UnknownConfiguration
 from resource_management.core.resources.system import Execute
+
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
 
 if OSCheck.is_windows_family():
   from resource_management.libraries.functions.install_hdp_msi import install_windows_msi
@@ -166,7 +168,7 @@ class Script(object):
     Sets up logging;
     Parses command parameters and executes method relevant to command type
     """
-    logger, chout, cherr = Logger.initialize_logger()
+    logger, chout, cherr = Logger.initialize_logger(__name__)
     
     # parse arguments
     if len(sys.argv) < 7:
@@ -174,7 +176,7 @@ class Script(object):
      print USAGE.format(os.path.basename(sys.argv[0])) # print to stdout
      sys.exit(1)
 
-    command_name = str.lower(sys.argv[1])
+    self.command_name = str.lower(sys.argv[1])
     self.command_data_file = sys.argv[2]
     self.basedir = sys.argv[3]
     self.stroutfile = sys.argv[4]
@@ -208,21 +210,12 @@ class Script(object):
 
     # Run class method depending on a command type
     try:
-      method = self.choose_method_to_execute(command_name)
+      method = self.choose_method_to_execute(self.command_name)
       with Environment(self.basedir, tmp_dir=Script.tmp_dir) as env:
         env.config.download_path = Script.tmp_dir
         method(env)
-        if command_name == "install":
-          self.set_version()
-    except ClientComponentHasNoStatus or ComponentIsNotRunning:
-      # Support of component status checks.
-      # Non-zero exit code is interpreted as an INSTALLED status of a component
-      sys.exit(1)
-    except Fail:
-      logger.exception("Error while executing command '{0}':".format(command_name))
-      sys.exit(1)
     finally:
-      if self.should_expose_component_version(command_name):
+      if self.should_expose_component_version(self.command_name):
         self.save_component_version_to_structured_out()
 
   def choose_method_to_execute(self, command_name):
@@ -289,7 +282,7 @@ class Script(object):
     :return: a normalized HDP stack version or None
     """
     stack_name = Script.get_stack_name()
-    if stack_name is None or stack_name.upper() != "HDP":
+    if stack_name is None or stack_name.upper() not in ["HDP", "HDPWIN"]:
       return None
 
     config = Script.get_config()
@@ -375,11 +368,11 @@ class Script(object):
     if OSCheck.is_windows_family():
       #TODO hacky install of windows msi, remove it or move to old(2.1) stack definition when component based install will be implemented
       hadoop_user = config["configurations"]["cluster-env"]["hadoop.user.name"]
-      install_windows_msi(os.path.join(config['hostLevelParams']['jdk_location'], "hdp.msi"),
-                          config["hostLevelParams"]["agentCacheDir"], "hdp.msi", hadoop_user, self.get_password(hadoop_user),
+      install_windows_msi(config['hostLevelParams']['jdk_location'],
+                          config["hostLevelParams"]["agentCacheDir"], ["hdp-2.3.0.0.winpkg.msi", "hdp-2.3.0.0.cab", "hdp-2.3.0.0-01.cab"],
+                          hadoop_user, self.get_password(hadoop_user),
                           str(config['hostLevelParams']['stack_version']))
       reload_windows_env()
-    pass
 
   @staticmethod
   def fail_with_error(message):
@@ -395,13 +388,13 @@ class Script(object):
     """
     To be overridden by subclasses
     """
-    self.fail_with_error('start method isn\'t implemented')
+    self.fail_with_error("start method isn't implemented")
 
   def stop(self, env, rolling_restart=False):
     """
     To be overridden by subclasses
     """
-    self.fail_with_error('stop method isn\'t implemented')
+    self.fail_with_error("stop method isn't implemented")
 
   def pre_rolling_restart(self, env):
     """
@@ -548,18 +541,3 @@ class Script(object):
       archive_dir(output_filename, conf_tmp_dir)
     finally:
       Directory(conf_tmp_dir, action="delete")
-
-  def set_version(self):
-    from resource_management.libraries.functions.default import default
-    stack_name = default("/hostLevelParams/stack_name", None)
-    version = default("/commandParams/version", None)
-    stack_version_unformatted = str(default("/hostLevelParams/stack_version", ""))
-    hdp_stack_version = format_hdp_stack_version(stack_version_unformatted)
-    stack_to_component = self.get_stack_to_component()
-    if stack_to_component:
-      component_name = stack_to_component[stack_name] if stack_name in stack_to_component else None
-      if component_name and stack_name and version and \
-              compare_versions(format_hdp_stack_version(hdp_stack_version), '2.2.0.0') >= 0:
-        Execute(('/usr/bin/hdp-select', 'set', component_name, version),
-                sudo = True)
-

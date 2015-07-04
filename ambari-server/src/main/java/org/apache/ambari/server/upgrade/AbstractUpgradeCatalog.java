@@ -17,17 +17,11 @@
  */
 package org.apache.ambari.server.upgrade;
 
-import java.sql.SQLException;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-
-import javax.persistence.EntityManager;
-
+import com.google.common.collect.Maps;
+import com.google.inject.Inject;
+import com.google.inject.Injector;
+import com.google.inject.Provider;
+import com.google.inject.persist.Transactional;
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.configuration.Configuration.DatabaseType;
@@ -43,14 +37,25 @@ import org.apache.ambari.server.state.ConfigHelper;
 import org.apache.ambari.server.state.PropertyInfo;
 import org.apache.ambari.server.state.ServiceInfo;
 import org.apache.ambari.server.utils.VersionUtils;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.collect.Maps;
-import com.google.inject.Inject;
-import com.google.inject.Injector;
-import com.google.inject.Provider;
-import com.google.inject.persist.Transactional;
+import javax.persistence.EntityManager;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 
 public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
   @Inject
@@ -62,11 +67,26 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
 
   protected Injector injector;
 
+  // map and list with constants, for filtration like in stack advisor
+  protected Map<String,List<String>> hiveAuthPropertyValueDependencies = new HashMap<String, List<String>>();
+  protected List<String> allHiveAuthPropertyValueDependecies = new ArrayList<String>();
+
+  /**
+   * Override variable in child's if table name was changed
+   */
+  protected String ambariSequencesTable = "ambari_sequences";
+
   /**
    * The user name to use as the authenticated user when perform authenticated tasks or operations
    * that require the name of the authenticated user
    */
   protected static final String AUTHENTICATED_USER_NAME = "ambari-upgrade";
+
+  private static final String CONFIGURATION_TYPE_HIVE_SITE = "hive-site";
+  private static final String CONFIGURATION_TYPE_HDFS_SITE = "hdfs-site";
+
+  private static final String PROPERTY_DFS_NAMESERVICES = "dfs.nameservices";
+  private static final String PROPERTY_HIVE_SERVER2_AUTHENTICATION = "hive.server2.authentication";
 
   private static final Logger LOG = LoggerFactory.getLogger
     (AbstractUpgradeCatalog.class);
@@ -76,7 +96,19 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
   @Inject
   public AbstractUpgradeCatalog(Injector injector) {
     this.injector = injector;
+    injector.injectMembers(this);
     registerCatalog(this);
+
+    hiveAuthPropertyValueDependencies.put("ldap", Arrays.asList("hive.server2.authentication.ldap.url",
+            "hive.server2.authentication.ldap.baseDN"));
+    hiveAuthPropertyValueDependencies.put("kerberos", Arrays.asList("hive.server2.authentication.kerberos.keytab",
+            "hive.server2.authentication.kerberos.principal"));
+    hiveAuthPropertyValueDependencies.put("pam", Arrays.asList("hive.server2.authentication.pam.services"));
+    hiveAuthPropertyValueDependencies.put("custom", Arrays.asList("hive.server2.custom.authentication.class"));
+
+    for (List<String> dependencies : hiveAuthPropertyValueDependencies.values()) {
+      allHiveAuthPropertyValueDependecies.addAll(dependencies);
+    }
   }
 
   /**
@@ -84,6 +116,55 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
    */
   protected void registerCatalog(UpgradeCatalog upgradeCatalog) {
     upgradeCatalogMap.put(upgradeCatalog.getTargetVersion(), upgradeCatalog);
+  }
+
+  /**
+   * Add new sequence to <code>ambariSequencesTable</code>.
+   * @param seqName name of sequence to be inserted
+   * @param seqDefaultValue initial value for the sequence
+   * @param ignoreFailure true to ignore insert sql errors
+   * @throws SQLException
+   */
+   protected final void addSequence(String seqName, Long seqDefaultValue, boolean ignoreFailure) throws SQLException{
+     // check if sequence is already in the database
+     Statement statement = null;
+     ResultSet rs = null;
+     try {
+       statement = dbAccessor.getConnection().createStatement();
+       if (statement != null) {
+         rs = statement.executeQuery(String.format("SELECT COUNT(*) from %s where sequence_name='%s'", ambariSequencesTable, seqName));
+
+         if (rs != null) {
+           if (rs.next() && rs.getInt(1) == 0) {
+             dbAccessor.executeQuery(String.format("INSERT INTO %s(sequence_name, sequence_value) VALUES('%s', %d)", ambariSequencesTable, seqName, seqDefaultValue), ignoreFailure);
+           } else {
+             LOG.warn("Sequence {} already exists, skipping", seqName);
+           }
+         }
+       }
+     } finally {
+       if (rs != null) {
+         rs.close();
+       }
+       if (statement != null) {
+         statement.close();
+       }
+     }
+  }
+
+  /**
+   * Add several new sequences to <code>ambariSequencesTable</code>.
+   * @param seqNames list of sequences to be inserted
+   * @param seqDefaultValue initial value for the sequence
+   * @param ignoreFailure true to ignore insert sql errors
+   * @throws SQLException
+   *
+   */
+  protected final void addSequences(List<String> seqNames, Long seqDefaultValue, boolean ignoreFailure) throws SQLException{
+    // ToDo: rewrite function to use one SQL call per select/insert for all items
+    for (String seqName: seqNames){
+      addSequence(seqName, seqDefaultValue, ignoreFailure);
+    }
   }
 
   @Override
@@ -100,6 +181,11 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
     @Override
     public int compare(UpgradeCatalog upgradeCatalog1,
                        UpgradeCatalog upgradeCatalog2) {
+      //make sure FinalUpgradeCatalog runs last
+      if (upgradeCatalog1.isFinal() ^ upgradeCatalog2.isFinal()) {
+        return Boolean.compare(upgradeCatalog1.isFinal(), upgradeCatalog2.isFinal());
+      }
+
       return VersionUtils.compareVersions(upgradeCatalog1.getTargetVersion(),
         upgradeCatalog2.getTargetVersion(), 3);
     }
@@ -197,6 +283,10 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
             String configType = ConfigHelper.fileNameToConfigType(property.getFilename());
             Config clusterConfigs = cluster.getDesiredConfigByType(configType);
             if(clusterConfigs == null || !clusterConfigs.getProperties().containsKey(property.getName())) {
+              if (!checkAccordingToStackAdvisor(property, cluster)) {
+                continue;
+              }
+
               LOG.info("Config " + property.getName() + " from " + configType + " from xml configurations" +
                   " is not found on the cluster. Adding it...");
 
@@ -215,6 +305,38 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
         }
       }
     }
+  }
+
+  protected boolean checkAccordingToStackAdvisor(PropertyInfo property, Cluster cluster) {
+    if (allHiveAuthPropertyValueDependecies.contains(property.getName())) {
+      Config hiveSite = cluster.getDesiredConfigByType(CONFIGURATION_TYPE_HIVE_SITE);
+      if (hiveSite != null) {
+        String hiveAuthValue = hiveSite.getProperties().get(PROPERTY_HIVE_SERVER2_AUTHENTICATION);
+        if (hiveAuthValue != null) {
+          List<String> dependencies = hiveAuthPropertyValueDependencies.get(hiveAuthValue.toLowerCase());
+          if (dependencies != null) {
+            return dependencies.contains(property.getName());
+          }
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+
+  protected boolean isNNHAEnabled(Cluster cluster) {
+    Config hdfsSiteConfig = cluster.getDesiredConfigByType(CONFIGURATION_TYPE_HDFS_SITE);
+    if (hdfsSiteConfig != null) {
+      Map<String, String> properties = hdfsSiteConfig.getProperties();
+      String nameServices = properties.get(PROPERTY_DFS_NAMESERVICES);
+      if (!StringUtils.isEmpty(nameServices)) {
+        String namenodes = properties.get(String.format("dfs.ha.namenodes.%s", nameServices));
+        if (!StringUtils.isEmpty(namenodes)) {
+          return (namenodes.split(",").length > 1);
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -266,8 +388,19 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
     }
   }
 
+  /**
+   * Update properties for the cluster
+   * @param cluster cluster object
+   * @param configType config to be updated
+   * @param properties properties to be added or updated. Couldn't be <code>null</code>, but could be empty.
+   * @param removePropertiesList properties to be removed. Could be <code>null</code>
+   * @param updateIfExists
+   * @param createNewConfigType
+   * @throws AmbariException
+   */
   protected void updateConfigurationPropertiesForCluster(Cluster cluster, String configType,
-      Map<String, String> properties, boolean updateIfExists, boolean createNewConfigType) throws AmbariException {
+        Map<String, String> properties, Set<String> removePropertiesList, boolean updateIfExists,
+        boolean createNewConfigType) throws AmbariException {
     AmbariManagementController controller = injector.getInstance(AmbariManagementController.class);
     String newTag = "version" + System.currentTimeMillis();
 
@@ -290,6 +423,10 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
 
         Map<String, String> mergedProperties =
           mergeProperties(oldConfigProperties, properties, updateIfExists);
+
+        if (removePropertiesList != null) {
+          mergedProperties = removeProperties(mergedProperties, removePropertiesList);
+        }
 
         if (!Maps.difference(oldConfigProperties, mergedProperties).areEqual()) {
           LOG.info("Applying configuration with tag '{}' to " +
@@ -320,6 +457,11 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
         }
       }
     }
+  }
+
+  protected void updateConfigurationPropertiesForCluster(Cluster cluster, String configType,
+        Map<String, String> properties, boolean updateIfExists, boolean createNewConfigType) throws AmbariException {
+    updateConfigurationPropertiesForCluster(cluster, configType, properties, null, updateIfExists, createNewConfigType);
   }
 
   /**
@@ -360,6 +502,17 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
     return properties;
   }
 
+  private Map<String, String> removeProperties(Map<String, String> originalProperties, Set<String> removeList){
+    Map<String, String> properties = new HashMap<String, String>();
+    properties.putAll(originalProperties);
+    for (String removeProperty: removeList){
+      if (originalProperties.containsKey(removeProperty)){
+        properties.remove(removeProperty);
+      }
+    }
+    return properties;
+  }
+
   @Override
   public void upgradeSchema() throws AmbariException, SQLException {
     DatabaseType databaseType = configuration.getDatabaseType();
@@ -380,6 +533,11 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
   public void upgradeData() throws AmbariException, SQLException {
     executeDMLUpdates();
     updateMetaInfoVersion(getTargetVersion());
+  }
+
+  @Override
+  public boolean isFinal() {
+    return false;
   }
 
   protected abstract void executeDDLUpdates() throws AmbariException, SQLException;

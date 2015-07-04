@@ -30,6 +30,7 @@ import static org.easymock.EasyMock.replay;
 import static org.easymock.EasyMock.reset;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -38,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.ambari.server.state.PropertyDependencyInfo;
 import org.apache.ambari.server.state.ServiceInfo;
 import org.apache.ambari.server.topology.AmbariContext;
 import org.apache.ambari.server.topology.Blueprint;
@@ -65,7 +67,6 @@ public class BlueprintConfigurationProcessorTest {
   private final Map<String, Collection<String>> serviceComponents = new HashMap<String, Collection<String>>();
 
   private final Blueprint bp = createNiceMock(Blueprint.class);
-  //private final AmbariMetaInfo metaInfo = createNiceMock(AmbariMetaInfo.class);
   private final ServiceInfo serviceInfo = createNiceMock(ServiceInfo.class);
   private final Stack stack = createNiceMock(Stack.class);
   private final AmbariContext ambariConext = createNiceMock(AmbariContext.class);
@@ -79,6 +80,7 @@ public class BlueprintConfigurationProcessorTest {
     expect(stack.getVersion()).andReturn("1").anyTimes();
     // return false for all components since for this test we don't care about the value
     expect(stack.isMasterComponent((String) anyObject())).andReturn(false).anyTimes();
+    expect(stack.getConfigurationPropertiesWithMetadata(anyObject(String.class), anyObject(String.class))).andReturn(Collections.<String, Stack.ConfigProperty>emptyMap()).anyTimes();
 
     expect(serviceInfo.getRequiredProperties()).andReturn(
         Collections.<String, org.apache.ambari.server.state.PropertyInfo>emptyMap()).anyTimes();
@@ -111,6 +113,7 @@ public class BlueprintConfigurationProcessorTest {
     Collection<String> hiveComponents = new HashSet<String>();
     hiveComponents.add("MYSQL_SERVER");
     hiveComponents.add("HIVE_METASTORE");
+    hiveComponents.add("HIVE_SERVER");
     serviceComponents.put("HIVE", hiveComponents);
 
     Collection<String> falconComponents = new HashSet<String>();
@@ -135,6 +138,10 @@ public class BlueprintConfigurationProcessorTest {
     oozieComponents.add("OOZIE_SERVER");
     oozieComponents.add("OOZIE_CLIENT");
     serviceComponents.put("OOZIE", oozieComponents);
+
+    Collection<String> hbaseComponents = new HashSet<String>();
+    hbaseComponents.add("HBASE_MASTER");
+    serviceComponents.put("HBASE", hbaseComponents);
 
     for (Map.Entry<String, Collection<String>> entry : serviceComponents.entrySet()) {
       String service = entry.getKey();
@@ -182,6 +189,95 @@ public class BlueprintConfigurationProcessorTest {
 
     String updatedVal = properties.get("yarn-site").get("yarn.resourcemanager.hostname");
     assertEquals("%HOSTGROUP::group1%", updatedVal);
+  }
+
+  @Test
+  public void testDoUpdateForBlueprintExport_SingleHostProperty_specifiedInParentConfig() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> yarnSiteProps = new HashMap<String, String>();
+    yarnSiteProps.put("yarn.resourcemanager.hostname", "testhost");
+    properties.put("yarn-site", yarnSiteProps);
+
+    Map<String, Map<String, String>> parentProperties = new HashMap<String, Map<String, String>>();
+    Map<String, String> parentYarnSiteProps = new HashMap<String, String>();
+    parentYarnSiteProps.put("yarn.resourcemanager.resource-tracker.address", "testhost");
+    parentProperties.put("yarn-site", parentYarnSiteProps);
+
+    Configuration parentClusterConfig = new Configuration(parentProperties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Configuration clusterConfig = new Configuration(properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap(), parentClusterConfig);
+
+    Collection<String> hgComponents = new HashSet<String>();
+    hgComponents.add("NAMENODE");
+    hgComponents.add("SECONDARY_NAMENODE");
+    hgComponents.add("RESOURCEMANAGER");
+    TestHostGroup group1 = new TestHostGroup("group1", hgComponents, Collections.singleton("testhost"));
+
+    Collection<String> hgComponents2 = new HashSet<String>();
+    hgComponents2.add("DATANODE");
+    hgComponents2.add("HDFS_CLIENT");
+    TestHostGroup group2 = new TestHostGroup("group2", hgComponents2, Collections.singleton("testhost2"));
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+    hostGroups.add(group2);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor configProcessor = new BlueprintConfigurationProcessor(topology);
+    configProcessor.doUpdateForBlueprintExport();
+
+    assertEquals("%HOSTGROUP::group1%", clusterConfig.getPropertyValue("yarn-site", "yarn.resourcemanager.hostname"));
+    assertEquals("%HOSTGROUP::group1%", clusterConfig.getPropertyValue("yarn-site", "yarn.resourcemanager.resource-tracker.address"));
+  }
+
+  @Test
+  public void testDoUpdateForBlueprintExport_SingleHostProperty_hostGroupConfiguration() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> typeProps = new HashMap<String, String>();
+    typeProps.put("yarn.resourcemanager.hostname", "testhost");
+    properties.put("yarn-site", typeProps);
+
+    Configuration clusterConfig = new Configuration(properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> hgComponents = new HashSet<String>();
+    hgComponents.add("NAMENODE");
+    hgComponents.add("SECONDARY_NAMENODE");
+    hgComponents.add("RESOURCEMANAGER");
+    TestHostGroup group1 = new TestHostGroup("group1", hgComponents, Collections.singleton("testhost"));
+
+    Collection<String> hgComponents2 = new HashSet<String>();
+    hgComponents2.add("DATANODE");
+    hgComponents2.add("HDFS_CLIENT");
+
+    Map<String, Map<String, String>> group2Properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> group2YarnSiteProps = new HashMap<String, String>();
+    group2YarnSiteProps.put("yarn.resourcemanager.resource-tracker.address", "testhost");
+    group2Properties.put("yarn-site", group2YarnSiteProps);
+    // host group config -> BP config -> cluster scoped config
+    Configuration group2BPConfiguration = new Configuration(Collections.<String, Map<String, String>>emptyMap(),
+        Collections.<String, Map<String, Map<String, String>>>emptyMap(), clusterConfig);
+
+    Configuration group2Configuration = new Configuration(group2Properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap(), group2BPConfiguration);
+
+    // set config on hostgroup
+    TestHostGroup group2 = new TestHostGroup("group2", hgComponents2,
+        Collections.singleton("testhost2"), group2Configuration);
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+    hostGroups.add(group2);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor configProcessor = new BlueprintConfigurationProcessor(topology);
+    configProcessor.doUpdateForBlueprintExport();
+
+    assertEquals("%HOSTGROUP::group1%", properties.get("yarn-site").get("yarn.resourcemanager.hostname"));
+    assertEquals("%HOSTGROUP::group1%",
+        group2Configuration.getPropertyValue("yarn-site", "yarn.resourcemanager.resource-tracker.address"));
   }
 
   @Test
@@ -456,6 +552,88 @@ public class BlueprintConfigurationProcessorTest {
   }
 
   @Test
+  public void testDoUpdateForBlueprintExport_PasswordFilterApplied() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> typeProps = new HashMap<String, String>();
+    typeProps.put("REPOSITORY_CONFIG_PASSWORD", "test-password-one");
+    typeProps.put("SSL_KEYSTORE_PASSWORD", "test-password-two");
+    typeProps.put("SSL_TRUSTSTORE_PASSWORD", "test-password-three");
+    typeProps.put("XAAUDIT.DB.PASSWORD", "test-password-four");
+    typeProps.put("test.ssl.password", "test-password-five");
+    typeProps.put("test.password.should.be.included", "test-another-pwd");
+
+    // create a custom config type, to verify that the filters can
+    // be applied across all config types
+    Map<String, String> customProps = new HashMap<String, String>();
+    customProps.put("my_test_PASSWORD", "should be excluded");
+    customProps.put("PASSWORD_mytest", "should be included");
+
+    properties.put("ranger-yarn-plugin-properties", typeProps);
+    properties.put("custom-test-properties", customProps);
+
+    Configuration clusterConfig = new Configuration(properties,
+      Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> hgComponents = new HashSet<String>();
+    hgComponents.add("NAMENODE");
+    hgComponents.add("SECONDARY_NAMENODE");
+    hgComponents.add("RESOURCEMANAGER");
+    TestHostGroup group1 = new TestHostGroup("group1", hgComponents, Collections.singleton("testhost"));
+
+    Collection<String> hgComponents2 = new HashSet<String>();
+    hgComponents2.add("DATANODE");
+    hgComponents2.add("HDFS_CLIENT");
+    TestHostGroup group2 = new TestHostGroup("group2", hgComponents2, Collections.singleton("testhost2"));
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+    hostGroups.add(group2);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor configProcessor = new BlueprintConfigurationProcessor(topology);
+    configProcessor.doUpdateForBlueprintExport();
+
+
+    assertEquals("Exported properties map was not of the expected size", 1,
+        properties.get("custom-test-properties").size());
+    assertEquals("ranger-yarn-plugin-properties config type was not properly exported", 1,
+        properties.get("ranger-yarn-plugin-properties").size());
+
+    // verify that the following password properties matching the "*_PASSWORD" rule have been excluded
+    assertFalse("Password property should have been excluded",
+        properties.get("ranger-yarn-plugin-properties").containsKey("REPOSITORY_CONFIG_PASSWORD"));
+    assertFalse("Password property should have been excluded",
+                properties.get("ranger-yarn-plugin-properties").containsKey("SSL_KEYSTORE_PASSWORD"));
+    assertFalse("Password property should have been excluded",
+                properties.get("ranger-yarn-plugin-properties").containsKey("SSL_TRUSTSTORE_PASSWORD"));
+    assertFalse("Password property should have been excluded",
+                properties.get("ranger-yarn-plugin-properties").containsKey("XAAUDIT.DB.PASSWORD"));
+    assertFalse("Password property should have been excluded",
+      properties.get("ranger-yarn-plugin-properties").containsKey("test.ssl.password"));
+
+
+    // verify that the property that does not match the "*_PASSWORD" rule is still included
+    assertTrue("Expected password property not found",
+      properties.get("ranger-yarn-plugin-properties").containsKey("test.password.should.be.included"));
+
+    // verify the custom properties map has been modified by the filters
+    assertEquals("custom-test-properties type was not properly exported",
+      1, properties.get("custom-test-properties").size());
+
+    // verify that the following password properties matching the "*_PASSWORD" rule have been excluded
+    assertFalse("Password property should have been excluded",
+      properties.get("custom-test-properties").containsKey("my_test_PASSWORD"));
+
+    // verify that the property that does not match the "*_PASSWORD" rule is still included
+    assertTrue("Expected password property not found",
+      properties.get("custom-test-properties").containsKey("PASSWORD_mytest"));
+    assertEquals("Expected password property should not have been modified",
+      "should be included", properties.get("custom-test-properties").get("PASSWORD_mytest"));
+
+  }
+
+
+  @Test
   public void testFalconConfigExport() throws Exception {
     final String expectedHostName = "c6401.apache.ambari.org";
     final String expectedPortNum = "808080";
@@ -498,6 +676,96 @@ public class BlueprintConfigurationProcessorTest {
 
     assertEquals("Falcon Kerberos HTTP Principal property not properly exported",
         "HTTP/" + "%HOSTGROUP::" + expectedHostGroupName + "%" + "@EXAMPLE.COM", falconStartupProperties.get("*.falcon.http.authentication.kerberos.principal"));
+  }
+
+  @Test
+  public void testTezConfigExport() throws Exception {
+    final String expectedHostName = "c6401.apache.ambari.org";
+    final String expectedHostGroupName = "host_group_1";
+
+    Map<String, Map<String, String>> configProperties = new HashMap<String, Map<String, String>>();
+    Map<String, String> tezSiteProperties = new HashMap<String, String>();
+    configProperties.put("tez-site", tezSiteProperties);
+
+    // set the UI property, to simulate the case of a UI-created cluster with TEZ
+    tezSiteProperties.put("tez.tez-ui.history-url.base", "http://host:port/TEZ/TEZ_VIEW");
+
+    Configuration clusterConfig = new Configuration(configProperties,
+      Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    // note: test hostgroups may not accurately reflect the required components for the config properties
+    // which are mapped to them.  Only the hostgroup name is used for hostgroup resolution an the components
+    // are not validated
+    Collection<String> groupComponents = new HashSet<String>();
+    groupComponents.add("TEZ_CLIENT");
+    Collection<String> hosts = new ArrayList<String>();
+    hosts.add(expectedHostName);
+    hosts.add("serverTwo");
+    TestHostGroup group = new TestHostGroup(expectedHostGroupName, groupComponents, hosts);
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor configProcessor = new BlueprintConfigurationProcessor(topology);
+    configProcessor.doUpdateForBlueprintExport();
+
+    assertFalse("tez.tez-ui.history-url.base should not be present in exported blueprint in tez-site",
+      tezSiteProperties.containsKey("tez.tez-ui.history-url.base"));
+  }
+
+  /**
+   * There is no support currently for deploying a fully Kerberized
+   * cluster with Blueprints.  This test verifies the current treatment
+   * of Kerberos-related properties in a Blueprint export.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testKerberosConfigExport() throws Exception {
+    final String expectedHostName = "c6401.apache.ambari.org";
+    final String expectedHostGroupName = "host_group_1";
+
+    Map<String, Map<String, String>> configProperties = new HashMap<String, Map<String, String>>();
+    Map<String, String> kerberosEnvProperties = new HashMap<String, String>();
+    Map<String, String> coreSiteProperties = new HashMap<String, String>();
+    configProperties.put("kerberos-env", kerberosEnvProperties);
+    configProperties.put("core-site", coreSiteProperties);
+
+    // simulate the case of a Kerberized cluster, including config
+    // added by the Kerberos service
+    kerberosEnvProperties.put("admin_server_host", expectedHostName);
+    kerberosEnvProperties.put("kdc_host", expectedHostName);
+    coreSiteProperties.put("hadoop.proxyuser.yarn.hosts", expectedHostName);
+
+    Configuration clusterConfig = new Configuration(configProperties,
+      Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    // note: test hostgroups may not accurately reflect the required components for the config properties
+    // which are mapped to them.  Only the hostgroup name is used for hostgroup resolution an the components
+    // are not validated
+    Collection<String> groupComponents = new HashSet<String>();
+    groupComponents.add("TEZ_CLIENT");
+    groupComponents.add("RESOURCEMANAGER");
+    Collection<String> hosts = new ArrayList<String>();
+    hosts.add(expectedHostName);
+    hosts.add("serverTwo");
+    TestHostGroup group = new TestHostGroup(expectedHostGroupName, groupComponents, hosts);
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor configProcessor = new BlueprintConfigurationProcessor(topology);
+    configProcessor.doUpdateForBlueprintExport();
+
+    // verify that these properties are filtered out of the exported configuration
+    assertFalse("admin_server_host should not be present in exported blueprint in kerberos-env",
+      kerberosEnvProperties.containsKey("admin_server_host"));
+    assertFalse("kdc_host should not be present in exported blueprint in kerberos-env",
+      kerberosEnvProperties.containsKey("kdc_host"));
+    assertEquals("hadoop.proxyuser.yarn.hosts was not exported correctly",
+      createExportedHostName("host_group_1"), coreSiteProperties.get("hadoop.proxyuser.yarn.hosts"));
   }
 
   @Test
@@ -1167,6 +1435,8 @@ public class BlueprintConfigurationProcessorTest {
 
     oozieEnvProperties.put("oozie_hostname", expectedHostName);
     oozieEnvProperties.put("oozie_existing_mysql_host", expectedExternalHost);
+    oozieEnvProperties.put("oozie_heapsize", "1024m");
+    oozieEnvProperties.put("oozie_permsize", "2048m");
 
     coreSiteProperties.put("hadoop.proxyuser.oozie.hosts", expectedHostName + "," + expectedHostNameTwo);
 
@@ -1216,6 +1486,13 @@ public class BlueprintConfigurationProcessorTest {
         oozieEnvProperties.containsKey("oozie_existing_mysql_host"));
     assertFalse("oozie.service.JPAService.jdbc.url should not have been present in the exported configuration",
         oozieSiteProperties.containsKey("oozie.service.JPAService.jdbc.url"));
+
+    // verify that oozie-env heapsize properties are not removed from the configuration
+    assertEquals("oozie_heapsize should have been included in exported configuration",
+      "1024m", oozieEnvProperties.get("oozie_heapsize"));
+    assertEquals("oozie_permsize should have been included in exported configuration",
+      "2048m", oozieEnvProperties.get("oozie_permsize"));
+
   }
 
   @Test
@@ -1460,7 +1737,11 @@ public class BlueprintConfigurationProcessorTest {
   public void testDoUpdateForClusterCreate_SingleHostProperty__defaultValue() throws Exception {
     Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
     Map<String, String> typeProps = new HashMap<String, String>();
+    Map<String, String> typeProps2 = new HashMap<String, String>();
     typeProps.put("yarn.resourcemanager.hostname", "localhost");
+    typeProps2.put("oozie_heapsize", "1024");
+    typeProps2.put("oozie_permsize", "128");
+    properties.put("oozie-env", typeProps2);
     properties.put("yarn-site", typeProps);
 
     Configuration clusterConfig = new Configuration(properties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
@@ -1486,6 +1767,150 @@ public class BlueprintConfigurationProcessorTest {
     updater.doUpdateForClusterCreate();
     String updatedVal = properties.get("yarn-site").get("yarn.resourcemanager.hostname");
     assertEquals("testhost", updatedVal);
+    String updatedVal1 = properties.get("oozie-env").get("oozie_heapsize");
+    assertEquals("1024m", updatedVal1);
+    String updatedVal2 = properties.get("oozie-env").get("oozie_permsize");
+    assertEquals("128m", updatedVal2);
+  }
+
+  @Test
+  public void testDoUpdateForClusterCreate_SingleHostProperty__defaultValue_providedInParent() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> yarnSiteProps = new HashMap<String, String>();
+    yarnSiteProps.put("yarn.resourcemanager.hostname", "localhost");
+    properties.put("yarn-site", yarnSiteProps);
+
+    Map<String, Map<String, String>> parentProperties = new HashMap<String, Map<String, String>>();
+    Map<String, String> parentYarnSiteProps = new HashMap<String, String>();
+    parentYarnSiteProps.put("yarn.resourcemanager.resource-tracker.address", "localhost");
+    parentProperties.put("yarn-site", parentYarnSiteProps);
+
+    Configuration parentClusterConfig = new Configuration(parentProperties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Configuration clusterConfig = new Configuration(properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap(), parentClusterConfig);
+
+    Collection<String> group1Components = new HashSet<String>();
+    group1Components.add("NAMENODE");
+    group1Components.add("SECONDARY_NAMENODE");
+    group1Components.add("RESOURCEMANAGER");
+    TestHostGroup group1 = new TestHostGroup("group1", group1Components, Collections.singleton("testhost"));
+
+    Collection<String> group2Components = new HashSet<String>();
+    group2Components.add("DATANODE");
+    group2Components.add("HDFS_CLIENT");
+    TestHostGroup group2 = new TestHostGroup("group2", group2Components, Collections.singleton("testhost2"));
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+    hostGroups.add(group2);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    updater.doUpdateForClusterCreate();
+
+    assertEquals("testhost", clusterConfig.getPropertyValue("yarn-site", "yarn.resourcemanager.hostname"));
+    assertEquals("testhost", clusterConfig.getPropertyValue("yarn-site", "yarn.resourcemanager.resource-tracker.address"));
+  }
+
+  @Test
+  public void testDoUpdateForClusterCreate_SingleHostProperty__defaultValue_hostGroupConfig() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> yarnSiteProps = new HashMap<String, String>();
+    yarnSiteProps.put("yarn.resourcemanager.hostname", "localhost");
+    properties.put("yarn-site", yarnSiteProps);
+
+    Configuration clusterConfig = new Configuration(properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> group1Components = new HashSet<String>();
+    group1Components.add("NAMENODE");
+    group1Components.add("SECONDARY_NAMENODE");
+    group1Components.add("RESOURCEMANAGER");
+    TestHostGroup group1 = new TestHostGroup("group1", group1Components, Collections.singleton("testhost"));
+
+    Collection<String> group2Components = new HashSet<String>();
+    group2Components.add("DATANODE");
+    group2Components.add("HDFS_CLIENT");
+
+    Map<String, Map<String, String>> group2Properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> group2YarnSiteProperties = new HashMap<String, String>();
+    group2YarnSiteProperties.put("yarn.resourcemanager.resource-tracker.address", "localhost");
+    group2Properties.put("yarn-site", group2YarnSiteProperties);
+    // group 2 host group configuration
+    // HG config -> BP HG config -> cluster scoped config
+    Configuration group2BPConfig = new Configuration(Collections.<String, Map<String, String>>emptyMap(),
+        Collections.<String, Map<String, Map<String, String>>>emptyMap(), clusterConfig);
+
+    Configuration group2Config = new Configuration(group2Properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap(), group2BPConfig);
+    // set config on HG
+    TestHostGroup group2 = new TestHostGroup("group2", group2Components, Collections.singleton("testhost2"), group2Config);
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+    hostGroups.add(group2);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    updater.doUpdateForClusterCreate();
+
+    assertEquals("testhost", clusterConfig.getPropertyValue("yarn-site", "yarn.resourcemanager.hostname"));
+    assertEquals("testhost", group2Config.getProperties().get("yarn-site").get("yarn.resourcemanager.resource-tracker.address"));
+  }
+
+  @Test
+  public void testDoUpdateForClusterCreate_SingleHostProperty__defaultValue_BPHostGroupConfig() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> yarnSiteProps = new HashMap<String, String>();
+    yarnSiteProps.put("yarn.resourcemanager.hostname", "localhost");
+    properties.put("yarn-site", yarnSiteProps);
+
+    Configuration clusterConfig = new Configuration(properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> group1Components = new HashSet<String>();
+    group1Components.add("NAMENODE");
+    group1Components.add("SECONDARY_NAMENODE");
+    group1Components.add("RESOURCEMANAGER");
+    TestHostGroup group1 = new TestHostGroup("group1", group1Components, Collections.singleton("testhost"));
+
+    Collection<String> group2Components = new HashSet<String>();
+    group2Components.add("DATANODE");
+    group2Components.add("HDFS_CLIENT");
+
+    Map<String, Map<String, String>> group2BPProperties = new HashMap<String, Map<String, String>>();
+    Map<String, String> group2YarnSiteProperties = new HashMap<String, String>();
+    group2YarnSiteProperties.put("yarn.resourcemanager.resource-tracker.address", "localhost");
+    group2BPProperties.put("yarn-site", group2YarnSiteProperties);
+    // group 2 host group configuration
+    // HG config -> BP HG config -> cluster scoped config
+    Configuration group2BPConfig = new Configuration(group2BPProperties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap(), clusterConfig);
+
+    // can't set parent here because it is reset in cluster topology
+    Configuration group2Config = new Configuration(new HashMap<String, Map<String, String>>(),
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+    // set config on HG
+    TestHostGroup group2 = new TestHostGroup("group2", group2Components, Collections.singleton("testhost2"), group2Config);
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+    hostGroups.add(group2);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    // todo: set as BP hostgroup
+    topology.getHostGroupInfo().get("group2").getConfiguration().setParentConfiguration(group2BPConfig);
+
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    updater.doUpdateForClusterCreate();
+
+    assertEquals("testhost", clusterConfig.getPropertyValue("yarn-site", "yarn.resourcemanager.hostname"));
+    assertEquals("testhost", group2Config.getProperties().get("yarn-site").get("yarn.resourcemanager.resource-tracker.address"));
   }
 
   @Test
@@ -1748,6 +2173,68 @@ public class BlueprintConfigurationProcessorTest {
       assertTrue(expectedHosts.contains(host));
       expectedHosts.remove(host);
     }
+  }
+
+  @Test
+  public void testDoUpdateForClusterVerifyRetrySettingsDefault() throws Exception {
+    Map<String, Map<String, String>> configProperties =
+      new HashMap<String, Map<String, String>>();
+
+    HashMap<String, String> clusterEnvProperties = new HashMap<String, String>();
+    configProperties.put("cluster-env", clusterEnvProperties);
+
+    Configuration clusterConfig = new Configuration(configProperties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    TestHostGroup testHostGroup = new TestHostGroup("test-host-group-one", Collections.<String>emptySet(), Collections.<String>emptySet());
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, Collections.singleton(testHostGroup));
+
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    updater.doUpdateForClusterCreate();
+
+    // after update, verify that the retry properties for commands and installs are set as expected
+    assertEquals("Incorrect number of properties added to cluster-env for retry",
+      3, clusterEnvProperties.size());
+    assertEquals("command_retry_enabled was not set to the expected default",
+      "true", clusterEnvProperties.get("command_retry_enabled"));
+    assertEquals("commands_to_retry was not set to the expected default",
+      "INSTALL,START", clusterEnvProperties.get("commands_to_retry"));
+    assertEquals("command_retry_max_time_in_sec was not set to the expected default",
+      "600", clusterEnvProperties.get("command_retry_max_time_in_sec"));
+  }
+
+  @Test
+  public void testDoUpdateForClusterVerifyRetrySettingsCustomized() throws Exception {
+    Map<String, Map<String, String>> configProperties =
+      new HashMap<String, Map<String, String>>();
+
+    HashMap<String, String> clusterEnvProperties = new HashMap<String, String>();
+    configProperties.put("cluster-env", clusterEnvProperties);
+
+    clusterEnvProperties.put("command_retry_enabled", "false");
+    clusterEnvProperties.put("commands_to_retry", "TEST");
+    clusterEnvProperties.put("command_retry_max_time_in_sec", "1");
+
+
+    Configuration clusterConfig = new Configuration(configProperties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    TestHostGroup testHostGroup = new TestHostGroup("test-host-group-one", Collections.<String>emptySet(), Collections.<String>emptySet());
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, Collections.singleton(testHostGroup));
+
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    updater.doUpdateForClusterCreate();
+
+    // after update, verify that the retry properties for commands and installs are set as expected
+    // in this case, the customer-provided overrides should be honored, rather than the retry defaults
+    assertEquals("Incorrect number of properties added to cluster-env for retry",
+      3, clusterEnvProperties.size());
+    assertEquals("command_retry_enabled was not set to the expected default",
+      "false", clusterEnvProperties.get("command_retry_enabled"));
+    assertEquals("commands_to_retry was not set to the expected default",
+      "TEST", clusterEnvProperties.get("commands_to_retry"));
+    assertEquals("command_retry_max_time_in_sec was not set to the expected default",
+      "1", clusterEnvProperties.get("command_retry_max_time_in_sec"));
   }
 
   @Test
@@ -2141,6 +2628,77 @@ public class BlueprintConfigurationProcessorTest {
   }
 
   @Test
+  public void testOozieHAEnabledExport() throws Exception {
+    final String expectedHostName = "c6401.apache.ambari.org";
+    final String expectedHostNameTwo = "c6402.ambari.apache.org";
+    final String expectedExternalHost = "c6408.ambari.apache.org";
+    final String expectedHostGroupName = "host_group_1";
+    final String expectedHostGroupNameTwo = "host_group_2";
+    final String expectedPortNum = "80000";
+
+    Map<String, Map<String, String>> configProperties = new HashMap<String, Map<String, String>>();
+    Map<String, String> oozieSiteProperties = new HashMap<String, String>();
+    Map<String, String> oozieEnvProperties = new HashMap<String, String>();
+    Map<String, String> coreSiteProperties = new HashMap<String, String>();
+
+    configProperties.put("oozie-site", oozieSiteProperties);
+    configProperties.put("oozie-env", oozieEnvProperties);
+    configProperties.put("hive-env", oozieEnvProperties);
+    configProperties.put("core-site", coreSiteProperties);
+
+
+    oozieSiteProperties.put("oozie.base.url", expectedHostName + ":" + expectedPortNum);
+    oozieSiteProperties.put("oozie.authentication.kerberos.principal", expectedHostName);
+    oozieSiteProperties.put("oozie.service.HadoopAccessorService.kerberos.principal", expectedHostName);
+    oozieSiteProperties.put("oozie.service.JPAService.jdbc.url", "jdbc:mysql://" + expectedExternalHost + "/ooziedb");
+
+    // simulate the Oozie HA configuration
+    oozieSiteProperties.put("oozie.services.ext",
+      "org.apache.oozie.service.ZKLocksService,org.apache.oozie.service.ZKXLogStreamingService,org.apache.oozie.service.ZKJobsConcurrencyService,org.apache.oozie.service.ZKUUIDService");
+    oozieSiteProperties.put("oozie.zookeeper.connection.string", createHostAddress(expectedHostName, "2181") + "," + createHostAddress(expectedHostNameTwo, "2181"));
+
+
+    oozieEnvProperties.put("oozie_hostname", expectedHostName);
+    oozieEnvProperties.put("oozie_existing_mysql_host", expectedExternalHost);
+
+    coreSiteProperties.put("hadoop.proxyuser.oozie.hosts", expectedHostName + "," + expectedHostNameTwo);
+
+    Configuration clusterConfig = new Configuration(configProperties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
+    Collection<String> hgComponents = new HashSet<String>();
+    hgComponents.add("OOZIE_SERVER");
+    hgComponents.add("ZOOKEEPER_SERVER");
+    TestHostGroup group1 = new TestHostGroup(expectedHostGroupName, hgComponents, Collections.singleton(expectedHostName));
+
+    Collection<String> hgComponents2 = new HashSet<String>();
+    hgComponents2.add("OOZIE_SERVER");
+    hgComponents2.add("ZOOKEEPER_SERVER");
+    TestHostGroup group2 = new TestHostGroup(expectedHostGroupNameTwo, hgComponents2, Collections.singleton(expectedHostNameTwo));
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+    hostGroups.add(group2);
+
+    expect(stack.getCardinality("OOZIE_SERVER")).andReturn(new Cardinality("1+")).anyTimes();
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+    updater.doUpdateForBlueprintExport();
+
+    assertEquals("oozie property not updated correctly",
+        createExportedHostName(expectedHostGroupName, expectedPortNum), oozieSiteProperties.get("oozie.base.url"));
+    assertEquals("oozie property not updated correctly",
+      createExportedHostName(expectedHostGroupName), oozieSiteProperties.get("oozie.authentication.kerberos.principal"));
+    assertEquals("oozie property not updated correctly",
+      createExportedHostName(expectedHostGroupName), oozieSiteProperties.get("oozie.service.HadoopAccessorService.kerberos.principal"));
+    assertEquals("oozie property not updated correctly",
+      createExportedHostName(expectedHostGroupName), oozieEnvProperties.get("oozie_hostname"));
+    assertEquals("oozie property not updated correctly",
+      createExportedHostName(expectedHostGroupName) + "," + createExportedHostName(expectedHostGroupNameTwo), coreSiteProperties.get("hadoop.proxyuser.oozie.hosts"));
+    assertEquals("oozie property not updated correctly",
+      createExportedAddress("2181", expectedHostGroupName) + "," + createExportedAddress("2181", expectedHostGroupNameTwo), oozieSiteProperties.get("oozie.zookeeper.connection.string"));
+  }
+
+  @Test
   public void testYarnHighAvailabilityConfigClusterUpdateSpecifyingHostNamesDirectly() throws Exception {
     final String expectedHostName = "c6401.apache.ambari.org";
     final String expectedPortNum = "808080";
@@ -2163,6 +2721,7 @@ public class BlueprintConfigurationProcessorTest {
     yarnSiteProperties.put("yarn.timeline-service.webapp.address", expectedHostName + ":" + expectedPortNum);
     yarnSiteProperties.put("yarn.timeline-service.webapp.https.address", expectedHostName + ":" + expectedPortNum);
     yarnSiteProperties.put("yarn.resourcemanager.ha.enabled", "true");
+    yarnSiteProperties.put("yarn.resourcemanager.ha.rm-ids", "rm1, rm2");
 
     Configuration clusterConfig = new Configuration(configProperties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
     Collection<String> hgComponents = new HashSet<String>();
@@ -2206,6 +2765,107 @@ public class BlueprintConfigurationProcessorTest {
         createHostAddress(expectedHostName, expectedPortNum), yarnSiteProperties.get("yarn.timeline-service.webapp.address"));
     assertEquals("Yarn ResourceManager timeline webapp HTTPS address was incorrectly updated",
         createHostAddress(expectedHostName, expectedPortNum), yarnSiteProperties.get("yarn.timeline-service.webapp.https.address"));
+  }
+
+  @Test
+  public void testYarnHighAvailabilityExport() throws Exception {
+    final String expectedHostName = "c6401.apache.ambari.org";
+    final String expectedHostNameTwo = "c6402.apache.ambari.org";
+    final String expectedPortNum = "808080";
+    final String expectedHostGroupName = "host_group_1";
+    final String expectedHostGroupNameTwo = "host_group_2";
+
+    Map<String, Map<String, String>> configProperties = new HashMap<String, Map<String, String>>();
+    Map<String, String> yarnSiteProperties = new HashMap<String, String>();
+    configProperties.put("yarn-site", yarnSiteProperties);
+
+    // setup properties that include host information
+    yarnSiteProperties.put("yarn.log.server.url", "http://" + expectedHostName +":19888/jobhistory/logs");
+    yarnSiteProperties.put("yarn.resourcemanager.hostname", expectedHostName);
+    yarnSiteProperties.put("yarn.resourcemanager.resource-tracker.address", expectedHostName + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.resourcemanager.webapp.address", expectedHostName + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.resourcemanager.scheduler.address", expectedHostName + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.resourcemanager.address", expectedHostName + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.resourcemanager.admin.address", expectedHostName + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.timeline-service.address", expectedHostName + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.timeline-service.webapp.address", expectedHostName + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.timeline-service.webapp.https.address", expectedHostName + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.resourcemanager.ha.enabled", "true");
+    yarnSiteProperties.put("yarn.resourcemanager.ha.rm-ids", "rm1, rm2");
+    yarnSiteProperties.put("yarn.resourcemanager.hostname.rm1", expectedHostName);
+    yarnSiteProperties.put("yarn.resourcemanager.hostname.rm2", expectedHostNameTwo);
+    yarnSiteProperties.put("yarn.resourcemanager.webapp.address.rm1", expectedHostName + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.resourcemanager.webapp.address.rm2", expectedHostNameTwo + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.resourcemanager.webapp.https.address.rm1", expectedHostName + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.resourcemanager.webapp.https.address.rm2", expectedHostNameTwo + ":" + expectedPortNum);
+    yarnSiteProperties.put("yarn.resourcemanager.zk-address", expectedHostName + ":" + "2181" + "," + expectedHostNameTwo + ":" + "2181");
+    yarnSiteProperties.put("yarn.resourcemanager.webapp.https.address", expectedHostName + ":" + "8080");
+
+
+    Configuration clusterConfig = new Configuration(configProperties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
+    Collection<String> hgComponents = new HashSet<String>();
+    hgComponents.add("RESOURCEMANAGER");
+    hgComponents.add("APP_TIMELINE_SERVER");
+    hgComponents.add("HISTORYSERVER");
+    TestHostGroup group1 = new TestHostGroup(expectedHostGroupName, hgComponents, Collections.singleton(expectedHostName));
+
+    Collection<String> hgComponents2 = new HashSet<String>();
+    hgComponents2.add("RESOURCEMANAGER");
+    TestHostGroup group2 = new TestHostGroup(expectedHostGroupNameTwo, hgComponents2, Collections.singleton(expectedHostNameTwo));
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+    hostGroups.add(group2);
+
+    expect(stack.getCardinality("RESOURCEMANAGER")).andReturn(new Cardinality("1-2")).anyTimes();
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+    updater.doUpdateForBlueprintExport();
+
+    // verify that the properties with hostname information was correctly preserved
+    assertEquals("Yarn Log Server URL was incorrectly updated",
+      "http://" + createExportedAddress("19888", expectedHostGroupName) + "/jobhistory/logs", yarnSiteProperties.get("yarn.log.server.url"));
+    assertEquals("Yarn ResourceManager hostname was incorrectly updated",
+      createExportedHostName(expectedHostGroupName), yarnSiteProperties.get("yarn.resourcemanager.hostname"));
+    assertEquals("Yarn ResourceManager tracker address was incorrectly updated",
+      createExportedHostName(expectedHostGroupName, expectedPortNum), yarnSiteProperties.get("yarn.resourcemanager.resource-tracker.address"));
+    assertEquals("Yarn ResourceManager webapp address was incorrectly updated",
+      createExportedHostName(expectedHostGroupName, expectedPortNum), yarnSiteProperties.get("yarn.resourcemanager.webapp.address"));
+    assertEquals("Yarn ResourceManager scheduler address was incorrectly updated",
+      createExportedHostName(expectedHostGroupName, expectedPortNum), yarnSiteProperties.get("yarn.resourcemanager.scheduler.address"));
+    assertEquals("Yarn ResourceManager address was incorrectly updated",
+      createExportedHostName(expectedHostGroupName, expectedPortNum), yarnSiteProperties.get("yarn.resourcemanager.address"));
+    assertEquals("Yarn ResourceManager admin address was incorrectly updated",
+      createExportedHostName(expectedHostGroupName, expectedPortNum), yarnSiteProperties.get("yarn.resourcemanager.admin.address"));
+    assertEquals("Yarn ResourceManager timeline-service address was incorrectly updated",
+      createExportedHostName(expectedHostGroupName, expectedPortNum), yarnSiteProperties.get("yarn.timeline-service.address"));
+    assertEquals("Yarn ResourceManager timeline webapp address was incorrectly updated",
+      createExportedHostName(expectedHostGroupName, expectedPortNum), yarnSiteProperties.get("yarn.timeline-service.webapp.address"));
+    assertEquals("Yarn ResourceManager timeline webapp HTTPS address was incorrectly updated",
+      createExportedHostName(expectedHostGroupName, expectedPortNum), yarnSiteProperties.get("yarn.timeline-service.webapp.https.address"));
+
+    // verify that dynamically-named RM HA properties are exported as expected
+    assertEquals("Yarn ResourceManager rm1 hostname not exported properly",
+      createExportedHostName(expectedHostGroupName), yarnSiteProperties.get("yarn.resourcemanager.hostname.rm1"));
+    assertEquals("Yarn ResourceManager rm2 hostname not exported properly",
+      createExportedHostName(expectedHostGroupNameTwo), yarnSiteProperties.get("yarn.resourcemanager.hostname.rm2"));
+    assertEquals("Yarn ResourceManager rm1 web address not exported properly",
+      createExportedHostName(expectedHostGroupName, expectedPortNum), yarnSiteProperties.get("yarn.resourcemanager.webapp.address.rm1"));
+    assertEquals("Yarn ResourceManager rm2 web address not exported properly",
+      createExportedHostName(expectedHostGroupNameTwo, expectedPortNum), yarnSiteProperties.get("yarn.resourcemanager.webapp.address.rm2"));
+    assertEquals("Yarn ResourceManager rm1 HTTPS address not exported properly",
+      createExportedHostName(expectedHostGroupName, expectedPortNum), yarnSiteProperties.get("yarn.resourcemanager.webapp.https.address.rm1"));
+    assertEquals("Yarn ResourceManager rm2 HTTPS address not exported properly",
+      createExportedHostName(expectedHostGroupNameTwo, expectedPortNum), yarnSiteProperties.get("yarn.resourcemanager.webapp.https.address.rm2"));
+
+    assertEquals("Yarn Zookeeper address property not exported properly",
+      createExportedHostName(expectedHostGroupName, "2181") + "," + createExportedHostName(expectedHostGroupNameTwo, "2181"),
+      yarnSiteProperties.get("yarn.resourcemanager.zk-address"));
+
+    assertEquals("Yarn RM webapp address not exported properly",
+      createExportedHostName(expectedHostGroupName, "8080"), yarnSiteProperties.get("yarn.resourcemanager.webapp.https.address"));
+
   }
 
   @Test
@@ -3126,6 +3786,359 @@ public class BlueprintConfigurationProcessorTest {
   }
 
   @Test
+  public void testHiveConfigClusterUpdatePropertiesFilterAuthenticationOff() throws Exception {
+    // reset the stack mock, since we need more than the default behavior for this test
+    reset(stack);
+
+    final String expectedHostGroupName = "host_group_1";
+
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> hiveSiteProperties = new HashMap<String, String>();
+    properties.put("hive-site", hiveSiteProperties);
+
+    // setup properties for Hive to simulate the case of Hive Authentication being off
+    hiveSiteProperties.put("hive.server2.authentication", "NONE");
+    hiveSiteProperties.put("hive.server2.authentication.kerberos.keytab", " ");
+    hiveSiteProperties.put("hive.server2.authentication.kerberos.principal", " ");
+
+    Map<String, Stack.ConfigProperty> mapOfMetadata =
+      new HashMap<String, Stack.ConfigProperty>();
+
+    // simulate the stack dependencies for these Hive properties, that are dependent upon
+    // hive.server2.authorization being enabled
+    Stack.ConfigProperty configProperty1 =
+      new Stack.ConfigProperty("hive-site", "hive.server2.authentication.kerberos.keytab", " ") {
+        @Override
+        Set<PropertyDependencyInfo> getDependsOnProperties() {
+          PropertyDependencyInfo dependencyInfo = new PropertyDependencyInfo("hive-site", "hive.server2.authentication");
+          return Collections.singleton(dependencyInfo);
+        }
+      };
+
+    Stack.ConfigProperty configProperty2 =
+      new Stack.ConfigProperty("hive-site", "hive.server2.authentication.kerberos.principal", " ") {
+        @Override
+        Set<PropertyDependencyInfo> getDependsOnProperties() {
+          PropertyDependencyInfo dependencyInfo = new PropertyDependencyInfo("hive-site", "hive.server2.authentication");
+          return Collections.singleton(dependencyInfo);
+        }
+      };
+
+    mapOfMetadata.put("hive.server2.authentication.kerberos.keytab", configProperty1);
+    mapOfMetadata.put("hive.server2.authentication.kerberos.principal", configProperty2);
+
+    // defaults from init() method that we need
+    expect(stack.getName()).andReturn("testStack").anyTimes();
+    expect(stack.getVersion()).andReturn("1").anyTimes();
+    expect(stack.isMasterComponent((String) anyObject())).andReturn(false).anyTimes();
+
+    // customized stack calls for this test only
+    expect(stack.getServiceForConfigType("hive-site")).andReturn("HIVE").atLeastOnce();
+    expect(stack.getConfigurationPropertiesWithMetadata("HIVE", "hive-site")).andReturn(mapOfMetadata).atLeastOnce();
+
+    Configuration clusterConfig = new Configuration(properties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> hgComponents = new HashSet<String>();
+    hgComponents.add("NAMENODE");
+    List<String> hosts = new ArrayList<String>();
+    hosts.add("some-hose");
+    TestHostGroup group1 = new TestHostGroup(expectedHostGroupName, hgComponents, hosts);
+
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    // call top-level cluster config update method
+    updater.doUpdateForClusterCreate();
+
+    assertFalse("hive.server2.authentication.kerberos.keytab should have been filtered out of configuration",
+      hiveSiteProperties.containsKey("hive.server2.authentication.kerberos.keytab"));
+    assertFalse("hive.server2.authentication.kerberos.principal should have been filtered out of configuration",
+      hiveSiteProperties.containsKey("hive.server2.authentication.kerberos.principal"));
+  }
+
+  @Test
+  public void testHiveConfigClusterUpdatePropertiesFilterAuthenticationOffFilterThrowsError() throws Exception {
+    // reset the stack mock, since we need more than the default behavior for this test
+    reset(stack);
+
+    final String expectedHostGroupName = "host_group_1";
+
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> hiveSiteProperties = new HashMap<String, String>();
+    properties.put("hive-site", hiveSiteProperties);
+
+    // setup properties for Hive to simulate the case of Hive Authentication being off
+    hiveSiteProperties.put("hive.server2.authentication", "NONE");
+    hiveSiteProperties.put("hive.server2.authentication.kerberos.keytab", " ");
+    hiveSiteProperties.put("hive.server2.authentication.kerberos.principal", " ");
+
+    Map<String, Stack.ConfigProperty> mapOfMetadata =
+      new HashMap<String, Stack.ConfigProperty>();
+
+    // simulate the stack dependencies for these Hive properties, that are dependent upon
+    // hive.server2.authorization being enabled
+    Stack.ConfigProperty configProperty1 =
+      new Stack.ConfigProperty("hive-site", "hive.server2.authentication.kerberos.keytab", " ") {
+        @Override
+        Set<PropertyDependencyInfo> getDependsOnProperties() {
+          PropertyDependencyInfo dependencyInfo = new PropertyDependencyInfo("hive-site", "hive.server2.authentication");
+          return Collections.singleton(dependencyInfo);
+        }
+      };
+
+    Stack.ConfigProperty configProperty2 =
+      new Stack.ConfigProperty("hive-site", "hive.server2.authentication.kerberos.principal", " ") {
+        @Override
+        Set<PropertyDependencyInfo> getDependsOnProperties() {
+          PropertyDependencyInfo dependencyInfo = new PropertyDependencyInfo("hive-site", "hive.server2.authentication");
+          return Collections.singleton(dependencyInfo);
+        }
+      };
+
+    mapOfMetadata.put("hive.server2.authentication.kerberos.keytab", configProperty1);
+    mapOfMetadata.put("hive.server2.authentication.kerberos.principal", configProperty2);
+
+    // defaults from init() method that we need
+    expect(stack.getName()).andReturn("testStack").anyTimes();
+    expect(stack.getVersion()).andReturn("1").anyTimes();
+    expect(stack.isMasterComponent((String) anyObject())).andReturn(false).anyTimes();
+
+    // customized stack calls for this test only
+    // simulate the case of the stack object throwing a RuntimeException, to indicate a config error
+    expect(stack.getServiceForConfigType("hive-site")).andThrow(new RuntimeException("Expected Test Error")).atLeastOnce();
+    expect(stack.getConfigurationPropertiesWithMetadata("HIVE", "hive-site")).andReturn(mapOfMetadata).atLeastOnce();
+
+    Configuration clusterConfig = new Configuration(properties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> hgComponents = new HashSet<String>();
+    hgComponents.add("NAMENODE");
+    List<String> hosts = new ArrayList<String>();
+    hosts.add("some-hose");
+    TestHostGroup group1 = new TestHostGroup(expectedHostGroupName, hgComponents, hosts);
+
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    // call top-level cluster config update method
+    updater.doUpdateForClusterCreate();
+
+    assertTrue("hive.server2.authentication.kerberos.keytab should not have been filtered, due to error condition",
+      hiveSiteProperties.containsKey("hive.server2.authentication.kerberos.keytab"));
+    assertTrue("hive.server2.authentication.kerberos.principal should not have been filtered, due to error condition",
+      hiveSiteProperties.containsKey("hive.server2.authentication.kerberos.principal"));
+  }
+
+  @Test
+  public void testHiveConfigClusterUpdatePropertiesFilterAuthenticationOn() throws Exception {
+    // reset the stack mock, since we need more than the default behavior for this test
+    reset(stack);
+
+    final String expectedHostGroupName = "host_group_1";
+
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> hiveSiteProperties = new HashMap<String, String>();
+    properties.put("hive-site", hiveSiteProperties);
+
+    // setup properties for Hive to simulate the case of Hive Authentication being on,
+    // and set to KERBEROS
+    hiveSiteProperties.put("hive.server2.authentication", "KERBEROS");
+    hiveSiteProperties.put("hive.server2.authentication.kerberos.keytab", " ");
+    hiveSiteProperties.put("hive.server2.authentication.kerberos.principal", " ");
+
+    Map<String, Stack.ConfigProperty> mapOfMetadata =
+      new HashMap<String, Stack.ConfigProperty>();
+
+    // simulate the stack dependencies for these Hive properties, that are dependent upon
+    // hive.server2.authorization being enabled
+    Stack.ConfigProperty configProperty1 =
+      new Stack.ConfigProperty("hive-site", "hive.server2.authentication.kerberos.keytab", " ") {
+        @Override
+        Set<PropertyDependencyInfo> getDependsOnProperties() {
+          PropertyDependencyInfo dependencyInfo = new PropertyDependencyInfo("hive-site", "hive.server2.authentication");
+          return Collections.singleton(dependencyInfo);
+        }
+      };
+
+    Stack.ConfigProperty configProperty2 =
+      new Stack.ConfigProperty("hive-site", "hive.server2.authentication.kerberos.principal", " ") {
+        @Override
+        Set<PropertyDependencyInfo> getDependsOnProperties() {
+          PropertyDependencyInfo dependencyInfo = new PropertyDependencyInfo("hive-site", "hive.server2.authentication");
+          return Collections.singleton(dependencyInfo);
+        }
+      };
+
+    mapOfMetadata.put("hive.server2.authentication.kerberos.keytab", configProperty1);
+    mapOfMetadata.put("hive.server2.authentication.kerberos.principal", configProperty2);
+
+    // defaults from init() method that we need
+    expect(stack.getName()).andReturn("testStack").anyTimes();
+    expect(stack.getVersion()).andReturn("1").anyTimes();
+    expect(stack.isMasterComponent((String) anyObject())).andReturn(false).anyTimes();
+
+    // customized stack calls for this test only
+    expect(stack.getServiceForConfigType("hive-site")).andReturn("HIVE").atLeastOnce();
+    expect(stack.getConfigurationPropertiesWithMetadata("HIVE", "hive-site")).andReturn(mapOfMetadata).atLeastOnce();
+
+    Configuration clusterConfig = new Configuration(properties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> hgComponents = new HashSet<String>();
+    hgComponents.add("NAMENODE");
+    List<String> hosts = new ArrayList<String>();
+    hosts.add("some-hose");
+    TestHostGroup group1 = new TestHostGroup(expectedHostGroupName, hgComponents, hosts);
+
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    // call top-level cluster config update method
+    updater.doUpdateForClusterCreate();
+
+    assertTrue("hive.server2.authentication.kerberos.keytab should have been included in configuration",
+        hiveSiteProperties.containsKey("hive.server2.authentication.kerberos.keytab"));
+    assertTrue("hive.server2.authentication.kerberos.principal should have been included in configuration",
+        hiveSiteProperties.containsKey("hive.server2.authentication.kerberos.principal"));
+  }
+
+  @Test
+  public void testHBaseConfigClusterUpdatePropertiesFilterAuthorizationOff() throws Exception {
+    // reset the stack mock, since we need more than the default behavior for this test
+    reset(stack);
+
+    final String expectedHostGroupName = "host_group_1";
+
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> hbaseSiteProperties = new HashMap<String, String>();
+    properties.put("hbase-site", hbaseSiteProperties);
+
+    // setup properties for HBase to simulate the case of authorization being off
+    hbaseSiteProperties.put("hbase.security.authorization", "false");
+    hbaseSiteProperties.put("hbase.coprocessor.regionserver.classes", " ");
+
+    Map<String, Stack.ConfigProperty> mapOfMetadata =
+      new HashMap<String, Stack.ConfigProperty>();
+
+    // simulate the stack dependencies for these Hive properties, that are dependent upon
+    // hive.server2.authorization being enabled
+    Stack.ConfigProperty configProperty1 =
+      new Stack.ConfigProperty("hbase-site", "hbase.coprocessor.regionserver.classes", " ") {
+        @Override
+        Set<PropertyDependencyInfo> getDependsOnProperties() {
+          PropertyDependencyInfo dependencyInfo = new PropertyDependencyInfo("hbase-site", "hbase.security.authorization");
+          return Collections.singleton(dependencyInfo);
+        }
+      };
+
+    mapOfMetadata.put("hbase.coprocessor.regionserver.classes", configProperty1);
+
+    // defaults from init() method that we need
+    expect(stack.getName()).andReturn("testStack").anyTimes();
+    expect(stack.getVersion()).andReturn("1").anyTimes();
+    expect(stack.isMasterComponent((String) anyObject())).andReturn(false).anyTimes();
+
+    // customized stack calls for this test only
+    expect(stack.getServiceForConfigType("hbase-site")).andReturn("HBASE").atLeastOnce();
+    expect(stack.getConfigurationPropertiesWithMetadata("HBASE", "hbase-site")).andReturn(mapOfMetadata).atLeastOnce();
+
+    Configuration clusterConfig = new Configuration(properties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> hgComponents = new HashSet<String>();
+    hgComponents.add("NAMENODE");
+    List<String> hosts = new ArrayList<String>();
+    hosts.add("some-hose");
+    TestHostGroup group1 = new TestHostGroup(expectedHostGroupName, hgComponents, hosts);
+
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    // call top-level cluster config update method
+    updater.doUpdateForClusterCreate();
+
+    assertFalse("hbase.coprocessor.regionserver.classes should have been filtered out of configuration",
+        hbaseSiteProperties.containsKey("hbase.coprocessor.regionserver.classes"));
+
+  }
+
+  @Test
+  public void testHBaseConfigClusterUpdatePropertiesFilterAuthorizationOn() throws Exception {
+    // reset the stack mock, since we need more than the default behavior for this test
+    reset(stack);
+
+    final String expectedHostGroupName = "host_group_1";
+
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> hbaseSiteProperties = new HashMap<String, String>();
+    properties.put("hbase-site", hbaseSiteProperties);
+
+    // setup properties for HBase to simulate the case of authorization being off
+    hbaseSiteProperties.put("hbase.security.authorization", "true");
+    hbaseSiteProperties.put("hbase.coprocessor.regionserver.classes", " ");
+
+    Map<String, Stack.ConfigProperty> mapOfMetadata =
+      new HashMap<String, Stack.ConfigProperty>();
+
+    // simulate the stack dependencies for these Hive properties, that are dependent upon
+    // hive.server2.authorization being enabled
+    Stack.ConfigProperty configProperty1 =
+      new Stack.ConfigProperty("hbase-site", "hbase.coprocessor.regionserver.classes", " ") {
+        @Override
+        Set<PropertyDependencyInfo> getDependsOnProperties() {
+          PropertyDependencyInfo dependencyInfo = new PropertyDependencyInfo("hbase-site", "hbase.security.authorization");
+          return Collections.singleton(dependencyInfo);
+        }
+      };
+
+    mapOfMetadata.put("hbase.coprocessor.regionserver.classes", configProperty1);
+
+    // defaults from init() method that we need
+    expect(stack.getName()).andReturn("testStack").anyTimes();
+    expect(stack.getVersion()).andReturn("1").anyTimes();
+    expect(stack.isMasterComponent((String) anyObject())).andReturn(false).anyTimes();
+
+    // customized stack calls for this test only
+    expect(stack.getServiceForConfigType("hbase-site")).andReturn("HBASE").atLeastOnce();
+    expect(stack.getConfigurationPropertiesWithMetadata("HBASE", "hbase-site")).andReturn(mapOfMetadata).atLeastOnce();
+
+    Configuration clusterConfig = new Configuration(properties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> hgComponents = new HashSet<String>();
+    hgComponents.add("NAMENODE");
+    List<String> hosts = new ArrayList<String>();
+    hosts.add("some-hose");
+    TestHostGroup group1 = new TestHostGroup(expectedHostGroupName, hgComponents, hosts);
+
+
+    Collection<TestHostGroup> hostGroups = new HashSet<TestHostGroup>();
+    hostGroups.add(group1);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    // call top-level cluster config update method
+    updater.doUpdateForClusterCreate();
+
+    assertTrue("hbase.coprocessor.regionserver.classes should have been included in configuration",
+        hbaseSiteProperties.containsKey("hbase.coprocessor.regionserver.classes"));
+
+  }
+
+  @Test
   public void testHiveConfigClusterUpdateDefaultValue() throws Exception {
     final String expectedHostGroupName = "host_group_1";
     final String expectedHostName = "c6401.ambari.apache.org";
@@ -3343,6 +4356,13 @@ public class BlueprintConfigurationProcessorTest {
     hdfsSiteProperties.put("dfs.secondary.http.address", "localhost:8080");
     hdfsSiteProperties.put("dfs.namenode.secondary.http-address", "localhost:8080");
 
+
+    // add properties that are used in non-HA HDFS NameNode settings
+    // to verify that these are eventually removed by the filter
+    hdfsSiteProperties.put("dfs.namenode.http-address", "localhost:8080");
+    hdfsSiteProperties.put("dfs.namenode.https-address", "localhost:8081");
+    hdfsSiteProperties.put("dfs.namenode.rpc-address", "localhost:8082");
+
     // configure the defaultFS to use the nameservice URL
     coreSiteProperties.put("fs.defaultFS", "hdfs://" + expectedNameService);
 
@@ -3414,6 +4434,80 @@ public class BlueprintConfigurationProcessorTest {
 
     assertEquals("instance.volumes should not be modified by cluster update when NameNode HA is enabled.",
         "hdfs://" + expectedNameService + "/accumulo/test/instance/volumes", accumuloSiteProperties.get("instance.volumes"));
+
+    // verify that the non-HA properties are filtered out in HA mode
+    assertFalse("dfs.namenode.http-address should have been filtered out of this HA configuration",
+      hdfsSiteProperties.containsKey("dfs.namenode.http-address"));
+    assertFalse("dfs.namenode.https-address should have been filtered out of this HA configuration",
+      hdfsSiteProperties.containsKey("dfs.namenode.https-address"));
+    assertFalse("dfs.namenode.rpc-address should have been filtered out of this HA configuration",
+      hdfsSiteProperties.containsKey("dfs.namenode.rpc-address"));
+
+  }
+
+  @Test
+  public void testDoUpdateForClusterWithNameNodeHANotEnabled() throws Exception {
+    final String expectedHostName = "c6401.apache.ambari.org";
+    final String expectedHostNameTwo = "serverTwo";
+    final String expectedPortNum = "808080";
+    final String expectedHostGroupName = "host_group_1";
+
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+
+    Map<String, String> hdfsSiteProperties = new HashMap<String, String>();
+    Map<String, String> hbaseSiteProperties = new HashMap<String, String>();
+    Map<String, String> hadoopEnvProperties = new HashMap<String, String>();
+    Map<String, String> coreSiteProperties = new HashMap<String, String>();
+    Map<String, String> accumuloSiteProperties =new HashMap<String, String>();
+
+    properties.put("hdfs-site", hdfsSiteProperties);
+    properties.put("hadoop-env", hadoopEnvProperties);
+    properties.put("core-site", coreSiteProperties);
+    properties.put("hbase-site", hbaseSiteProperties);
+    properties.put("accumulo-site", accumuloSiteProperties);
+
+    // add properties that require the SECONDARY_NAMENODE, which
+    // is not included in this test
+    hdfsSiteProperties.put("dfs.secondary.http.address", "localhost:8080");
+    hdfsSiteProperties.put("dfs.namenode.secondary.http-address", "localhost:8080");
+
+
+    // add properties that are used in non-HA HDFS NameNode settings
+    // to verify that these are eventually removed by the filter
+    hdfsSiteProperties.put("dfs.namenode.http-address", "localhost:8080");
+    hdfsSiteProperties.put("dfs.namenode.https-address", "localhost:8081");
+    hdfsSiteProperties.put("dfs.namenode.rpc-address", "localhost:8082");
+
+    Configuration clusterConfig = new Configuration(properties, Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> hgComponents = new HashSet<String>();
+    hgComponents.add("NAMENODE");
+    hgComponents.add("SECONDARY_NAMENODE");
+    TestHostGroup group1 = new TestHostGroup(expectedHostGroupName, hgComponents, Collections.singleton(expectedHostName));
+
+    Collection<String> hgComponents2 = new HashSet<String>();
+    TestHostGroup group2 = new TestHostGroup("host-group-2", hgComponents2, Collections.singleton(expectedHostNameTwo));
+
+    Collection<TestHostGroup> hostGroups = new ArrayList<TestHostGroup>();
+    hostGroups.add(group1);
+    hostGroups.add(group2);
+
+    expect(stack.getCardinality("NAMENODE")).andReturn(new Cardinality("1-2")).anyTimes();
+    expect(stack.getCardinality("SECONDARY_NAMENODE")).andReturn(new Cardinality("1")).anyTimes();
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    updater.doUpdateForClusterCreate();
+
+    // verify that the non-HA properties are not filtered out in a non-HA cluster
+    assertTrue("dfs.namenode.http-address should have been included in this HA configuration",
+      hdfsSiteProperties.containsKey("dfs.namenode.http-address"));
+    assertTrue("dfs.namenode.https-address should have been included in this HA configuration",
+      hdfsSiteProperties.containsKey("dfs.namenode.https-address"));
+    assertTrue("dfs.namenode.rpc-address should have been included in this HA configuration",
+      hdfsSiteProperties.containsKey("dfs.namenode.rpc-address"));
+
   }
 
   @Test
@@ -3652,7 +4746,7 @@ public class BlueprintConfigurationProcessorTest {
   }
 
   @Test
-  public void testGetRequiredHostGroups___validComponentCountofZero() throws Exception {
+  public void testGetRequiredHostGroups___validComponentCountOfZero() throws Exception {
     Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
     Map<String, String> hiveSite = new HashMap<String, String>();
     properties.put("hive-site", hiveSite);
@@ -3685,10 +4779,259 @@ public class BlueprintConfigurationProcessorTest {
 
     // call top-level export method
     Collection<String> requiredGroups = updater.getRequiredHostGroups();
-    System.out.println("Required Groups: " + requiredGroups);
-
-
+    assertEquals(0, requiredGroups.size());
   }
+
+  @Test
+  public void testGetRequiredHostGroups___invalidComponentCountOfZero() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> coreSiteMap = new HashMap<String, String>();
+    properties.put("core-site", coreSiteMap);
+
+    coreSiteMap.put("fs.defaultFS", "localhost");
+
+    Configuration clusterConfig = new Configuration(properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    expect(stack.getCardinality("NAMENODE")).andReturn(new Cardinality("1")).anyTimes();
+
+    Collection<String> hgComponents1 = new HashSet<String>();
+    hgComponents1.add("HIVE_SERVER");
+    TestHostGroup group1 = new TestHostGroup("group1", hgComponents1, Collections.singleton("host1"));
+
+    Collection<String> hgComponents2 = new HashSet<String>();
+    hgComponents2.add("DATANODE");
+    TestHostGroup group2 = new TestHostGroup("group2", hgComponents2, Collections.singleton("host2"));
+
+    Collection<TestHostGroup> hostGroups = new ArrayList<TestHostGroup>();
+    hostGroups.add(group1);
+    hostGroups.add(group2);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    // call top-level export method
+    Collection<String> requiredGroups = updater.getRequiredHostGroups();
+    assertEquals(0, requiredGroups.size());
+  }
+
+  @Test
+  public void testGetRequiredHostGroups___multipleGroups() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> coreSiteMap = new HashMap<String, String>();
+    properties.put("core-site", coreSiteMap);
+
+    coreSiteMap.put("fs.defaultFS", "localhost");
+
+    Configuration clusterConfig = new Configuration(properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    expect(stack.getCardinality("NAMENODE")).andReturn(new Cardinality("1")).anyTimes();
+
+    Collection<String> hgComponents1 = new HashSet<String>();
+    hgComponents1.add("HIVE_SERVER");
+    hgComponents1.add("NAMENODE");
+    TestHostGroup group1 = new TestHostGroup("group1", hgComponents1, Collections.singleton("host1"));
+
+    Collection<String> hgComponents2 = new HashSet<String>();
+    hgComponents2.add("NAMENODE");
+    hgComponents2.add("DATANODE");
+    TestHostGroup group2 = new TestHostGroup("group2", hgComponents2, Collections.singleton("host2"));
+
+    Collection<TestHostGroup> hostGroups = new ArrayList<TestHostGroup>();
+    hostGroups.add(group1);
+    hostGroups.add(group2);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor updater = new BlueprintConfigurationProcessor(topology);
+
+    // call top-level export method
+    Collection<String> requiredGroups = updater.getRequiredHostGroups();
+    assertEquals(2, requiredGroups.size());
+    assertTrue(requiredGroups.containsAll(Arrays.asList("group1", "group2")));
+  }
+
+  @Test
+  public void testAllDefaultUserAndGroupProxyPropertiesSet() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> oozieEnvProperties = new HashMap<String, String>();
+    Map<String, String> hiveEnvProperties = new HashMap<String, String>();
+    Map<String, String> hbaseEnvProperties = new HashMap<String, String>();
+    Map<String, String> falconEnvProperties = new HashMap<String, String>();
+
+    properties.put("oozie-env", oozieEnvProperties);
+    properties.put("hive-env", hiveEnvProperties);
+    properties.put("hbase-env", hbaseEnvProperties);
+    properties.put("falcon-env", falconEnvProperties);
+
+    oozieEnvProperties.put("oozie_user", "test-oozie-user");
+
+    hiveEnvProperties.put("hive_user", "test-hive-user");
+    hiveEnvProperties.put("hcat_user", "test-hcat-user");
+
+    hbaseEnvProperties.put("hbase_user", "test-hbase-user");
+
+    falconEnvProperties.put("falcon_user", "test-falcon-user");
+
+    Configuration clusterConfig = new Configuration(properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> hgComponents1 = new HashSet<String>();
+    hgComponents1.add("OOZIE_SERVER");
+    hgComponents1.add("HIVE_SERVER");
+    hgComponents1.add("HBASE_MASTER");
+    hgComponents1.add("FALCON_SERVER");
+    TestHostGroup group1 = new TestHostGroup("group1", hgComponents1, Collections.singleton("host1"));
+
+    Collection<TestHostGroup> hostGroups = Collections.singletonList(group1);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor configProcessor = new BlueprintConfigurationProcessor(topology);
+
+    configProcessor.doUpdateForClusterCreate();
+
+    assertEquals("*", properties.get("core-site").get("hadoop.proxyuser.test-oozie-user.hosts"));
+    assertEquals("users", properties.get("core-site").get("hadoop.proxyuser.test-oozie-user.groups"));
+
+    assertEquals("*", properties.get("core-site").get("hadoop.proxyuser.test-hive-user.hosts"));
+    assertEquals("users", properties.get("core-site").get("hadoop.proxyuser.test-hive-user.groups"));
+
+    assertEquals("*", properties.get("core-site").get("hadoop.proxyuser.test-hcat-user.hosts"));
+    assertEquals("users", properties.get("core-site").get("hadoop.proxyuser.test-hcat-user.groups"));
+
+    assertEquals("*", properties.get("core-site").get("hadoop.proxyuser.test-hbase-user.hosts"));
+    assertEquals("users", properties.get("core-site").get("hadoop.proxyuser.test-hbase-user.groups"));
+
+    assertEquals("*", properties.get("core-site").get("hadoop.proxyuser.test-falcon-user.hosts"));
+    assertEquals("users", properties.get("core-site").get("hadoop.proxyuser.test-falcon-user.groups"));
+  }
+
+  @Test
+  public void testRelevantDefaultUserAndGroupProxyPropertiesSet() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> oozieEnvProperties = new HashMap<String, String>();
+    Map<String, String> falconEnvProperties = new HashMap<String, String>();
+
+    properties.put("oozie-env", oozieEnvProperties);
+    properties.put("falcon-env", falconEnvProperties);
+
+    oozieEnvProperties.put("oozie_user", "test-oozie-user");
+
+    falconEnvProperties.put("falcon_user", "test-falcon-user");
+
+    Configuration clusterConfig = new Configuration(properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> hgComponents1 = new HashSet<String>();
+    hgComponents1.add("OOZIE_SERVER");
+    hgComponents1.add("FALCON_SERVER");
+    TestHostGroup group1 = new TestHostGroup("group1", hgComponents1, Collections.singleton("host1"));
+
+    Collection<TestHostGroup> hostGroups = Collections.singletonList(group1);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor configProcessor = new BlueprintConfigurationProcessor(topology);
+
+    configProcessor.doUpdateForClusterCreate();
+
+    Map<String, String> coreSiteProperties = properties.get("core-site");
+    assertEquals(4, coreSiteProperties.size());
+
+    assertEquals("*", coreSiteProperties.get("hadoop.proxyuser.test-oozie-user.hosts"));
+    assertEquals("users", coreSiteProperties.get("hadoop.proxyuser.test-oozie-user.groups"));
+
+    assertEquals("*", coreSiteProperties.get("hadoop.proxyuser.test-falcon-user.hosts"));
+    assertEquals("users", coreSiteProperties.get("hadoop.proxyuser.test-falcon-user.groups"));
+  }
+
+  @Test
+  public void testDefaultUserAndGroupProxyPropertiesSetWhenNotProvided() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> coreSiteProperties = new HashMap<String, String>();
+    Map<String, String> oozieEnvProperties = new HashMap<String, String>();
+    Map<String, String> falconEnvProperties = new HashMap<String, String>();
+
+    properties.put("core-site", coreSiteProperties);
+    properties.put("oozie-env", oozieEnvProperties);
+    properties.put("falcon-env", falconEnvProperties);
+
+    coreSiteProperties.put("hadoop.proxyuser.test-oozie-user.hosts", "testOozieHostsVal");
+    coreSiteProperties.put("hadoop.proxyuser.test-oozie-user.groups", "testOozieGroupsVal");
+
+    oozieEnvProperties.put("oozie_user", "test-oozie-user");
+
+    falconEnvProperties.put("falcon_user", "test-falcon-user");
+
+    Configuration clusterConfig = new Configuration(properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Collection<String> hgComponents1 = new HashSet<String>();
+    hgComponents1.add("OOZIE_SERVER");
+    hgComponents1.add("FALCON_SERVER");
+    TestHostGroup group1 = new TestHostGroup("group1", hgComponents1, Collections.singleton("host1"));
+
+    Collection<TestHostGroup> hostGroups = Collections.singletonList(group1);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor configProcessor = new BlueprintConfigurationProcessor(topology);
+
+    configProcessor.doUpdateForClusterCreate();
+
+    assertEquals(4, coreSiteProperties.size());
+
+    assertEquals("testOozieHostsVal", coreSiteProperties.get("hadoop.proxyuser.test-oozie-user.hosts"));
+    assertEquals("testOozieGroupsVal", coreSiteProperties.get("hadoop.proxyuser.test-oozie-user.groups"));
+
+    assertEquals("*", coreSiteProperties.get("hadoop.proxyuser.test-falcon-user.hosts"));
+    assertEquals("users", coreSiteProperties.get("hadoop.proxyuser.test-falcon-user.groups"));
+  }
+
+  @Test
+  public void testDefaultUserAndGroupProxyPropertiesSetWhenNotProvided2() throws Exception {
+    Map<String, Map<String, String>> properties = new HashMap<String, Map<String, String>>();
+    Map<String, String> falconEnvProperties = new HashMap<String, String>();
+    properties.put("falcon-env", falconEnvProperties);
+    falconEnvProperties.put("falcon_user", "test-falcon-user");
+
+    Map<String, Map<String, String>> parentProperties = new HashMap<String, Map<String, String>>();
+    Map<String, String> oozieEnvProperties = new HashMap<String, String>();
+    parentProperties.put("oozie-env", oozieEnvProperties);
+    oozieEnvProperties.put("oozie_user", "test-oozie-user");
+    Map<String, String> coreSiteProperties = new HashMap<String, String>();
+    parentProperties.put("core-site", coreSiteProperties);
+    coreSiteProperties.put("hadoop.proxyuser.test-oozie-user.hosts", "testOozieHostsVal");
+
+    Configuration parentClusterConfig = new Configuration(parentProperties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap());
+
+    Configuration clusterConfig = new Configuration(properties,
+        Collections.<String, Map<String, Map<String, String>>>emptyMap(), parentClusterConfig);
+
+    Collection<String> hgComponents1 = new HashSet<String>();
+    hgComponents1.add("OOZIE_SERVER");
+    hgComponents1.add("FALCON_SERVER");
+    TestHostGroup group1 = new TestHostGroup("group1", hgComponents1, Collections.singleton("host1"));
+
+    Collection<TestHostGroup> hostGroups = Collections.singletonList(group1);
+
+    ClusterTopology topology = createClusterTopology(bp, clusterConfig, hostGroups);
+    BlueprintConfigurationProcessor configProcessor = new BlueprintConfigurationProcessor(topology);
+
+    configProcessor.doUpdateForClusterCreate();
+
+    Map<String, String> leafConfigCoreSiteProps = properties.get("core-site");
+    // because "hadoop.proxyuser.test-oozie-user.hosts" is provided in the parent config, it shouldn't be added
+    assertEquals(3, leafConfigCoreSiteProps.size());
+
+    // ensure that explicitly set value is unchanged
+    assertEquals("testOozieHostsVal", clusterConfig.getPropertyValue("core-site", "hadoop.proxyuser.test-oozie-user.hosts"));
+
+    assertEquals("users", leafConfigCoreSiteProps.get("hadoop.proxyuser.test-oozie-user.groups"));
+
+    assertEquals("*", leafConfigCoreSiteProps.get("hadoop.proxyuser.test-falcon-user.hosts"));
+    assertEquals("users", leafConfigCoreSiteProps.get("hadoop.proxyuser.test-falcon-user.groups"));
+  }
+
 
   private static String createExportedAddress(String expectedPortNum, String expectedHostGroupName) {
     return createExportedHostName(expectedHostGroupName, expectedPortNum);
@@ -3722,7 +5065,7 @@ public class BlueprintConfigurationProcessorTest {
       HostGroupInfo groupInfo = new HostGroupInfo(hostGroup.name);
       groupInfo.addHosts(hostGroup.hosts);
       //todo: HG configs
-      groupInfo.setConfiguration(EMPTY_CONFIG);
+      groupInfo.setConfiguration(hostGroup.configuration);
 
       //create host group which is set on topology
       allHostGroups.put(hostGroup.name, new HostGroupImpl(hostGroup.name, "test-bp", stack,
@@ -3756,11 +5099,21 @@ public class BlueprintConfigurationProcessorTest {
     private String name;
     private Collection<String> components;
     private Collection<String> hosts;
+    private Configuration configuration;
 
     public TestHostGroup(String name, Collection<String> components, Collection<String> hosts) {
       this.name = name;
       this.components = components;
       this.hosts = hosts;
+      this.configuration = new Configuration(Collections.<String, Map<String, String>>emptyMap(),
+          Collections.<String, Map<String, Map<String, String>>>emptyMap());
+    }
+
+    public TestHostGroup(String name, Collection<String> components, Collection<String> hosts, Configuration configuration) {
+      this.name = name;
+      this.components = components;
+      this.hosts = hosts;
+      this.configuration = configuration;
     }
   }
 

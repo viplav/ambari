@@ -24,22 +24,50 @@
 var App = require('app');
 require('views/common/controls_view');
 
-App.PlainConfigTextField = Ember.View.extend(App.SupportsDependentConfigs, {
+App.PlainConfigTextField = Ember.View.extend(App.SupportsDependentConfigs, App.WidgetPopoverSupport, {
   templateName: require('templates/common/configs/widgets/plain_config_text_field'),
-  valueBinding: 'serviceConfig.value',
+  valueBinding: 'config.value',
   classNames: ['widget-config-plain-text-field'],
-  placeholderBinding: 'serviceConfig.defaultValue',
+  placeholderBinding: 'config.savedValue',
+
+  disabled: function() {
+    return !this.get('config.isEditable');
+  }.property('config.isEditable'),
+
+  configLabel: function() {
+    return this.get('config.stackConfigProperty.displayName') || this.get('config.displayName') || this.get('config.name');
+  }.property('config.name', 'config.displayName'),
+
+  /**
+   * @type {string|boolean}
+   */
   unit: function() {
-    return Em.getWithDefault(this, 'serviceConfig.stackConfigProperty.valueAttributes.unit', false);
-  }.property('serviceConfig.stackConfigProperty.valueAttributes.unit'),
+    return Em.getWithDefault(this, 'config.stackConfigProperty.valueAttributes.unit', false);
+  }.property('config.stackConfigProperty.valueAttributes.unit'),
+
+  /**
+   * @type {string}
+   */
+  displayUnit: function() {
+    var unit = this.get('unit');
+    if ('milliseconds' == unit) {
+      unit = 'ms';
+    }
+    return unit;
+  }.property('unit'),
 
   focusOut: function () {
-    this.sendRequestRorDependentConfigs(this.get('serviceConfig'));
+    this.sendRequestRorDependentConfigs(this.get('config'));
+  },
+
+  insertNewline: function() {
+    this.get('parentView').trigger('toggleWidgetView');
   },
 
   didInsertElement: function() {
     this._super();
-    this.set('serviceConfig.displayType', Em.getWithDefault(this, 'serviceConfig.stackConfigProperty.valueAttributes.type', 'string'));
+    this.initPopover();
+    this.set('config.displayType', Em.getWithDefault(this, 'config.stackConfigProperty.valueAttributes.type', 'string'));
   }
 
 });

@@ -174,19 +174,20 @@ App.KerberosWizardController = App.WizardController.extend({
   },
 
   /**
-   * Overide the visibility of a list of form items with a new value
+   * Override the visibility of a list of form items with a new value
    *
    * @param {Array} itemsArray
    * @param newValue
    */
-  overrideVisibility: function (itemsArray, newValue) {
-    var self = this;
+  overrideVisibility: function (itemsArray, newValue, exceptions) {
     newValue = newValue || false;
 
-    for (var i=0; i < itemsArray.length; i += 1) {
-      var isException = self.get('exceptionsOnSkipClient').filterProperty(itemsArray[i].get('category'), itemsArray[i].get('name'));
-      if (!isException.length) {
-        itemsArray[i].set('isVisible', newValue);
+    for (var i = 0, len = itemsArray.length; i < len; i += 1) {
+      if (!Ember.$.isEmptyObject(itemsArray[i])) {
+        var isException = exceptions.filterProperty(itemsArray[i].category, itemsArray[i].name);
+        if (!isException.length) {
+          itemsArray[i].isVisible = newValue;
+        }
       }
     }
   },

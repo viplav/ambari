@@ -33,6 +33,8 @@ import javax.xml.bind.annotation.XmlRootElement;
 import org.apache.ambari.view.ViewContext;
 import org.apache.ambari.view.filebrowser.utils.NotFoundFormattedException;
 import org.apache.ambari.view.filebrowser.utils.ServiceFormattedException;
+import org.apache.ambari.view.utils.hdfs.HdfsApi;
+import org.apache.ambari.view.utils.hdfs.HdfsApiException;
 import org.json.simple.JSONObject;
 
 /**
@@ -88,7 +90,7 @@ public class FileOperationService extends HdfsService {
         result = Response.ok(getApi(context).fileStatusToJSON(api
             .getFileStatus(request.dst)));
       } else {
-        result = Response.ok(new BoolResult(false)).status(422);
+        result = Response.ok(new BoolResult(false, "Can't move '" + request.src + "' to '" + request.dst + "'")).status(422);
       }
       return result.build();
     } catch (WebApplicationException ex) {
@@ -115,7 +117,7 @@ public class FileOperationService extends HdfsService {
         result = Response.ok(getApi(context).fileStatusToJSON(api
             .getFileStatus(request.path)));
       } else {
-        result = Response.ok(new BoolResult(false)).status(422);
+        result = Response.ok(new BoolResult(false, "Can't chmod '" + request.path + "'")).status(422);
       }
       return result.build();
     } catch (WebApplicationException ex) {
@@ -139,11 +141,14 @@ public class FileOperationService extends HdfsService {
     try {
       HdfsApi api = getApi(context);
       ResponseBuilder result;
-      if (api.copy(request.src, request.dst)) {
+      try {
+        api.copy(request.src, request.dst);
+
         result = Response.ok(getApi(context).fileStatusToJSON(api
             .getFileStatus(request.dst)));
-      } else {
-        result = Response.ok(new BoolResult(false)).status(422);
+      } catch (HdfsApiException e) {
+        result = Response.ok(new BoolResult(false, "Can't copy '" + request.src + "' to '" + request.dst + "'")).
+            status(422);
       }
       return result.build();
     } catch (WebApplicationException ex) {
@@ -168,7 +173,7 @@ public class FileOperationService extends HdfsService {
       if (api.mkdir(request.path)) {
         result = Response.ok(getApi(context).fileStatusToJSON(api.getFileStatus(request.path)));
       } else {
-        result = Response.ok(new BoolResult(false)).status(422);
+        result = Response.ok(new BoolResult(false, "Can't create dir '" + request.path + "'")).status(422);
       }
       return result.build();
     } catch (WebApplicationException ex) {
@@ -208,16 +213,25 @@ public class FileOperationService extends HdfsService {
   @Produces(MediaType.APPLICATION_JSON)
   public Response moveToTrash(RemoveRequest request) {
     try {
-      HdfsApi api = getApi(context);
-      
-      String trashDir = api.getTrashDirPath(request.path);
-      
       ResponseBuilder result;
-      if (api.rename(request.path, trashDir)) {
+
+      HdfsApi api = getApi(context);
+      String trash = api.getTrashDirPath();
+
+      if (!api.exists(trash)) {
+        if (!api.mkdir(trash)) {
+          result = Response.ok(new BoolResult(false, "Trash dir does not exists. Can't create dir for trash '" + trash + "'")).status(422);
+          return result.build();
+        }
+      }
+
+      String trashFilePath = api.getTrashDirPath(request.path);
+
+      if (api.rename(request.path, trashFilePath)) {
         result = Response.ok(getApi(context).fileStatusToJSON(api
-            .getFileStatus(trashDir)));
+            .getFileStatus(trashFilePath)));
       } else {
-        result = Response.ok(new BoolResult(false)).status(422);
+        result = Response.ok(new BoolResult(false, "Can't move file to '" + trashFilePath + "'")).status(422);
       }
       return result.build();
     } catch (WebApplicationException ex) {
@@ -244,7 +258,7 @@ public class FileOperationService extends HdfsService {
       if (api.delete(request.path, request.recursive)) {
         result = Response.ok(new BoolResult(true)).status(204);
       } else {
-        result = Response.ok(new BoolResult(false)).status(422);
+        result = Response.ok(new BoolResult(false, "Can't remove '" + request.path + "'")).status(422);
       }
       return result.build();
     } catch (WebApplicationException ex) {

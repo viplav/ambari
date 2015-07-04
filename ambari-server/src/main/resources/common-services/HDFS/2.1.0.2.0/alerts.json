@@ -94,6 +94,7 @@
             "https_property_value": "HTTPS_ONLY",
             "kerberos_keytab": "{{hdfs-site/dfs.web.authentication.kerberos.keytab}}",
             "kerberos_principal": "{{hdfs-site/dfs.web.authentication.kerberos.principal}}",
+            "connection_timeout": 5.0,
             "high_availability": {
               "nameservice": "{{hdfs-site/dfs.nameservices}}",
               "alias_key" : "{{hdfs-site/dfs.ha.namenodes.{{ha-nameservice}}}}",
@@ -126,8 +127,11 @@
           "uri": {
             "http": "{{hdfs-site/dfs.namenode.http-address}}",
             "https": "{{hdfs-site/dfs.namenode.https-address}}",
+            "kerberos_keytab": "{{hdfs-site/dfs.web.authentication.kerberos.keytab}}",
+            "kerberos_principal": "{{hdfs-site/dfs.web.authentication.kerberos.principal}}",
             "https_property": "{{hdfs-site/dfs.http.policy}}",
             "https_property_value": "HTTPS_ONLY",
+            "connection_timeout": 5.0,
             "high_availability": {
               "nameservice": "{{hdfs-site/dfs.nameservices}}",
               "alias_key" : "{{hdfs-site/dfs.ha.namenodes.{{ha-nameservice}}}}",
@@ -170,8 +174,11 @@
           "uri": {
             "http": "{{hdfs-site/dfs.namenode.http-address}}",
             "https": "{{hdfs-site/dfs.namenode.https-address}}",
+            "kerberos_keytab": "{{hdfs-site/dfs.web.authentication.kerberos.keytab}}",
+            "kerberos_principal": "{{hdfs-site/dfs.web.authentication.kerberos.principal}}",
             "https_property": "{{hdfs-site/dfs.http.policy}}",
             "https_property_value": "HTTPS_ONLY",
+            "connection_timeout": 5.0,
             "high_availability": {
               "nameservice": "{{hdfs-site/dfs.nameservices}}",
               "alias_key" : "{{hdfs-site/dfs.ha.namenodes.{{ha-nameservice}}}}",
@@ -214,8 +221,11 @@
           "uri": {
             "http": "{{hdfs-site/dfs.namenode.http-address}}",
             "https": "{{hdfs-site/dfs.namenode.https-address}}",
+            "kerberos_keytab": "{{hdfs-site/dfs.web.authentication.kerberos.keytab}}",
+            "kerberos_principal": "{{hdfs-site/dfs.web.authentication.kerberos.principal}}",
             "https_property": "{{hdfs-site/dfs.http.policy}}",
             "https_property_value": "HTTPS_ONLY",
+            "connection_timeout": 5.0,
             "high_availability": {
               "nameservice": "{{hdfs-site/dfs.nameservices}}",
               "alias_key" : "{{hdfs-site/dfs.ha.namenodes.{{ha-nameservice}}}}",
@@ -258,8 +268,11 @@
           "uri": {
             "http": "{{hdfs-site/dfs.namenode.http-address}}",
             "https": "{{hdfs-site/dfs.namenode.https-address}}",
+            "kerberos_keytab": "{{hdfs-site/dfs.web.authentication.kerberos.keytab}}",
+            "kerberos_principal": "{{hdfs-site/dfs.web.authentication.kerberos.principal}}",
             "https_property": "{{hdfs-site/dfs.http.policy}}",
             "https_property_value": "HTTPS_ONLY",
+            "connection_timeout": 5.0,
             "high_availability": {
               "nameservice": "{{hdfs-site/dfs.nameservices}}",
               "alias_key" : "{{hdfs-site/dfs.ha.namenodes.{{ha-nameservice}}}}",
@@ -302,8 +315,11 @@
           "uri": {
             "http": "{{hdfs-site/dfs.namenode.http-address}}",
             "https": "{{hdfs-site/dfs.namenode.https-address}}",
+            "kerberos_keytab": "{{hdfs-site/dfs.web.authentication.kerberos.keytab}}",
+            "kerberos_principal": "{{hdfs-site/dfs.web.authentication.kerberos.principal}}",
             "https_property": "{{hdfs-site/dfs.http.policy}}",
             "https_property_value": "HTTPS_ONLY",
+            "connection_timeout": 5.0,
             "high_availability": {
               "nameservice": "{{hdfs-site/dfs.nameservices}}",
               "alias_key" : "{{hdfs-site/dfs.ha.namenodes.{{ha-nameservice}}}}",
@@ -345,8 +361,11 @@
           "uri": {
             "http": "{{hdfs-site/dfs.namenode.http-address}}",
             "https": "{{hdfs-site/dfs.namenode.https-address}}",
+            "kerberos_keytab": "{{hdfs-site/dfs.web.authentication.kerberos.keytab}}",
+            "kerberos_principal": "{{hdfs-site/dfs.web.authentication.kerberos.principal}}",
             "https_property": "{{hdfs-site/dfs.http.policy}}",
             "https_property_value": "HTTPS_ONLY",
+            "connection_timeout": 5.0,
             "high_availability": {
               "nameservice": "{{hdfs-site/dfs.nameservices}}",
               "alias_key" : "{{hdfs-site/dfs.ha.namenodes.{{ha-nameservice}}}}",
@@ -453,20 +472,22 @@
         "scope": "ANY",
         "enabled": true,
         "source": {
-          "type": "PORT",
-          "uri": "{{hdfs-site/dfs.namenode.secondary.http-address}}",
-          "default_port": 50071,
+          "type": "WEB",
+          "uri": {
+            "http": "{{hdfs-site/dfs.namenode.secondary.http-address}}",
+            "https": "{{hdfs-site/dfs.namenode.secondary.https-address}}",
+            "https_property": "{{hdfs-site/dfs.http.policy}}",
+            "https_property_value": "HTTPS_ONLY"
+          },
           "reporting": {
             "ok": {
-              "text": "TCP OK - {0:.3f}s response on port {1}"
+              "text": "HTTP {0} response in {2:.3f}s"
             },
-            "warning": {
-              "text": "TCP OK - {0:.3f}s response on port {1}",
-              "value": 1.5
+            "warning":{
+              "text": "HTTP {0} response from {1} in {2:.3f}s ({3})"
             },
             "critical": {
-              "text": "Connection failed: {0} to {1}:{2}",
-              "value": 5.0
+              "text": "Connection failed to {1} ({3})"
             }
           }
         }
@@ -570,7 +591,8 @@
             "https_property": "{{hdfs-site/dfs.http.policy}}",
             "https_property_value": "HTTPS_ONLY",
             "kerberos_keytab": "{{hdfs-site/dfs.web.authentication.kerberos.keytab}}",
-            "kerberos_principal": "{{hdfs-site/dfs.web.authentication.kerberos.principal}}"
+            "kerberos_principal": "{{hdfs-site/dfs.web.authentication.kerberos.principal}}",
+            "connection_timeout": 5.0
           },
           "reporting": {
             "ok": {
@@ -597,8 +619,11 @@
           "uri": {
             "http": "{{hdfs-site/dfs.datanode.http.address}}",
             "https": "{{hdfs-site/dfs.datanode.https.address}}",
+            "kerberos_keytab": "{{hdfs-site/dfs.web.authentication.kerberos.keytab}}",
+            "kerberos_principal": "{{hdfs-site/dfs.web.authentication.kerberos.principal}}",
             "https_property": "{{hdfs-site/dfs.http.policy}}",
-            "https_property_value": "HTTPS_ONLY"
+            "https_property_value": "HTTPS_ONLY",
+            "connection_timeout": 5.0
           },
           "reporting": {
             "ok": {
@@ -633,9 +658,9 @@
         "scope": "ANY",
         "enabled": true,
         "source": {
-          "type": "PORT",        
-          "uri": "{{core-site/ha.zookeeper.quorum}}",
-          "default_port": 2181,
+          "type": "PORT",
+          "uri": "{{hdfs-site/dfs.ha.zkfc.port}}",
+          "default_port": 8019,
           "reporting": {
             "ok": {
               "text": "TCP OK - {0:.3f}s response on port {1}"

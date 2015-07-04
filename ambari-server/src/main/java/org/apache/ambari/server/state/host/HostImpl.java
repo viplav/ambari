@@ -253,7 +253,7 @@ public class HostImpl implements Host {
       hostStateEntity = new HostStateEntity();
       hostStateEntity.setHostEntity(hostEntity);
       hostEntity.setHostStateEntity(hostStateEntity);
-      setHealthStatus(new HostHealthStatus(HealthStatus.UNKNOWN, ""));
+      hostStateEntity.setHealthStatus(gson.toJson(new HostHealthStatus(HealthStatus.UNKNOWN, "")));
       if (persisted) {
         persist();
       }
@@ -596,6 +596,11 @@ public class HostImpl implements Host {
   public String getHostName() {
     // Not an updatable attribute - No locking necessary
     return hostEntity.getHostName();
+  }
+
+  @Override
+  public Long getHostId() {
+    return hostEntity.getHostId();
   }
 
   @Override
@@ -1319,8 +1324,8 @@ public class HostImpl implements Host {
     Map<String, DesiredConfig> clusterDesiredConfigs = (cluster == null) ? new HashMap<String, DesiredConfig>() : cluster.getDesiredConfigs();
 
     if (clusterDesiredConfigs != null) {
-      for (Map.Entry<String, DesiredConfig> desiredConfigEntry :
-          clusterDesiredConfigs.entrySet()) {
+      for (Map.Entry<String, DesiredConfig> desiredConfigEntry
+              : clusterDesiredConfigs.entrySet()) {
         HostConfig hostConfig = new HostConfig();
         hostConfig.setDefaultVersionTag(desiredConfigEntry.getValue().getTag());
         hostConfigMap.put(desiredConfigEntry.getKey(), hostConfig);
@@ -1332,7 +1337,7 @@ public class HostImpl implements Host {
     if (configGroups != null && !configGroups.isEmpty()) {
       for (ConfigGroup configGroup : configGroups.values()) {
         for (Map.Entry<String, Config> configEntry : configGroup
-            .getConfigurations().entrySet()) {
+                .getConfigurations().entrySet()) {
 
           String configType = configEntry.getKey();
           // HostConfig config holds configType -> versionTag, per config group
@@ -1340,12 +1345,13 @@ public class HostImpl implements Host {
           if (hostConfig == null) {
             hostConfig = new HostConfig();
             hostConfigMap.put(configType, hostConfig);
-            hostConfig.setDefaultVersionTag(cluster.getDesiredConfigByType
-              (configType).getTag());
+            if (cluster != null) {
+              hostConfig.setDefaultVersionTag(cluster.getDesiredConfigByType(configType).getTag());
+            }
           }
           Config config = configEntry.getValue();
           hostConfig.getConfigGroupOverrides().put(configGroup.getId(),
-            config.getTag());
+                  config.getTag());
         }
       }
     }
@@ -1428,7 +1434,7 @@ public class HostImpl implements Host {
   // Get the cached host entity or load it fresh through the DAO.
   public HostEntity getHostEntity() {
     if (isPersisted()) {
-      hostEntity = hostDAO.findByName(hostEntity.getHostName());
+      hostEntity = hostDAO.findById(hostEntity.getHostId());
     }
     return hostEntity;
   }
@@ -1436,7 +1442,7 @@ public class HostImpl implements Host {
   // Get the cached host state entity or load it fresh through the DAO.
   public HostStateEntity getHostStateEntity() {
     if (isPersisted()) {
-      hostStateEntity = getHostEntity().getHostStateEntity();
+      hostStateEntity = hostStateDAO.findByHostId(hostEntity.getHostId()) ;
     }
     return hostStateEntity;
   }

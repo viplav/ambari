@@ -142,10 +142,7 @@ module.exports = Em.Route.extend(App.RouterRedirections, {
         route: '/heatmap',
         connectOutlets: function (router, context) {
           router.get('mainController').dataLoading().done(function () {
-            router.get('mainChartsHeatmapController').loadRacks().done(function(data){
-              router.get('mainChartsHeatmapController').loadRacksSuccessCallback(data);
-              router.get('mainChartsController').connectOutlet('mainChartsHeatmap');
-            });
+            router.get('mainChartsController').connectOutlet('mainChartsHeatmap');
           });
         }
       }),
@@ -359,43 +356,6 @@ module.exports = Em.Route.extend(App.RouterRedirections, {
       }
     }),
 
-    adminSecurity: Em.Route.extend({
-      route: '/security',
-      enter: function (router) {
-        router.set('mainAdminController.category', "security");
-        var controller = router.get('mainAdminSecurityController');
-        if (!(controller.getAddSecurityWizardStatus() === 'RUNNING') && !(controller.getDisableSecurityStatus() === 'RUNNING')) {
-          Em.run.next(function () {
-            router.transitionTo('adminSecurity.index');
-          });
-        } else if (controller.getAddSecurityWizardStatus() === 'RUNNING') {
-          Em.run.next(function () {
-            router.transitionTo('adminAddSecurity');
-          });
-        } else if (controller.getDisableSecurityStatus() === 'RUNNING') {
-          Em.run.next(function () {
-            router.transitionTo('disableSecurity');
-          });
-        }
-      },
-
-      index: Em.Route.extend({
-        route: '/',
-        connectOutlets: function (router, context) {
-          var controller = router.get('mainAdminController');
-          controller.set('category', "security");
-          controller.connectOutlet('mainAdminSecurity');
-        }
-      }),
-
-      addSecurity: function (router, object) {
-        router.get('mainAdminSecurityController').setAddSecurityWizardStatus('RUNNING');
-        router.transitionTo('adminAddSecurity');
-      },
-
-      adminAddSecurity: require('routes/add_security')
-    }),
-
     adminKerberos: Em.Route.extend({
       route: '/kerberos',
       index: Em.Route.extend({
@@ -439,7 +399,7 @@ module.exports = Em.Route.extend(App.RouterRedirections, {
                     // otherwise show confirmation window
                     App.showConfirmationPopup(function () {
                       self.proceedOnClose();
-                    }, Em.I18n.t('admin.addSecurity.disable.onClose'));
+                    }, Em.I18n.t('admin.security.disable.onClose'));
                   }
                 } else {
                   self.proceedOnClose();
@@ -563,16 +523,18 @@ module.exports = Em.Route.extend(App.RouterRedirections, {
 
   }),
 
-  addServiceWidget: function (router, context) {
+  createServiceWidget: function (router, context) {
     if (context) {
       var widgetController = router.get('widgetWizardController');
       widgetController.save('widgetService', context.get('serviceName'));
-      widgetController.save('layoutId', context.get('layout.id'));
+      var layout = JSON.parse(JSON.stringify(context.get('layout')));
+      layout.widgets = context.get('layout.widgets').mapProperty('id');
+      widgetController.save('layout', layout);
     }
-    router.transitionTo('addWidget');
+    router.transitionTo('createWidget');
   },
 
-  addWidget: require('routes/add_widget'),
+  createWidget: require('routes/create_widget'),
 
   editServiceWidget: function (router, context) {
     if (context) {
@@ -637,7 +599,7 @@ module.exports = Em.Route.extend(App.RouterRedirections, {
         route: '/summary',
         connectOutlets: function (router, context) {
           var item = router.get('mainServiceItemController.content');
-          router.get('updateController').updateServiceMetric(Em.K);
+          if (router.get('clusterController.isLoaded')) router.get('updateController').updateServiceMetric(Em.K);
           //if service is not existed then route to default service
           if (item.get('isLoaded')) {
             router.get('mainServiceItemController').connectOutlet('mainServiceInfoSummary', item);

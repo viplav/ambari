@@ -85,11 +85,11 @@ describe('configPropertyHelper', function () {
     serviceConfigProperty = App.ServiceConfigProperty.create();
   });
 
-  describe('#setDefaultValue', function () {
-    it('should change the default value', function () {
-      serviceConfigProperty.set('defaultValue', 'value0');
-      configPropertyHelper.setDefaultValue(serviceConfigProperty, /\d/, '1');
-      expect(serviceConfigProperty.get('defaultValue')).to.equal('value1');
+  describe('#setRecommendedValue', function () {
+    it('should change the recommended value', function () {
+      serviceConfigProperty.set('recommendedValue', 'value0');
+      configPropertyHelper.setRecommendedValue(serviceConfigProperty, /\d/, '1');
+      expect(serviceConfigProperty.get('recommendedValue')).to.equal('value1');
     });
   });
 
@@ -194,26 +194,14 @@ describe('configPropertyHelper', function () {
         {
           filename: 'hbase-site.xml',
           value: 'host0,host1',
-          defaultValue: 'host0,host1',
+          recommendedValue: 'host0,host1',
           title: 'should set ZooKeeper Server hostnames'
         },
         {
           filename: 'ams-hbase-site.xml',
           value: 'localhost',
-          defaultValue: '',
+          recommendedValue: null,
           title: 'should ignore ZooKeeper Server hostnames'
-        }
-      ],
-      'hbase.tmp.dir': [
-        {
-          filename: 'hbase-site.xml',
-          isUnionAllMountPointsCalled: true,
-          title: 'unionAllMountPoints should be called'
-        },
-        {
-          filename: 'ams-hbase-site.xml',
-          isUnionAllMountPointsCalled: false,
-          title: 'unionAllMountPoints shouldn\'t be called'
         }
       ],
       'hivemetastore_host': {
@@ -272,7 +260,7 @@ describe('configPropertyHelper', function () {
         dependencies: {
           'hive.metastore.uris': 'thrift://localhost:9083'
         },
-        defaultValue: 'thrift://localhost:9083',
+        recommendedValue: 'thrift://localhost:9083',
         value: 'thrift://h0:9083,thrift://h1:9083',
         title: 'comma separated list of Metastore hosts with thrift prefix and port'
       },
@@ -292,7 +280,7 @@ describe('configPropertyHelper', function () {
         dependencies: {
           'hive.metastore.uris': 'thrift://localhost:9083'
         },
-        defaultValue: 'hive.metastore.local=false,hive.metastore.uris=thrift://localhost:9933,hive.metastore.sasl.enabled=false',
+        recommendedValue: 'hive.metastore.local=false,hive.metastore.uris=thrift://localhost:9933,hive.metastore.sasl.enabled=false',
         value: 'hive.metastore.local=false,hive.metastore.uris=thrift://h0:9083\\,thrift://h1:9083,hive.metastore.sasl.enabled=false,hive.metastore.execute.setugi=true',
         title: 'should add relevant hive.metastore.uris value'
       },
@@ -312,8 +300,8 @@ describe('configPropertyHelper', function () {
         dependencies: {
           clientPort: '2182'
         },
-        defaultValue: 'localhost:2181',
-        value: 'h0:2182',
+        recommendedValue: 'localhost:2181',
+        value: 'h0:2182,h1:2182',
         title: 'should add ZK host and port dynamically'
       },
       'oozieserver_host': {
@@ -399,26 +387,10 @@ describe('configPropertyHelper', function () {
           }
         });
         expect(serviceConfigProperty.get('value')).to.equal(item.value);
-        expect(serviceConfigProperty.get('defaultValue')).to.equal(item.defaultValue);
+        expect(serviceConfigProperty.get('recommendedValue')).to.equal(item.recommendedValue);
       });
     });
 
-    cases['hbase.tmp.dir'].forEach(function (item) {
-      var isOnlyFirstOneNeeded = true,
-        localDB = {
-          p: 'v'
-        };
-      it(item.title, function () {
-        sinon.stub(configPropertyHelper, 'unionAllMountPoints', Em.K);
-        serviceConfigProperty.setProperties({
-          name: 'hbase.tmp.dir',
-          filename: item.filename
-        });
-        configPropertyHelper.initialValue(serviceConfigProperty, localDB);
-        expect(configPropertyHelper.unionAllMountPoints.calledWith(serviceConfigProperty, isOnlyFirstOneNeeded, localDB)).to.equal(item.isUnionAllMountPointsCalled);
-        configPropertyHelper.unionAllMountPoints.restore();
-      });
-    });
 
     it(cases['hivemetastore_host'].title, function () {
       serviceConfigProperty.set('name', 'hivemetastore_host');
@@ -435,32 +407,32 @@ describe('configPropertyHelper', function () {
     it(cases['hive.metastore.uris'].title, function () {
       serviceConfigProperty.setProperties({
         name: 'hive.metastore.uris',
-        defaultValue: cases['hive.metastore.uris'].defaultValue
+        recommendedValue: cases['hive.metastore.uris'].recommendedValue
       });
       configPropertyHelper.initialValue(serviceConfigProperty, cases['hive.metastore.uris'].localDB, cases['hive.metastore.uris'].dependencies);
       expect(serviceConfigProperty.get('value')).to.equal(cases['hive.metastore.uris'].value);
-      expect(serviceConfigProperty.get('defaultValue')).to.equal(cases['hive.metastore.uris'].value);
+      expect(serviceConfigProperty.get('recommendedValue')).to.equal(cases['hive.metastore.uris'].value);
     });
 
     it(cases['templeton.hive.properties'].title, function () {
       serviceConfigProperty.setProperties({
         name: 'templeton.hive.properties',
-        defaultValue: cases['templeton.hive.properties'].defaultValue,
-        value: cases['templeton.hive.properties'].defaultValue
+        recommendedValue: cases['templeton.hive.properties'].recommendedValue,
+        value: cases['templeton.hive.properties'].recommendedValue
       });
       configPropertyHelper.initialValue(serviceConfigProperty, cases['templeton.hive.properties'].localDB, cases['templeton.hive.properties'].dependencies);
       expect(serviceConfigProperty.get('value')).to.equal(cases['templeton.hive.properties'].value);
-      expect(serviceConfigProperty.get('defaultValue')).to.equal(cases['templeton.hive.properties'].value);
+      expect(serviceConfigProperty.get('recommendedValue')).to.equal(cases['templeton.hive.properties'].value);
     });
 
     it(cases['yarn.resourcemanager.zk-address'].title, function () {
       serviceConfigProperty.setProperties({
         name: 'yarn.resourcemanager.zk-address',
-        defaultValue: cases['yarn.resourcemanager.zk-address'].defaultValue
+        recommendedValue: cases['yarn.resourcemanager.zk-address'].recommendedValue
       });
       configPropertyHelper.initialValue(serviceConfigProperty, cases['yarn.resourcemanager.zk-address'].localDB, cases['yarn.resourcemanager.zk-address'].dependencies);
       expect(serviceConfigProperty.get('value')).to.equal(cases['yarn.resourcemanager.zk-address'].value);
-      expect(serviceConfigProperty.get('defaultValue')).to.equal(cases['yarn.resourcemanager.zk-address'].value);
+      expect(serviceConfigProperty.get('recommendedValue')).to.equal(cases['yarn.resourcemanager.zk-address'].value);
     });
 
     it(cases['oozieserver_host'].title, function () {
@@ -495,7 +467,7 @@ describe('configPropertyHelper', function () {
             component: 'HIVE_METASTORE'
           }
         ],
-        defaultValue: 'thrift://localhost:9083',
+        recommendedValue: 'thrift://localhost:9083',
         expected: 'thrift://h1:9083,thrift://h2:9083',
         title: 'typical case'
       },
@@ -506,7 +478,7 @@ describe('configPropertyHelper', function () {
             component: 'HIVE_SERVER'
           }
         ],
-        defaultValue: 'thrift://localhost:9083',
+        recommendedValue: 'thrift://localhost:9083',
         expected: '',
         title: 'no Metastore hosts in DB'
       },
@@ -525,7 +497,7 @@ describe('configPropertyHelper', function () {
             component: 'HIVE_METASTORE'
           }
         ],
-        defaultValue: '',
+        recommendedValue: '',
         expected: '',
         title: 'default value without port'
       },
@@ -551,7 +523,7 @@ describe('configPropertyHelper', function () {
 
     cases.forEach(function (item) {
       it(item.title, function () {
-        expect(configPropertyHelper.getHiveMetastoreUris(item.hosts, item.defaultValue)).to.equal(item.expected);
+        expect(configPropertyHelper.getHiveMetastoreUris(item.hosts, item.recommendedValue)).to.equal(item.expected);
       });
     });
 
@@ -759,17 +731,17 @@ describe('configPropertyHelper', function () {
           value: '/media/disk0/default'
         },
         {
+          name: 'yarn.timeline-service.leveldb-state-store.path',
+          isOnlyFirstOneNeeded: true,
+          value: '/media/disk0/default'
+        },
+        {
           name: 'dataDir',
           isOnlyFirstOneNeeded: true,
           value: '/media/disk0/default'
         },
         {
           name: 'oozie_data_dir',
-          isOnlyFirstOneNeeded: true,
-          value: '/media/disk0/default'
-        },
-        {
-          name: 'hbase.tmp.dir',
           isOnlyFirstOneNeeded: true,
           value: '/media/disk0/default'
         },
@@ -857,7 +829,7 @@ describe('configPropertyHelper', function () {
         });
         configPropertyHelper.unionAllMountPoints(serviceConfigProperty, item.isOnlyFirstOneNeeded, localDB);
         expect(serviceConfigProperty.get('value')).to.equal(item.value);
-        expect(serviceConfigProperty.get('defaultValue')).to.equal(item.value);
+        expect(serviceConfigProperty.get('recommendedValue')).to.equal(item.value);
       });
     });
 

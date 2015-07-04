@@ -19,6 +19,7 @@ package org.apache.ambari.server.state.stack.upgrade;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,7 @@ import javax.xml.bind.annotation.XmlTransient;
 import javax.xml.bind.annotation.XmlType;
 
 import org.apache.ambari.server.stack.HostsType;
+import org.apache.ambari.server.state.Host;
 import org.apache.ambari.server.state.UpgradeContext;
 import org.apache.ambari.server.state.stack.UpgradePack.ProcessingComponent;
 
@@ -104,7 +106,7 @@ public class ClusterGrouping extends Grouping {
 
     @Override
     public List<StageWrapper> build(UpgradeContext ctx) {
-      if (null == ClusterGrouping.this.executionStages) {
+      if (null == executionStages) {
         return Collections.emptyList();
       }
 
@@ -126,6 +128,7 @@ public class ClusterGrouping extends Grouping {
               wrapper = getManualStageWrapper(ctx, execution);
               break;
 
+            case CONFIGURE:
             case SERVER_ACTION:
               wrapper = new StageWrapper(
                   StageWrapper.Type.SERVER_SIDE_ACTION,
@@ -192,7 +195,7 @@ public class ClusterGrouping extends Grouping {
   private StageWrapper getExecuteStageWrapper(UpgradeContext ctx, ExecuteStage execution) {
     String service   = execution.service;
     String component = execution.component;
-    Task task        = execution.task;
+    ExecuteTask et = (ExecuteTask) execution.task;
 
     if (null != service && !service.isEmpty() &&
         null != component && !component.isEmpty()) {
@@ -202,17 +205,31 @@ public class ClusterGrouping extends Grouping {
       if (hosts != null) {
         Set<String> realHosts = new LinkedHashSet<String>(hosts.hosts);
 
-        ExecuteTask et = (ExecuteTask) task;
-
         if (null != et.hosts && "master".equals(et.hosts) && null != hosts.master) {
           realHosts = Collections.singleton(hosts.master);
+        }
+        // Pick a random host.
+        if (null != et.hosts && "any".equals(et.hosts) && !hosts.hosts.isEmpty()) {
+          realHosts = Collections.singleton(hosts.hosts.iterator().next());
         }
 
         return new StageWrapper(
             StageWrapper.Type.RU_TASKS,
             execution.title,
-            new TaskWrapper(service, component, realHosts, task));
+            new TaskWrapper(service, component, realHosts, et));
       }
+    } else if (null == service && null == component) {
+      // no service, no component goes to all hosts
+
+      Set<String> hostNames = new HashSet<String>();
+      for (Host host : ctx.getCluster().getHosts()) {
+        hostNames.add(host.getHostName());
+      }
+
+      return new StageWrapper(
+          StageWrapper.Type.RU_TASKS, execution.title,
+          new TaskWrapper(service, component, hostNames, et));
+
     }
     return null;
   }

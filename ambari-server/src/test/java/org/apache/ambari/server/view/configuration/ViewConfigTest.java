@@ -50,6 +50,7 @@ public class ViewConfigTest {
       "    <label>My View!</label>\n" +
       "    <description>Description</description>" +
       "    <version>1.0.0</version>\n" +
+      "    <build>99</build>\n" +
       "    <system>true</system>\n" +
       "    <icon64>/this/is/the/icon/url/icon64.png</icon64>\n" +
       "    <icon>/this/is/the/icon/url/icon.png</icon>\n" +
@@ -165,6 +166,16 @@ public class ViewConfigTest {
       "    <max-ambari-version>2.0.0</max-ambari-version>\n" +
       "</view>";
 
+  private static String EXTRA_CLASSPATH_XML = "<view>\n" +
+      "    <name>MY_VIEW</name>\n" +
+      "    <label>My View!</label>\n" +
+      "    <version>1.0.0</version>\n" +
+      "    <classpath>" +
+      "      <path>/var/lib/</path>" +
+      "      <path>/tmp/foo.jar</path>" +
+      "    </classpath>\n" +
+      "</view>";
+
   @Test
   public void testGetName() throws Exception {
     ViewConfig config = getConfig();
@@ -187,6 +198,12 @@ public class ViewConfigTest {
   public void testGetVersion() throws Exception {
     ViewConfig config = getConfig();
     Assert.assertEquals("1.0.0", config.getVersion());
+  }
+
+  @Test
+  public void testGetBuild() throws Exception {
+    ViewConfig config = getConfig();
+    Assert.assertEquals("99", config.getBuild());
   }
 
   @Test
@@ -278,6 +295,17 @@ public class ViewConfigTest {
 
     config = getConfig(non_system_xml);
     Assert.assertFalse(config.isSystem());
+  }
+
+  @Test
+  public void testGetExtraClasspath() throws Exception {
+    ViewConfig config = getConfig(system_xml);
+
+    Assert.assertNull(config.getExtraClasspath());
+
+    config = getConfig(EXTRA_CLASSPATH_XML);
+
+    Assert.assertEquals("/var/lib/,/tmp/foo.jar", config.getExtraClasspath());
   }
 
   @Test

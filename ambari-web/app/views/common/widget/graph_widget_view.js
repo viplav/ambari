@@ -22,6 +22,12 @@ App.GraphWidgetView = Em.View.extend(App.WidgetMixin, {
   templateName: require('templates/common/widget/graph_widget'),
 
   /**
+   *  type of metric query from which the widget is comprised
+   */
+
+  metricType: 'TEMPORAL',
+
+  /**
    * common metrics container
    * @type {Array}
    */
@@ -78,14 +84,19 @@ App.GraphWidgetView = Em.View.extend(App.WidgetMixin, {
     if (this.get('content.values')) {
       this.get('content.values').forEach(function (value) {
         var expression = this.extractExpressions(value)[0];
-        var computedExpressions;
+        var computedData;
+        var datasetKey;
 
         if (expression) {
-          computedExpressions = this.computeExpression(expression, metrics);
-          seriesData.push({
-            name: value.name,
-            data: computedExpressions[value.value.match(this.get('EXPRESSION_REGEX'))[0]]
-          });
+          datasetKey = value.value.match(this.get('EXPRESSION_REGEX'))[0];
+          computedData = this.computeExpression(expression, metrics)[datasetKey];
+          //exclude empty datasets
+          if (computedData.length > 0) {
+            seriesData.push({
+              name: value.name,
+              data: computedData
+            });
+          }
         }
       }, this);
     }
@@ -111,15 +122,17 @@ App.GraphWidgetView = Em.View.extend(App.WidgetMixin, {
 
     //replace values with metrics data
     expression.match(this.get('VALUE_NAME_REGEX')).forEach(function (match) {
-      if (metrics.someProperty('name', match)) {
-        dataLinks[match] = metrics.findProperty('name', match).data;
-        if (!isDataCorrupted) {
-          isDataCorrupted = (dataLength !== -1 && dataLength !== dataLinks[match].length);
+      if (isNaN(match)) {
+        if (metrics.someProperty('name', match)) {
+          dataLinks[match] = metrics.findProperty('name', match).data;
+          if (!isDataCorrupted) {
+            isDataCorrupted = (dataLength !== -1 && dataLength !== dataLinks[match].length);
+          }
+          dataLength = (dataLinks[match].length > dataLength) ? dataLinks[match].length : dataLength;
+        } else {
+          validExpression = false;
+          console.warn('Metrics with name "' + match + '" not found to compute expression');
         }
-        dataLength = (dataLinks[match].length > dataLength) ? dataLinks[match].length : dataLength;
-      } else {
-        validExpression = false;
-        console.error('Metrics with name "' + match + '" not found to compute expression');
       }
     });
 
@@ -130,9 +143,13 @@ App.GraphWidgetView = Em.View.extend(App.WidgetMixin, {
       for (var i = 0, timestamp; i < dataLength; i++) {
         isPointNull = false;
         beforeCompute = expression.replace(this.get('VALUE_NAME_REGEX'), function (match) {
-          timestamp = dataLinks[match][i][1];
-          isPointNull = (isPointNull) ? true : (Em.isNone(dataLinks[match][i][0]));
-          return dataLinks[match][i][0];
+          if (isNaN(match)) {
+            timestamp = dataLinks[match][i][1];
+            isPointNull = (isPointNull) ? true : (Em.isNone(dataLinks[match][i][0]));
+            return dataLinks[match][i][0];
+          } else {
+            return match;
+          }
         });
         var dataLinkPointValue = isPointNull ? null : Number(window.eval(beforeCompute));
         // expression resulting into `0/0` will produce NaN Object which is not a valid series data value for RickShaw graphs
@@ -174,57 +191,6 @@ App.GraphWidgetView = Em.View.extend(App.WidgetMixin, {
   },
 
   /**
-   * make GET call to server in order to fetch service-component metrics
-   * @param {object} request
-   * @returns {$.ajax}
-   */
-  getServiceComponentMetrics: function (request) {
-    return App.ajax.send({
-      name: 'widgets.serviceComponent.metrics.get',
-      sender: this,
-      data: {
-        serviceName: request.service_name,
-        componentName: request.component_name,
-        metricPaths: this.addTimeProperties(request.metric_paths).join(',')
-      },
-      success: 'getMetricsSuccessCallback'
-    });
-  },
-
-  /**
-   * make GET call to server in order to fetch host-component metrics
-   * @param {object} request
-   * @returns {$.ajax}
-   */
-  getHostComponentMetrics: function (request) {
-    var dfd;
-    var self = this;
-    dfd = $.Deferred();
-    this.getHostComponentName(request).done(function (data) {
-      if (data) {
-        request.host_name = data.host_components[0].HostRoles.host_name;
-        App.ajax.send({
-          name: 'widgets.hostComponent.metrics.get',
-          sender: self,
-          data: {
-            componentName: request.component_name,
-            hostName: request.host_name,
-            metricPaths: self.addTimeProperties(request.metric_paths).join(',')
-          }
-        }).done(function(metricData) {
-          self.getMetricsSuccessCallback(metricData);
-          dfd.resolve();
-        }).fail(function(data){
-          dfd.reject();
-        });
-      }
-    }).fail(function(data){
-      dfd.reject();
-    });
-    return dfd.promise();
-  },
-
-  /**
    * add time properties
    * @param {Array} metricPaths
    * @returns {Array} result
@@ -250,6 +216,23 @@ App.GraphWidgetView = Em.View.extend(App.WidgetMixin, {
 
     noTitleUnderGraph: true,
     inWidget: true,
+    description: function () {
+      return this.get('parentView.content.description');
+    }.property('parentView.content.description'),
+    isPreview: function () {
+      return this.get('parentView.isPreview');
+    }.property('parentView.isPreview'),
+    displayUnit: function () {
+      return this.get('parentView.content.properties.display_unit');
+    }.property('parentView.content.properties.display_unit'),
+    setYAxisFormatter: function () {
+      var self = this;
+      if (this.get('displayUnit')) {
+        this.set('yAxisFormatter',  function (value) {
+          return App.ChartLinearTimeView.DisplayUnitFormatter(value, self.get('displayUnit'));
+        });
+      }
+    }.observes('displayUnit'),
 
     /**
      * set custom time range for graph widget
@@ -303,7 +286,19 @@ App.GraphWidgetView = Em.View.extend(App.WidgetMixin, {
     },
 
     didInsertElement: function () {
+      this.setYAxisFormatter();
       this.loadData();
+      var self = this;
+      Em.run.next(function () {
+        if (self.get('isPreview')) {
+          App.tooltip(this.$("[rel='ZoomInTooltip']"), 'disable');
+        } else {
+          App.tooltip(this.$("[rel='ZoomInTooltip']"), {
+            placement: 'left',
+            template: '<div class="tooltip"><div class="tooltip-arrow"></div><div class="tooltip-inner graph-tooltip"></div></div>'
+          });
+        }
+      });
     }.observes('parentView.data')
   })
 });

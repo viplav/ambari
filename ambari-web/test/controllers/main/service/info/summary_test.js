@@ -62,29 +62,52 @@ describe('App.MainServiceInfoSummaryController', function () {
           serviceName: 'HDFS'
         }),
         Em.Object.create({
+          serviceName: 'YARN'
+        }),
+        Em.Object.create({
           serviceName: 'HIVE'
         })
       ]);
       sinon.stub(App.StackService, 'find').returns([
         Em.Object.create({
           serviceName: 'HDFS',
-          displayNName: 'HDFS'
+          displayName: 'HDFS',
+          configTypes: {
+            'ranger-hdfs-plugin-properties': {}
+          }
         }),
         Em.Object.create({
           serviceName: 'HIVE',
-          displayNName: 'Hive'
+          displayName: 'Hive',
+          configTypes: {
+            'hive-env': {}
+          }
         }),
         Em.Object.create({
           serviceName: 'HBASE',
-          displayNName: 'HBase'
+          displayName: 'HBase',
+          configTypes: {
+            'ranger-hbase-plugin-properties': {}
+          }
         }),
         Em.Object.create({
           serviceName: 'KNOX',
-          displayNName: 'Knox'
+          displayName: 'Knox',
+          configTypes: {
+            'ranger-knox-plugin-properties': {}
+          }
         }),
         Em.Object.create({
           serviceName: 'STORM',
-          displayNName: 'Storm'
+          displayName: 'Storm',
+          configTypes: {
+            'ranger-storm-plugin-properties': {}
+          }
+        }),
+        Em.Object.create({
+          serviceName: 'YARN',
+          displayName: 'YARN',
+          configTypes: {}
         })
       ]);
     });
@@ -113,7 +136,7 @@ describe('App.MainServiceInfoSummaryController', function () {
             'ranger-hdfs-plugin-properties': {
               'tag': 'version1'
             },
-            'ranger-hive-plugin-properties': {
+            'hive-env': {
               'tag': 'version2'
             },
             'ranger-hbase-plugin-properties': {
@@ -165,6 +188,9 @@ describe('App.MainServiceInfoSummaryController', function () {
         }),
         Em.Object.create({
           serviceName: 'HBASE'
+        }),
+        Em.Object.create({
+          serviceName: 'YARN'
         })
       ]);
     });
@@ -178,10 +204,12 @@ describe('App.MainServiceInfoSummaryController', function () {
       it(item.title, function () {
         controller.set('isPreviousRangerConfigsCallFailed', item.isPreviousRangerConfigsCallFailed);
         controller.get('rangerPlugins').findProperty('serviceName', 'HDFS').tag = item.hdfsTag;
-        controller.get('rangerPlugins').findProperty('serviceName', 'HIVE').tag = item.hiveTag;
         controller.get('rangerPlugins').findProperty('serviceName', 'HBASE').tag = item.hbaseTag;
         controller.getRangerPluginsStatus(data);
         expect(App.ajax.send.calledOnce).to.equal(item.ajaxRequestSent);
+        if (item.ajaxRequestSent) {
+          expect(App.ajax.send.getCall(0).args[0].data.urlParams.contains('ranger-yarn-plugin-properties')).to.be.false;
+        }
       });
     });
 
@@ -198,9 +226,9 @@ describe('App.MainServiceInfoSummaryController', function () {
             }
           },
           {
-            'type': 'ranger-hive-plugin-properties',
+            'type': 'hive-env',
             'properties': {
-              'ranger-hive-plugin-enabled': 'No'
+              'hive_security_authorization': 'Ranger'
             }
           },
           {
@@ -213,7 +241,7 @@ describe('App.MainServiceInfoSummaryController', function () {
       });
       expect(controller.get('isPreviousRangerConfigsCallFailed')).to.be.false;
       expect(controller.get('rangerPlugins').findProperty('serviceName', 'HDFS').status).to.equal(Em.I18n.t('alerts.table.state.enabled'));
-      expect(controller.get('rangerPlugins').findProperty('serviceName', 'HIVE').status).to.equal(Em.I18n.t('alerts.table.state.disabled'));
+      expect(controller.get('rangerPlugins').findProperty('serviceName', 'HIVE').status).to.equal(Em.I18n.t('alerts.table.state.enabled'));
       expect(controller.get('rangerPlugins').findProperty('serviceName', 'HBASE').status).to.equal(Em.I18n.t('common.unknown'));
     });
   });
@@ -264,6 +292,45 @@ describe('App.MainServiceInfoSummaryController', function () {
       expect(controller.get('isWidgetsLoaded')).to.be.true;
     });
 
+  });
+
+  describe("#hideWidgetSuccessCallback()", function () {
+    beforeEach(function () {
+      sinon.stub(App.widgetLayoutMapper, 'map');
+      sinon.stub(controller, 'propertyDidChange');
+    });
+    afterEach(function () {
+      App.widgetLayoutMapper.map.restore();
+      controller.propertyDidChange.restore();
+    });
+    it("", function () {
+      var params = {
+        data: {
+          WidgetLayoutInfo: {
+            widgets: [
+              {
+                id: 1
+              }
+            ]
+          }
+        }
+      };
+      controller.hideWidgetSuccessCallback({}, {}, params);
+      expect(App.widgetLayoutMapper.map.calledWith({
+        items: [{
+          WidgetLayoutInfo: {
+            widgets: [
+              {
+                WidgetInfo: {
+                  id: 1
+                }
+              }
+            ]
+          }
+        }]
+      })).to.be.true;
+      expect(controller.propertyDidChange.calledWith('widgets')).to.be.true;
+    });
   });
 
 });

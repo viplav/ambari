@@ -17,16 +17,8 @@
  */
 package org.apache.ambari.server.configuration;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Properties;
-
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.orm.JPATableGenerationStrategy;
 import org.apache.ambari.server.orm.PersistenceType;
@@ -41,8 +33,15 @@ import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.inject.Inject;
-import com.google.inject.Singleton;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Properties;
 
 
 /**
@@ -69,6 +68,8 @@ public class Configuration {
   public static final String VIEWS_DIR_DEFAULT = "/var/lib/ambari-server/resources/views";
   public static final String VIEWS_VALIDATE = "views.validate";
   public static final String VIEWS_VALIDATE_DEFAULT = "false";
+  public static final String VIEWS_REMOVE_UNDEPLOYED = "views.remove.undeployed";
+  public static final String VIEWS_REMOVE_UNDEPLOYED_DEFAULT = "false";
   public static final String WEBAPP_DIR = "webapp.dir";
   public static final String BOOTSTRAP_SCRIPT = "bootstrap.script";
   public static final String BOOTSTRAP_SCRIPT_DEFAULT = "/usr/bin/ambari_bootstrap";
@@ -84,6 +85,9 @@ public class Configuration {
   public static final String API_AUTHENTICATE = "api.authenticate";
   public static final String API_USE_SSL = "api.ssl";
   public static final String API_CSRF_PREVENTION_KEY = "api.csrfPrevention.enabled";
+  public static final String API_GZIP_COMPRESSION_ENABLED_KEY = "api.gzip.compression.enabled";
+  public static final String API_GZIP_MIN_COMPRESSION_SIZE_KEY = "api.gzip.compression.min.size";
+  public static final String AGENT_API_GZIP_COMPRESSION_ENABLED_KEY = "agent.api.gzip.compression.enabled";
   public static final String SRVR_TWO_WAY_SSL_KEY = "security.server.two_way_ssl";
   public static final String SRVR_TWO_WAY_SSL_PORT_KEY = "security.server.two_way_ssl.port";
   public static final String SRVR_ONE_WAY_SSL_PORT_KEY = "security.server.one_way_ssl.port";
@@ -107,6 +111,7 @@ public class Configuration {
   public static final String JAVA_HOME_KEY = "java.home";
   public static final String JDK_NAME_KEY = "jdk.name";
   public static final String JCE_NAME_KEY = "jce.name";
+  public static final float  JDK_MIN_VERSION = 1.7f;
   public static final String CLIENT_SECURITY_KEY = "client.security";
   public static final String CLIENT_API_PORT_KEY = "client.api.port";
   public static final String CLIENT_API_SSL_PORT_KEY = "client.api.ssl.port";
@@ -116,6 +121,10 @@ public class Configuration {
   public static final String CLIENT_API_SSL_CRT_PASS_FILE_NAME_KEY = "client.api.ssl.cert_pass_file";
   public static final String CLIENT_API_SSL_CRT_PASS_KEY = "client.api.ssl.crt_pass";
   public static final String CLIENT_API_SSL_KEY_NAME_KEY = "client.api.ssl.key_name";
+  public static final String CHECK_REMOTE_MOUNTS_KEY = "agent.check.remote.mounts";
+  public static final String CHECK_REMOTE_MOUNTS_DEFAULT = "true";
+  public static final String CHECK_MOUNTS_TIMEOUT_KEY = "agent.check.mounts.timeout";
+  public static final String CHECK_MOUNTS_TIMEOUT_DEFAULT = "0";
   public static final String SERVER_DB_NAME_KEY = "server.jdbc.database_name";
   public static final String SERVER_DB_NAME_DEFAULT = "ambari";
   public static final String REQUEST_READ_TIMEOUT = "views.request.read.timeout.millis";
@@ -257,6 +266,12 @@ public class Configuration {
   public static final String RECOVERY_RETRY_GAP_DEFAULT = "5";
 
   /**
+   * Allow proxy calls to these hosts and ports only
+   */
+  public static final String PROXY_ALLOWED_HOST_PORTS = "proxy.allowed.hostports";
+  public static final String PROXY_ALLOWED_HOST_PORTS_DEFAULT = "*:*";
+
+  /**
    * This key defines whether stages of parallel requests are executed in
    * parallel or sequentally. Only stages from different requests
    * running on not interfering host sets may be executed in parallel.
@@ -289,6 +304,8 @@ public class Configuration {
   private static final String SRVR_TWO_WAY_SSL_DEFAULT = "false";
   private static final String SRVR_KSTR_DIR_DEFAULT = ".";
   private static final String API_CSRF_PREVENTION_DEFAULT = "true";
+  private static final String API_GZIP_COMPRESSION_ENABLED_DEFAULT = "true";
+  private static final String API_GZIP_MIN_COMPRESSION_SIZE_DEFAULT = "10240";
   private static final String SRVR_CRT_PASS_FILE_DEFAULT = "pass.txt";
   private static final String SRVR_CRT_PASS_LEN_DEFAULT = "50";
   private static final String SRVR_DISABLED_CIPHERS_DEFAULT = "";
@@ -366,20 +383,20 @@ public class Configuration {
   private static final String DEFAULT_JDBC_POOL_MAX_AGE_SECONDS = "0";
   private static final String DEFAULT_JDBC_POOL_IDLE_TEST_INTERVAL = "7200";
 
-  private static final String IS_COMMAND_RETRY_ENABLED_KEY = "command.retry.enabled";
-  private static final String IS_COMMAND_RETRY_ENABLED_DEFAULT = "false";
-  private static final String COMMAND_RETRY_COUNT_KEY = "command.retry.count";
-  private static final String COMMAND_RETRY_COUNT_DEFAULT = "3";
   /**
    * The full path to the XML file that describes the different alert templates.
    */
   private static final String ALERT_TEMPLATE_FILE = "alerts.template.file";
+
+  public static final String ALERTS_EXECUTION_SCHEDULER_THREADS_KEY = "alerts.execution.scheduler.maxThreads";
+  public static final String ALERTS_EXECUTION_SCHEDULER_THREADS_DEFAULT = "2";
 
   private static final Logger LOG = LoggerFactory.getLogger(
       Configuration.class);
 
   private Properties properties;
   private Map<String, String> configsMap;
+  private Map<String, String> agentConfigsMap;
   private CredentialProvider credentialProvider = null;
   private volatile boolean credentialProviderInitialized = false;
   private Map<String, String> customDbProperties = null;
@@ -485,7 +502,14 @@ public class Configuration {
   public Configuration(Properties properties) {
     this.properties = properties;
 
+    agentConfigsMap = new HashMap<String, String>();
+    agentConfigsMap.put(CHECK_REMOTE_MOUNTS_KEY, properties.getProperty(
+      CHECK_REMOTE_MOUNTS_KEY, CHECK_REMOTE_MOUNTS_DEFAULT));
+    agentConfigsMap.put(CHECK_MOUNTS_TIMEOUT_KEY, properties.getProperty(
+      CHECK_MOUNTS_TIMEOUT_KEY, CHECK_MOUNTS_TIMEOUT_DEFAULT));
+
     configsMap = new HashMap<String, String>();
+    configsMap.putAll(agentConfigsMap);
     configsMap.put(AMBARI_PYTHON_WRAP_KEY, properties.getProperty(
         AMBARI_PYTHON_WRAP_KEY, AMBARI_PYTHON_WRAP_DEFAULT));
     configsMap.put(SRVR_TWO_WAY_SSL_KEY, properties.getProperty(
@@ -546,6 +570,8 @@ public class Configuration {
 
     configsMap.put(AGENT_PACKAGE_PARALLEL_COMMANDS_LIMIT_KEY, properties.getProperty(
             AGENT_PACKAGE_PARALLEL_COMMANDS_LIMIT_KEY, AGENT_PACKAGE_PARALLEL_COMMANDS_LIMIT_DEFAULT));
+    configsMap.put(PROXY_ALLOWED_HOST_PORTS, properties.getProperty(
+        PROXY_ALLOWED_HOST_PORTS, PROXY_ALLOWED_HOST_PORTS_DEFAULT));
 
     File passFile = new File(configsMap.get(SRVR_KSTR_DIR_KEY) + File.separator
         + configsMap.get(SRVR_CRT_PASS_FILE_KEY));
@@ -705,9 +731,17 @@ public class Configuration {
    * @return true if view validation is enabled
    */
   public boolean isViewValidationEnabled() {
-    return "true".equalsIgnoreCase(properties.getProperty(VIEWS_VALIDATE, VIEWS_VALIDATE_DEFAULT));
+    return Boolean.parseBoolean(properties.getProperty(VIEWS_VALIDATE, VIEWS_VALIDATE_DEFAULT));
   }
 
+  /**
+   * Determine whether or not a view that has been undeployed (archive deleted) should be removed from the database.
+   *
+   * @return true if undeployed views should be removed
+   */
+  public boolean isViewRemoveUndeployedEnabled() {
+    return Boolean.parseBoolean(properties.getProperty(VIEWS_REMOVE_UNDEPLOYED, VIEWS_REMOVE_UNDEPLOYED_DEFAULT));
+  }
 
   /**
    * @return conventional Java version number, e.g. 7.
@@ -772,6 +806,15 @@ public class Configuration {
    */
   public Map<String, String> getConfigsMap() {
     return configsMap;
+  }
+
+  /**
+   * Get the map with server config parameters related to agent configuration.
+   * Keys - public constants of this class
+   * @return the map with server config parameters related to agent configuration
+   */
+  public Map<String, String> getAgentConfigsMap() {
+    return agentConfigsMap;
   }
 
   /**
@@ -843,6 +886,19 @@ public class Configuration {
   }
 
   /**
+   * Gets ambari server version
+   * @return version String
+   */
+  public String getServerVersion() {
+    try {
+      return FileUtils.readFileToString(new File(getServerVersionFilePath())).trim();
+    } catch (IOException e) {
+      LOG.error("Unable to read server version file", e);
+    }
+    return null;
+  }
+
+  /**
    * Check to see if the API should be authenticated or not
    * @return false if not, true if the authentication is enabled.
    */
@@ -855,7 +911,8 @@ public class Configuration {
    * @return int
    */
   public int getClientSSLApiPort() {
-    return Integer.parseInt(properties.getProperty(CLIENT_API_SSL_PORT_KEY, String.valueOf(CLIENT_API_SSL_PORT_DEFAULT)));
+    return Integer.parseInt(properties.getProperty(CLIENT_API_SSL_PORT_KEY,
+                                                   String.valueOf(CLIENT_API_SSL_PORT_DEFAULT)));
   }
 
   /**
@@ -875,6 +932,37 @@ public class Configuration {
   public boolean getTwoWaySsl() {
     return ("true".equals(properties.getProperty(SRVR_TWO_WAY_SSL_KEY,
       SRVR_TWO_WAY_SSL_DEFAULT)));
+  }
+
+  /**
+   * Check to see if the API responses should be compressed via gzip or not
+   * @return false if not, true if gzip compression needs to be used.
+   */
+  public boolean isApiGzipped() {
+    return "true".equalsIgnoreCase(properties.getProperty(
+        API_GZIP_COMPRESSION_ENABLED_KEY,
+        API_GZIP_COMPRESSION_ENABLED_DEFAULT));
+  }
+
+  /**
+   * Check to see if the agent API responses should be compressed via gzip or not
+   * @return false if not, true if gzip compression needs to be used.
+   */
+  public boolean isAgentApiGzipped() {
+    return "true".equalsIgnoreCase(properties.getProperty(
+        AGENT_API_GZIP_COMPRESSION_ENABLED_KEY,
+        API_GZIP_COMPRESSION_ENABLED_DEFAULT));
+  }
+
+  /**
+   * Check to see if the API responses should be compressed via gzip or not
+   * Content will only be compressed if content length is either unknown or
+   * greater this value
+   * @return false if not, true if ssl needs to be used.
+   */
+  public String getApiGzipMinSize() {
+    return properties.getProperty(API_GZIP_MIN_COMPRESSION_SIZE_KEY,
+        API_GZIP_MIN_COMPRESSION_SIZE_DEFAULT);
   }
 
   /**
@@ -1136,13 +1224,15 @@ public class Configuration {
 
   public String getSrvrDisabledCiphers() {
     String disabledCiphers = properties.getProperty(SRVR_DISABLED_CIPHERS,
-            properties.getProperty(SRVR_DISABLED_CIPHERS, SRVR_DISABLED_CIPHERS_DEFAULT));
+                                                    properties.getProperty(SRVR_DISABLED_CIPHERS,
+                                                                           SRVR_DISABLED_CIPHERS_DEFAULT));
     return disabledCiphers.trim();
   }
 
   public String getSrvrDisabledProtocols() {
     String disabledProtocols = properties.getProperty(SRVR_DISABLED_PROTOCOLS,
-            properties.getProperty(SRVR_DISABLED_PROTOCOLS, SRVR_DISABLED_PROTOCOLS_DEFAULT));
+                                                      properties.getProperty(SRVR_DISABLED_PROTOCOLS,
+                                                                             SRVR_DISABLED_PROTOCOLS_DEFAULT));
     return disabledProtocols.trim();
   }
 
@@ -1152,19 +1242,10 @@ public class Configuration {
   }
 
   public int getTwoWayAuthPort() {
-    return Integer.parseInt(properties.getProperty(SRVR_TWO_WAY_SSL_PORT_KEY, String.valueOf(SRVR_TWO_WAY_SSL_PORT_DEFAULT)));
+    return Integer.parseInt(properties.getProperty(SRVR_TWO_WAY_SSL_PORT_KEY,
+                                                   String.valueOf(SRVR_TWO_WAY_SSL_PORT_DEFAULT)));
   }
 
-  /**
-   * Command retry configs
-   */
-  public boolean isCommandRetryEnabled() {
-    return Boolean.parseBoolean(properties.getProperty(IS_COMMAND_RETRY_ENABLED_KEY, IS_COMMAND_RETRY_ENABLED_DEFAULT));
-  }
-
-  public int commandRetryCount() {
-    return Integer.parseInt(properties.getProperty(COMMAND_RETRY_COUNT_KEY, COMMAND_RETRY_COUNT_DEFAULT));
-  }
   /**
    * @return custom properties for database connections
    */
@@ -1238,18 +1319,19 @@ public class Configuration {
     return repoSuffixes.split(",");
   }
 
+
   public String isExecutionSchedulerClusterd() {
     return properties.getProperty(EXECUTION_SCHEDULER_CLUSTERED, "false");
   }
 
   public String getExecutionSchedulerThreads() {
     return properties.getProperty(EXECUTION_SCHEDULER_THREADS,
-        DEFAULT_SCHEDULER_THREAD_COUNT);
+                                  DEFAULT_SCHEDULER_THREAD_COUNT);
   }
 
   public Integer getRequestReadTimeout() {
     return Integer.parseInt(properties.getProperty(REQUEST_READ_TIMEOUT,
-                                                   REQUEST_READ_TIMEOUT_DEFAULT));
+        REQUEST_READ_TIMEOUT_DEFAULT));
   }
 
   public Integer getRequestConnectTimeout() {
@@ -1271,7 +1353,7 @@ public class Configuration {
 
   public Integer getExecutionSchedulerStartDelay() {
     String delay = properties.getProperty(EXECUTION_SCHEDULER_START_DELAY,
-        DEFAULT_SCHEDULER_START_DELAY_SECONDS);
+                                          DEFAULT_SCHEDULER_START_DELAY_SECONDS);
     return Integer.parseInt(delay);
   }
 
@@ -1397,6 +1479,14 @@ public class Configuration {
    */
   public String getAlertTemplateFile() {
     return properties.getProperty(ALERT_TEMPLATE_FILE);
+  }
+
+  /**
+   * @return max thread pool size for AlertEventPublisher, default 2
+   */
+  public int getAlertEventPublisherPoolSize() {
+    return Integer.parseInt(properties.getProperty(
+        ALERTS_EXECUTION_SCHEDULER_THREADS_KEY, ALERTS_EXECUTION_SCHEDULER_THREADS_DEFAULT));
   }
 
   /**

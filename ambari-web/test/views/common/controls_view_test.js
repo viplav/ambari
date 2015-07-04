@@ -613,14 +613,14 @@ describe('App.ServiceConfigRadioButtons', function () {
           databaseName: item.databaseName,
           hostName: item.hostName,
           databaseNameProperty: Em.Object.create({
-            defaultValue: item.databaseNameDefault
+            recommendedValue: item.databaseNameDefault
           }),
           hostNameProperty: Em.Object.create({
-            defaultValue: item.hostNameDefault
+            recommendedValue: item.hostNameDefault
           })
         });
         expect(view.get('connectionUrl.value')).to.equal(item.connectionUrlValue);
-        expect(view.get('connectionUrl.defaultValue')).to.equal(item.connectionUrlDefaultValue);
+        expect(view.get('connectionUrl.recommendedValue')).to.equal(item.connectionUrlDefaultValue);
         expect(view.get('dbClass.value')).to.equal(item.dbClassValue);
         serviceAuthPropsMap[item.serviceName].forEach(function (propName) {
           expect(view.get('categoryConfigsAll').findProperty('name', propName).get('isVisible')).to.equal(item.isAuthVisibleAndRequired);
@@ -628,6 +628,189 @@ describe('App.ServiceConfigRadioButtons', function () {
         });
         if (item.serviceName == 'HIVE') {
           expect(view.get('parentView.serviceConfigs').findProperty('name', 'hive_database_type').value).to.equal(item.hiveDbTypeValue);
+        }
+      });
+    });
+
+  });
+
+  describe('#handleDBConnectionProperty', function () {
+
+    var view,
+      cases = [
+        {
+          dbType: 'mysql',
+          serviceConfig: {
+            name: 'hive_database',
+            value: 'New MySQL Database',
+            serviceName: 'HIVE'
+          },
+          categoryConfigsAll: [
+            Em.Object.create({
+              name: 'javax.jdo.option.ConnectionURL',
+              displayName: 'Database URL'
+            }),
+            Em.Object.create({
+              name: 'hive_database',
+              displayName: 'Hive Database'
+            })
+          ],
+          currentStackVersion: 'HDP-2.2',
+          propertyAppendTo1: 'javax.jdo.option.ConnectionURL',
+          propertyAppendTo2: 'hive_database',
+          isAdditionalView1Null: true,
+          isAdditionalView2Null: true,
+          title: 'Hive, embedded database'
+        },
+        {
+          dbType: 'postgres',
+          serviceConfig: {
+            name: 'hive_database',
+            value: 'Existing PostgreSQL Database',
+            serviceName: 'HIVE'
+          },
+          categoryConfigsAll: [
+            Em.Object.create({
+              name: 'javax.jdo.option.ConnectionURL',
+              displayName: 'Database URL'
+            }),
+            Em.Object.create({
+              name: 'hive_database',
+              displayName: 'Hive Database'
+            })
+          ],
+          currentStackVersion: 'HDP-2.2',
+          propertyAppendTo1: 'javax.jdo.option.ConnectionURL',
+          propertyAppendTo2: 'hive_database',
+          isAdditionalView1Null: false,
+          isAdditionalView2Null: false,
+          title: 'Hive, external database'
+        },
+        {
+          dbType: 'derby',
+          serviceConfig: {
+            name: 'oozie_database',
+            value: 'New Derby Database',
+            serviceName: 'OOZIE'
+          },
+          categoryConfigsAll: [
+            Em.Object.create({
+              name: 'oozie.service.JPAService.jdbc.url',
+              displayName: 'Database URL'
+            }),
+            Em.Object.create({
+              name: 'oozie_database',
+              displayName: 'Oozie Database'
+            })
+          ],
+          currentStackVersion: 'HDP-2.2',
+          propertyAppendTo1: 'oozie.service.JPAService.jdbc.url',
+          propertyAppendTo2: 'oozie_database',
+          isAdditionalView1Null: true,
+          isAdditionalView2Null: true,
+          title: 'Oozie, embedded database'
+        },
+        {
+          dbType: 'oracle',
+          serviceConfig: {
+            name: 'oozie_database',
+            value: 'Existing Oracle Database',
+            serviceName: 'OOZIE'
+          },
+          categoryConfigsAll: [
+            Em.Object.create({
+              name: 'oozie.service.JPAService.jdbc.url',
+              displayName: 'Database URL'
+            }),
+            Em.Object.create({
+              name: 'oozie_database',
+              displayName: 'Oozie Database'
+            })
+          ],
+          currentStackVersion: 'HDP-2.2',
+          propertyAppendTo1: 'oozie.service.JPAService.jdbc.url',
+          propertyAppendTo2: 'oozie_database',
+          isAdditionalView1Null: false,
+          isAdditionalView2Null: false,
+          title: 'Oozie, external database'
+        },
+        {
+          dbType: 'mysql',
+          serviceConfig: {
+            name: 'DB_FLAVOR',
+            value: 'MYSQL',
+            serviceName: 'RANGER'
+          },
+          categoryConfigsAll: [
+            Em.Object.create({
+              name: 'ranger.jpa.jdbc.url'
+            }),
+            Em.Object.create({
+              name: 'DB_FLAVOR'
+            })
+          ],
+          currentStackVersion: 'HDP-2.2',
+          propertyAppendTo1: 'ranger.jpa.jdbc.url',
+          propertyAppendTo2: 'DB_FLAVOR',
+          isAdditionalView1Null: true,
+          isAdditionalView2Null: true,
+          title: 'Ranger, HDP 2.2, external database'
+        },
+        {
+          dbType: 'mssql',
+          serviceConfig: {
+            name: 'DB_FLAVOR',
+            value: 'MSSQL',
+            serviceName: 'RANGER'
+          },
+          categoryConfigsAll: [
+            Em.Object.create({
+              name: 'ranger.jpa.jdbc.url'
+            }),
+            Em.Object.create({
+              name: 'DB_FLAVOR'
+            })
+          ],
+          currentStackVersion: 'HDP-2.3',
+          propertyAppendTo1: 'ranger.jpa.jdbc.url',
+          propertyAppendTo2: 'DB_FLAVOR',
+          isAdditionalView1Null: false,
+          isAdditionalView2Null: false,
+          title: 'Ranger, HDP 2.3, external database'
+        }
+      ];
+
+    before(function () {
+      sinon.stub(Em.run, 'next', function (arg) {
+        arg();
+      });
+    });
+
+    beforeEach(function () {
+      view = App.ServiceConfigRadioButtons.create();
+    });
+
+    afterEach(function () {
+      App.get.restore();
+    });
+
+    after(function () {
+      Em.run.next.restore();
+    });
+
+    cases.forEach(function (item) {
+      it(item.title, function () {
+        sinon.stub(App, 'get').withArgs('currentStackName').returns('HDP').withArgs('currentStackVersion').returns(item.currentStackVersion);
+        view.setProperties({
+          categoryConfigsAll: item.categoryConfigsAll,
+          serviceConfig: item.serviceConfig
+        });
+        var additionalView1 = view.get('categoryConfigsAll').findProperty('name', item.propertyAppendTo1).get('additionalView'),
+          additionalView2 = view.get('categoryConfigsAll').findProperty('name', item.propertyAppendTo2).get('additionalView');
+        expect(Em.isNone(additionalView1)).to.equal(item.isAdditionalView1Null);
+        expect(Em.isNone(additionalView2)).to.equal(item.isAdditionalView2Null);
+        if (!item.isAdditionalView2Null) {
+          expect(additionalView2.create().get('message')).to.equal(Em.I18n.t('services.service.config.database.msg.jdbcSetup').format(item.dbType, item.dbType));
         }
       });
     });
@@ -769,6 +952,134 @@ describe('App.CheckDBConnectionView', function () {
 
   });
 
+  describe('#setResponseStatus', function () {
+
+    var view,
+      cases = [
+        {
+          isSuccess: 'success',
+          logsPopupBefore: null,
+          logsPopup: null,
+          responseCaption: Em.I18n.t('services.service.config.database.connection.success'),
+          isConnectionSuccess: true,
+          title: 'success, no popup displayed'
+        },
+        {
+          isSuccess: 'success',
+          logsPopupBefore: {},
+          logsPopup: {
+            header: Em.I18n.t('services.service.config.connection.logsPopup.header').format('MySQL', Em.I18n.t('common.success'))
+          },
+          responseCaption: Em.I18n.t('services.service.config.database.connection.success'),
+          isConnectionSuccess: true,
+          title: 'success, popup is displayed'
+        },
+        {
+          isSuccess: 'error',
+          logsPopupBefore: {},
+          logsPopup: {
+            header: Em.I18n.t('services.service.config.connection.logsPopup.header').format('MySQL', Em.I18n.t('common.error'))
+          },
+          responseCaption: Em.I18n.t('services.service.config.database.connection.failed'),
+          isConnectionSuccess: false,
+          title: 'error, popup is displayed'
+        }
+      ];
+
+    beforeEach(function () {
+      view = App.CheckDBConnectionView.create({
+        databaseName: 'MySQL'
+      });
+      sinon.stub(view, 'setConnectingStatus', Em.K);
+    });
+
+    afterEach(function () {
+      view.setConnectingStatus.restore();
+    });
+
+    cases.forEach(function (item) {
+      it(item.title, function () {
+        view.set('logsPopup', item.logsPopupBefore);
+        view.setResponseStatus(item.isSuccess);
+        expect(view.get('isRequestResolved')).to.be.true;
+        expect(view.setConnectingStatus.calledOnce).to.be.true;
+        expect(view.setConnectingStatus.calledWith(false)).to.be.true;
+        expect(view.get('responseCaption')).to.equal(item.responseCaption);
+        expect(view.get('isConnectionSuccess')).to.equal(item.isConnectionSuccess);
+        expect(view.get('logsPopup')).to.eql(item.logsPopup);
+      });
+    });
+
+  });
+
+  describe('#showLogsPopup', function () {
+
+    var view,
+      cases = [
+        {
+          isConnectionSuccess: true,
+          showAlertPopupCallCount: 0,
+          title: 'successful connection'
+        },
+        {
+          isConnectionSuccess: false,
+          isRequestResolved: true,
+          showAlertPopupCallCount: 1,
+          responseFromServer: 'fail',
+          header: Em.I18n.t('services.service.config.connection.logsPopup.header').format('MySQL', Em.I18n.t('common.error')),
+          popupMethodExecuted: 'onClose',
+          title: 'failed connection without output data, popup dismissed with Close button'
+        },
+        {
+          isConnectionSuccess: false,
+          isRequestResolved: false,
+          showAlertPopupCallCount: 1,
+          responseFromServer: {
+            stderr: 'stderr',
+            stdout: 'stdout',
+            structuredOut: 'structuredOut'
+          },
+          header: Em.I18n.t('services.service.config.connection.logsPopup.header').format('MySQL', Em.I18n.t('common.testing')),
+          popupMethodExecuted: 'onPrimary',
+          title: 'check in progress with output data, popup dismissed with OK button'
+        }
+      ];
+
+    beforeEach(function () {
+      view = App.CheckDBConnectionView.create({
+        databaseName: 'MySQL'
+      });
+      sinon.spy(App, 'showAlertPopup');
+    });
+
+    afterEach(function () {
+      App.showAlertPopup.restore();
+    });
+
+    cases.forEach(function (item) {
+      it(item.title, function () {
+        view.setProperties({
+          isConnectionSuccess: item.isConnectionSuccess,
+          isRequestResolved: item.isRequestResolved,
+          responseFromServer: item.responseFromServer
+        });
+        view.showLogsPopup();
+        expect(App.showAlertPopup.callCount).to.equal(item.showAlertPopupCallCount);
+        if (!item.isConnectionSuccess) {
+          expect(view.get('logsPopup.header')).to.equal(item.header);
+          if (typeof item.responseFromServer == 'object') {
+            expect(view.get('logsPopup.bodyClass').create().get('openedTask')).to.eql(item.responseFromServer);
+          } else {
+            expect(view.get('logsPopup.body')).to.equal(item.responseFromServer);
+          }
+          view.get('logsPopup')[item.popupMethodExecuted]();
+          expect(view.get('logsPopup')).to.be.null;
+        }
+      });
+    });
+
+  });
+
 });
 
 describe('App.BaseUrlTextField', function () {
@@ -789,7 +1100,7 @@ describe('App.BaseUrlTextField', function () {
     it('should be recalculated after value is changed', function () {
       view.setProperties({
         value: 'val',
-        defaultValue: 'val'
+        recommendedValue: 'val'
       });
       expect(view.get('valueWasChanged')).to.be.false;
       view.set('value', 'newVal');
@@ -803,7 +1114,7 @@ describe('App.BaseUrlTextField', function () {
     it('should unset value', function () {
       view.setProperties({
         value: 'valNew',
-        defaultValue: 'val'
+        savedValue: 'val'
       });
       view.restoreValue();
       expect(view.get('value')).to.equal('val');

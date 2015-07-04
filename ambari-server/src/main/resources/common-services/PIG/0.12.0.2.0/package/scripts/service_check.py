@@ -19,8 +19,16 @@ Ambari Agent
 
 """
 
-from resource_management import *
-from resource_management.libraries import functions
+import os
+
+from resource_management.core.resources.system import Execute, File
+from resource_management.core.source import InlineTemplate, StaticFile
+from resource_management.libraries.functions.copy_tarball import copy_to_hdfs
+from resource_management.libraries.functions.format import format
+from resource_management.libraries.functions.version import compare_versions
+from resource_management.libraries.resources.execute_hadoop import ExecuteHadoop
+from resource_management.libraries.resources.hdfs_resource import HdfsResource
+from resource_management.libraries.script.script import Script
 from ambari_commons import OSConst
 from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
 
@@ -39,13 +47,13 @@ class PigServiceCheckLinux(PigServiceCheck):
     params.HdfsResource(output_dir,
                         type="directory",
                         action="delete_on_execute",
-                        user=params.smokeuser,
+                        owner=params.smokeuser,
                         )
     params.HdfsResource(input_file,
                         type="file",
                         source="/etc/passwd",
                         action="create_on_execute",
-                        user=params.smokeuser,
+                        owner=params.smokeuser,
     )
     params.HdfsResource(None, action="execute")
  
@@ -61,7 +69,8 @@ class PigServiceCheckLinux(PigServiceCheck):
       tries     = 3,
       try_sleep = 5,
       path      = format('{pig_bin_dir}:/usr/sbin:/sbin:/usr/local/bin:/bin:/usr/bin'),
-      user      = params.smokeuser
+      user      = params.smokeuser,
+      logoutput = True
     )
 
     test_cmd = format("fs -test -e {output_dir}")
@@ -76,24 +85,19 @@ class PigServiceCheckLinux(PigServiceCheck):
       params.HdfsResource(output_dir,
                           type="directory",
                           action="delete_on_execute",
-                          user=params.smokeuser,
+                          owner=params.smokeuser,
       )
       params.HdfsResource(input_file,
                           type="file",
                           source="/etc/passwd",
                           action="create_on_execute",
-                          user=params.smokeuser,
+                          owner=params.smokeuser,
       )
 
       # Check for Pig-on-Tez
-      params.HdfsResource(InlineTemplate(params.tez_tar_destination).get_content(),
-                          type="file",
-                          action="create_on_execute",
-                          source=params.tez_tar_source,
-                          group=params.user_group,
-                          owner=params.hdfs_user
-      )
-      params.HdfsResource(None, action="execute")
+      resource_created = copy_to_hdfs("tez", params.user_group, params.hdfs_user)
+      if resource_created:
+        params.HdfsResource(None, action="execute")
 
       if params.security_enabled:
         kinit_cmd = format("{kinit_path_local} -kt {smoke_user_keytab} {smokeuser_principal};")
@@ -105,7 +109,8 @@ class PigServiceCheckLinux(PigServiceCheck):
         tries     = 3,
         try_sleep = 5,
         path      = format('{pig_bin_dir}:/usr/sbin:/sbin:/usr/local/bin:/bin:/usr/bin'),
-        user      = params.smokeuser
+        user      = params.smokeuser,
+        logoutput = True
       )
 
       ExecuteHadoop(test_cmd,
@@ -121,7 +126,7 @@ class PigServiceCheckWindows(PigServiceCheck):
     env.set_params(params)
     smoke_cmd = os.path.join(params.hdp_root,"Run-SmokeTests.cmd")
     service = "PIG"
-    Execute(format("cmd /C {smoke_cmd} {service}"), logoutput=True, user=params.hdfs_user)
+    Execute(format("cmd /C {smoke_cmd} {service}", smoke_cmd=smoke_cmd, service=service), logoutput=True, user=params.pig_user, timeout=300)
 
 if __name__ == "__main__":
   PigServiceCheck().execute()

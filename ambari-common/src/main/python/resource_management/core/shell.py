@@ -22,12 +22,13 @@ Ambari Agent
 
 __all__ = ["non_blocking_call", "checked_call", "call", "quote_bash_args", "as_user", "as_sudo"]
 
+import time
+import copy
 import os
 import select
 import sys
 import logging
 import string
-import inspect
 import subprocess
 import threading
 import traceback
@@ -48,7 +49,7 @@ PLACEHOLDERS_TO_STR = {
 
 def log_function_call(function):
   def inner(command, **kwargs):
-    caller_filename = inspect.getouterframes(inspect.currentframe())[1][1]
+    caller_filename = sys._getframe(1).f_code.co_filename
     # quiet = can be False/True or None -- which means undefined yet
     quiet = kwargs['quiet'] if 'quiet' in kwargs else None
     is_internal_call = RMF_FOLDER in caller_filename
@@ -77,26 +78,34 @@ def log_function_call(function):
   return inner
 
 @log_function_call
-def checked_call(command, quiet=False, logoutput=None,
-         cwd=None, env=None, preexec_fn=None, user=None, wait_for_finish=True, timeout=None, path=None, sudo=False, on_new_line=None):
+def checked_call(command, quiet=False, logoutput=None, stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+         cwd=None, env=None, preexec_fn=None, user=None, wait_for_finish=True, timeout=None, on_timeout=None,
+         path=None, sudo=False, on_new_line=None, tries=1, try_sleep=0):
   """
   Execute the shell command and throw an exception on failure.
   @throws Fail
   @return: return_code, output
   """
-  return _call(command, logoutput, True, cwd, env, preexec_fn, user, wait_for_finish, timeout, path, sudo, on_new_line)
-
+  return _call_wrapper(command, logoutput=logoutput, throw_on_failure=True, stdout=stdout, stderr=stderr,
+                              cwd=cwd, env=env, preexec_fn=preexec_fn, user=user, wait_for_finish=wait_for_finish, 
+                              on_timeout=on_timeout, timeout=timeout, path=path, sudo=sudo, on_new_line=on_new_line,
+                              tries=tries, try_sleep=try_sleep)
+  
 @log_function_call
-def call(command, quiet=False, logoutput=None,
-         cwd=None, env=None, preexec_fn=None, user=None, wait_for_finish=True, timeout=None, path=None, sudo=False, on_new_line=None):
+def call(command, quiet=False, logoutput=None, stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+         cwd=None, env=None, preexec_fn=None, user=None, wait_for_finish=True, timeout=None, on_timeout=None,
+         path=None, sudo=False, on_new_line=None, tries=1, try_sleep=0):
   """
   Execute the shell command despite failures.
   @return: return_code, output
   """
-  return _call(command, logoutput, False, cwd, env, preexec_fn, user, wait_for_finish, timeout, path, sudo, on_new_line)
+  return _call_wrapper(command, logoutput=logoutput, throw_on_failure=False, stdout=stdout, stderr=stderr,
+                              cwd=cwd, env=env, preexec_fn=preexec_fn, user=user, wait_for_finish=wait_for_finish, 
+                              on_timeout=on_timeout, timeout=timeout, path=path, sudo=sudo, on_new_line=on_new_line,
+                              tries=tries, try_sleep=try_sleep)
 
 @log_function_call
-def non_blocking_call(command, quiet=False,
+def non_blocking_call(command, quiet=False, stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
          cwd=None, env=None, preexec_fn=None, user=None, timeout=None, path=None, sudo=False):
   """
   Execute the shell command and don't wait until it's completion
@@ -105,10 +114,49 @@ def non_blocking_call(command, quiet=False,
   (use proc.stdout.readline to read output in cycle, don't foget to proc.stdout.close(),
   to get return code use proc.wait() and after that proc.returncode)
   """
-  return _call(command, False, True, cwd, env, preexec_fn, user, False, timeout, path, sudo, None)
+  return _call_wrapper(command, logoutput=False, throw_on_failure=True, stdout=stdout, stderr=stderr, 
+                              cwd=cwd, env=env, preexec_fn=preexec_fn, user=user, wait_for_finish=False, 
+                              on_timeout=None, timeout=timeout, path=path, sudo=sudo, on_new_line=None, 
+                              tries=1, try_sleep=0)
 
-def _call(command, logoutput=None, throw_on_failure=True,
-         cwd=None, env=None, preexec_fn=None, user=None, wait_for_finish=True, timeout=None, path=None, sudo=False, on_new_line=None):
+def _call_wrapper(command, **kwargs):
+  tries = kwargs['tries']
+  try_sleep = kwargs['try_sleep']
+  timeout = kwargs['timeout']
+  on_timeout = kwargs['on_timeout']
+  throw_on_failure = kwargs['throw_on_failure']
+  
+  for i in range (0, tries):
+    is_last_try = (i == tries-1)
+
+    if not is_last_try:
+      kwargs_copy = copy.copy(kwargs)
+      kwargs_copy['throw_on_failure'] = True # we need to know when non-last try fails, to handle retries
+    else:
+      kwargs_copy = kwargs
+    
+    try:    
+      try:
+        result = _call(command, **kwargs_copy)
+        break
+      except ExecuteTimeoutException as ex:     
+        if on_timeout:
+          Logger.info("Executing '%s'. Reason: %s" % (on_timeout, str(ex)))
+          result = checked_call(on_timeout)
+        else:
+          raise
+    except Fail as ex:
+      if is_last_try: # last try
+        raise
+      else:
+        Logger.info("Retrying after %d seconds. Reason: %s" % (try_sleep, str(ex)))
+        time.sleep(try_sleep)
+      
+  return result
+
+def _call(command, logoutput=None, throw_on_failure=True, stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+         cwd=None, env=None, preexec_fn=None, user=None, wait_for_finish=True, timeout=None, on_timeout=None, 
+         path=None, sudo=False, on_new_line=None, tries=1, try_sleep=0):
   """
   Execute shell command
   
@@ -116,8 +164,13 @@ def _call(command, logoutput=None, throw_on_failure=True,
   or string of the command to execute
   @param logoutput: boolean, whether command output should be logged of not
   @param throw_on_failure: if true, when return code is not zero exception is thrown
+  @param stdout,stderr: 
+    subprocess.PIPE - enable output to variable
+    subprocess.STDOUT - redirect to stdout
+    None - disable output to variable, and output to Python out straightly (even if logoutput is False)
+    {int fd} - redirect to file with descriptor.
+    {string filename} - redirects to a file with name.
   """
-
   command_alias = string_cmd_from_args_list(command) if isinstance(command, (list, tuple)) else command
   
   # Append current PATH to env['PATH']
@@ -126,7 +179,7 @@ def _call(command, logoutput=None, throw_on_failure=True,
   if path:
     path = os.pathsep.join(path) if isinstance(path, (list, tuple)) else path
     env['PATH'] = os.pathsep.join([env['PATH'], path])
-
+  
   # prepare command cmd
   if sudo:
     command = as_sudo(command, env=env)
@@ -142,67 +195,104 @@ def _call(command, logoutput=None, throw_on_failure=True,
   for placeholder, replacement in PLACEHOLDERS_TO_STR.iteritems():
     command = command.replace(placeholder, replacement.format(env_str=env_str))
 
-  import pty
-  master_fd, slave_fd = pty.openpty()
-
   # --noprofile is used to preserve PATH set for ambari-agent
   subprocess_command = ["/bin/bash","--login","--noprofile","-c", command]
-  proc = subprocess.Popen(subprocess_command, bufsize=1, stdout=slave_fd, stderr=subprocess.STDOUT,
-                          cwd=cwd, env=env, shell=False, close_fds=True,
-                          preexec_fn=preexec_fn)
   
-  if timeout:
-    timeout_event = threading.Event()
-    t = threading.Timer( timeout, _on_timeout, [proc, timeout_event] )
-    t.start()
-    
-  if not wait_for_finish:
-    return proc
-    
-  # in case logoutput==False, never log.    
-  logoutput = logoutput==True and Logger.logger.isEnabledFor(logging.INFO) or logoutput==None and Logger.logger.isEnabledFor(logging.DEBUG)
-  out = ""
-  read_timeout = .04 # seconds
-
+  files_to_close = []
+  if isinstance(stdout, (basestring)):
+    stdout = open(stdout, 'wb')
+    files_to_close.append(stdout)
+  if isinstance(stderr, (basestring)):
+    stderr = open(stderr, 'wb')
+    files_to_close.append(stderr)
+  
   try:
-    while True:
-      ready, _, _ = select.select([master_fd], [], [], read_timeout)
-      if ready:
-        line = os.read(master_fd, 512)
-        if not line:
-            break
-          
-        out += line
-        try:
-          if on_new_line:
-            on_new_line(line)
-        except Exception, err:
-          err_msg = "Caused by on_new_line function failed with exception for input argument '{0}':\n{1}".format(line, traceback.format_exc())
-          raise Fail(err_msg)
-          
-        if logoutput:
-          _print(line)    
-      elif proc.poll() is not None:
-        break # proc exited
-  finally:
-    os.close(slave_fd)
-    os.close(master_fd)
+    proc = subprocess.Popen(subprocess_command, stdout=stdout, stderr=stderr,
+                            cwd=cwd, env=env, shell=False, close_fds=True,
+                            preexec_fn=preexec_fn)
+    
+    if timeout:
+      timeout_event = threading.Event()
+      t = threading.Timer( timeout, _on_timeout, [proc, timeout_event] )
+      t.start()
+      
+    if not wait_for_finish:
+      return proc
+      
+    # in case logoutput==False, never log.    
+    logoutput = logoutput==True and Logger.logger.isEnabledFor(logging.INFO) or logoutput==None and Logger.logger.isEnabledFor(logging.DEBUG)
+    read_set = []
+    
+    if stdout == subprocess.PIPE:
+      read_set.append(proc.stdout)
+    if stderr == subprocess.PIPE:
+      read_set.append(proc.stderr)
+    
+    fd_to_string = {
+      proc.stdout: "",
+      proc.stderr: ""
+    }
+    all_output = ""
+                  
+    while read_set:
 
-  proc.wait()  
-  out = out.strip('\n')
+      is_proccess_running = (proc.poll() == None)
+      ready, _, _ = select.select(read_set, [], [], 1)
+
+      if not is_proccess_running and not ready:
+        break
+
+      for out_fd in read_set:
+        if out_fd in ready:
+          line = os.read(out_fd.fileno(), 1024)
+          
+          if not line:
+            read_set = copy.copy(read_set)
+            read_set.remove(out_fd)
+            out_fd.close()
+            continue
+          
+          fd_to_string[out_fd] += line
+          all_output += line
+            
+          if on_new_line:
+            try:
+              on_new_line(line, out_fd == proc.stderr)
+            except Exception, err:
+              err_msg = "Caused by on_new_line function failed with exception for input argument '{0}':\n{1}".format(line, traceback.format_exc())
+              raise Fail(err_msg)
+            
+          if logoutput:
+            _print(line)    
+  
+    # Wait for process to terminate
+    proc.wait()
+
+  finally:
+    for fp in files_to_close:
+      fp.close()
+      
+  out = fd_to_string[proc.stdout].strip('\n')
+  err = fd_to_string[proc.stderr].strip('\n')
+  all_output = all_output.strip('\n')
   
   if timeout: 
     if not timeout_event.is_set():
       t.cancel()
     # timeout occurred
     else:
-      raise ExecuteTimeoutException()
+      err_msg = ("Execution of '%s' was killed due timeout after %d seconds") % (command, timeout)
+      raise ExecuteTimeoutException(err_msg)
    
   code = proc.returncode
   
   if throw_on_failure and code:
-    err_msg = Logger.filter_text(("Execution of '%s' returned %d. %s") % (command_alias, code, out))
+    err_msg = Logger.filter_text(("Execution of '%s' returned %d. %s") % (command_alias, code, all_output))
     raise Fail(err_msg)
+  
+  # if separate stderr is enabled (by default it's redirected to out)
+  if stderr == subprocess.PIPE:
+    return code, out, err
   
   return code, out
 
@@ -237,6 +327,10 @@ def as_user(command, user, env=None, auto_escape=True):
 def quote_bash_args(command):
   if not command:
     return "''"
+  
+  if not isinstance(command, basestring):
+    raise Fail("Command should be a list of strings, found '{0}' in command list elements".format(str(command)))
+  
   valid = set(string.ascii_letters + string.digits + '@%_-+=:,./')
   for char in command:
     if char not in valid:
@@ -262,17 +356,23 @@ def _get_environment_str(env):
   return reduce(lambda str,x: '{0} {1}={2}'.format(str,x,quote_bash_args(env[x])), env, '')
 
 def string_cmd_from_args_list(command, auto_escape=True):
-  escape_func = lambda x:quote_bash_args(x) if auto_escape else lambda x:x
-  return ' '.join(escape_func(x) for x in command)
+  if auto_escape:
+    escape_func = lambda x:quote_bash_args(x)
+    return ' '.join(escape_func(x) for x in command)
+  else:
+    return ' '.join(command)
+
+def _print(line):
+  sys.stdout.write(line)
+  sys.stdout.flush()
 
 def _on_timeout(proc, timeout_event):
   timeout_event.set()
   if proc.poll() == None:
     try:
       proc.terminate()
-    except:
+      proc.wait()
+    # catch race condition if proc already dead
+    except OSError:
       pass
-    
-def _print(line):
-  sys.stdout.write(line)
-  sys.stdout.flush()
+

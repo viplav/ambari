@@ -19,12 +19,18 @@ limitations under the License.
 import os
 import re
 import urllib2
-import json
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
 
-from resource_management import *
+from resource_management.core.resources.system import Directory, File, Execute
 from resource_management.libraries.functions.format import format
-from resource_management.core.shell import call, checked_call
+from resource_management.libraries.functions import check_process_status
+from resource_management.libraries.functions.version import compare_versions
+from resource_management.core import shell
+from resource_management.core.shell import as_user, as_sudo
 from resource_management.core.exceptions import ComponentIsNotRunning
+from resource_management.core.logger import Logger
+from resource_management.libraries.functions.curl_krb_request import curl_krb_request
+from resource_management.core.exceptions import Fail
 
 from zkfc_slave import ZkfcSlave
 
@@ -34,6 +40,7 @@ def safe_zkfc_op(action, env):
   :param action: start or stop
   :param env: environment
   """
+  Logger.info("Performing action {0} on zkfc.".format(action))
   zkfc = None
   if action == "start":
     try:
@@ -54,23 +61,25 @@ def safe_zkfc_op(action, env):
         zkfc.stop(env)
 
 
-def failover_namenode():
+def stop_zkfc_during_ru():
   """
-  Failover the primary namenode by killing zkfc if it exists on this host (assuming this host is the primary).
+  Restart ZKFC on either the standby or active Namenode. If done on the currently active namenode, wait for it to
+  become the standby.
   """
   import params
   check_service_cmd = format("hdfs haadmin -getServiceState {namenode_id}")
-  code, out = call(check_service_cmd, logoutput=True, user=params.hdfs_user)
+  code, out = shell.call(check_service_cmd, logoutput=True, user=params.hdfs_user)
 
-  state = "unknown"
+  original_state = "unknown"
   if code == 0 and out:
-    state = "active" if "active" in out else ("standby" if "standby" in out else state)
-    Logger.info("Namenode service state: %s" % state)
+    original_state = "active" if "active" in out else ("standby" if "standby" in out else original_state)
+    Logger.info("Namenode service state: %s" % original_state)
 
-  if state == "active":
-    Logger.info("Rolling Upgrade - Initiating namenode failover by killing zkfc on active namenode")
+    msg = "Rolling Upgrade - Killing ZKFC on {0} NameNode host {1} {2}"\
+      .format(original_state, params.hostname, "to initiate a failover" if original_state == "active" else "")
+    Logger.info(msg)
 
-    # Forcefully kill ZKFC on this host to initiate a failover
+    # Forcefully kill ZKFC. If this is the active, will initiate a failover.
     # If ZKFC is already dead, then potentially this node can still be the active one.
     was_zkfc_killed = kill_zkfc(params.hdfs_user)
 
@@ -78,22 +87,24 @@ def failover_namenode():
     check_standby_cmd = format("hdfs haadmin -getServiceState {namenode_id} | grep standby")
 
     # process may already be down.  try one time, then proceed
-    code, out = call(check_standby_cmd, user=params.hdfs_user, logoutput=True)
-    Logger.info(format("Rolling Upgrade - check for standby returned {code}"))
 
-    if code == 255 and out:
-      Logger.info("Rolling Upgrade - namenode is already down")
-    else:
-      if was_zkfc_killed:
-        # Only mandate that this be the standby namenode if ZKFC was indeed killed to initiate a failover.
-        Execute(check_standby_cmd,
-                user=params.hdfs_user,
-                tries=50,
-                try_sleep=6,
-                logoutput=True)
+    if original_state == "active":
+      code, out = shell.call(check_standby_cmd, user=params.hdfs_user, logoutput=True)
+      Logger.info(format("Rolling Upgrade - check for standby returned {code}"))
 
+      if code == 255 and out:
+        Logger.info("Rolling Upgrade - namenode is already down.")
+      else:
+        if was_zkfc_killed:
+          # Only mandate that this be the standby namenode if ZKFC was indeed killed to initiate a failover.
+          Logger.info("Waiting for this NameNode to become the standby one.")
+          Execute(check_standby_cmd,
+                  user=params.hdfs_user,
+                  tries=50,
+                  try_sleep=6,
+                  logoutput=True)
   else:
-    Logger.info("Rolling Upgrade - Host %s is the standby namenode." % str(params.hostname))
+    raise Fail("Unable to determine NameNode HA states by calling command: {0}".format(check_service_cmd))
 
 
 def kill_zkfc(zkfc_user):
@@ -108,13 +119,17 @@ def kill_zkfc(zkfc_user):
   if params.dfs_ha_enabled:
     zkfc_pid_file = get_service_pid_file("zkfc", zkfc_user)
     if zkfc_pid_file:
-      check_process = format("ls {zkfc_pid_file} > /dev/null 2>&1 && ps -p `cat {zkfc_pid_file}` > /dev/null 2>&1")
-      code, out = call(check_process)
+      check_process = as_user(format("ls {zkfc_pid_file} > /dev/null 2>&1 && ps -p `cat {zkfc_pid_file}` > /dev/null 2>&1"), user=zkfc_user)
+      code, out = shell.call(check_process)
       if code == 0:
-        Logger.debug("ZKFC is running and will be killed to initiate namenode failover.")
-        kill_command = format("{check_process} && kill -9 `cat {zkfc_pid_file}` > /dev/null 2>&1")
-        Execute(kill_command)
-        Execute(format("rm -f {zkfc_pid_file}"))
+        Logger.debug("ZKFC is running and will be killed.")
+        kill_command = format("kill -15 `cat {zkfc_pid_file}`")
+        Execute(kill_command,
+             user=zkfc_user
+        )
+        File(zkfc_pid_file,
+             action = "delete",
+        )
         return True
   return False
 
@@ -163,24 +178,39 @@ def service(action=None, name=None, user=None, options="", create_pid_dir=False,
     }
     hadoop_env_exports.update(custom_export)
 
-  check_process = format(
+  check_process = as_user(format(
     "ls {pid_file} >/dev/null 2>&1 &&"
-    " ps -p `cat {pid_file}` >/dev/null 2>&1")
+    " ps -p `cat {pid_file}` >/dev/null 2>&1"), user=params.hdfs_user)
 
-  if create_pid_dir:
-    Directory(pid_dir,
-              owner=user,
-              recursive=True)
-  if create_log_dir:
+  # on STOP directories shouldn't be created
+  # since during stop still old dirs are used (which were created during previous start)
+  if action != "stop":
     if name == "nfs3":
-      Directory(log_dir,
-                mode=0775,
+      Directory(params.hadoop_pid_dir_prefix,
+                mode=0755,
                 owner=params.root_user,
-                group=params.user_group)
+                group=params.root_group
+      )
     else:
-      Directory(log_dir,
+      Directory(params.hadoop_pid_dir_prefix,
+                  mode=0755,
+                  owner=params.hdfs_user,
+                  group=params.user_group
+      )
+    if create_pid_dir:
+      Directory(pid_dir,
                 owner=user,
                 recursive=True)
+    if create_log_dir:
+      if name == "nfs3":
+        Directory(log_dir,
+                  mode=0775,
+                  owner=params.root_user,
+                  group=params.user_group)
+      else:
+        Directory(log_dir,
+                  owner=user,
+                  recursive=True)
 
   if params.security_enabled and name == "datanode":
     ## The directory where pid files are stored in the secure data environment.
@@ -241,18 +271,7 @@ def service(action=None, name=None, user=None, options="", create_pid_dir=False,
          action="delete",
     )
 
-
-def get_value_from_jmx(qry, property):
-  try:
-    response = urllib2.urlopen(qry)
-    data = response.read()
-    if data:
-      data_dict = json.loads(data)
-      return data_dict["beans"][0][property]
-  except:
-    return None
-
-def get_jmx_data(nn_address, modeler_type, metric, encrypted=False):
+def get_jmx_data(nn_address, modeler_type, metric, encrypted=False, security_enabled=False):
   """
   :param nn_address: Namenode Address, e.g., host:port, ** MAY ** be preceded with "http://" or "https://" already.
   If not preceded, will use the encrypted param to determine.
@@ -272,17 +291,23 @@ def get_jmx_data(nn_address, modeler_type, metric, encrypted=False):
   nn_address = nn_address + "jmx"
   Logger.info("Retrieve modeler: %s, metric: %s from JMX endpoint %s" % (modeler_type, metric, nn_address))
 
-  data = urllib2.urlopen(nn_address).read()
-  data_dict = json.loads(data)
+  if security_enabled:
+    import params
+    data, error_msg, time_millis = curl_krb_request(params.tmp_dir, params.smoke_user_keytab, params.smokeuser_principal, nn_address,
+                            "jn_upgrade", params.kinit_path_local, False, None, params.smoke_user)
+  else:
+    data = urllib2.urlopen(nn_address).read()
   my_data = None
-  if data_dict:
-    for el in data_dict['beans']:
-      if el is not None and el['modelerType'] is not None and el['modelerType'].startswith(modeler_type):
-        if metric in el:
-          my_data = el[metric]
-          if my_data:
-            my_data = json.loads(str(my_data))
-            break
+  if data:
+    data_dict = json.loads(data)
+    if data_dict:
+      for el in data_dict['beans']:
+        if el is not None and el['modelerType'] is not None and el['modelerType'].startswith(modeler_type):
+          if metric in el:
+            my_data = el[metric]
+            if my_data:
+              my_data = json.loads(str(my_data))
+              break
   return my_data
 
 def get_port(address):

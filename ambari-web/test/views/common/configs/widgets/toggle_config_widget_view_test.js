@@ -28,7 +28,7 @@ describe('App.ToggleConfigWidgetView', function () {
       config: Em.Object.create({
         name: 'a.b.c',
         value: 'active',
-        defaultValue: 'active',
+        savedValue: 'active',
         stackConfigProperty: Em.Object.create({
           valueAttributes: {
             "type": "value-list",
@@ -91,6 +91,14 @@ describe('App.ToggleConfigWidgetView', function () {
           isValid: true
         });
         expect(this.view.isValueCompatibleWithWidget()).to.equal(test.e);
+        if (test.e) {
+          expect(this.view.get('warnMessage')).to.equal('');
+          expect(this.view.get('issueMessage')).to.equal('');
+        }
+        else {
+          expect(this.view.get('warnMessage')).to.have.property('length').that.is.least(1);
+          expect(this.view.get('issueMessage')).to.have.property('length').that.is.least(1);
+        }
       });
     });
 

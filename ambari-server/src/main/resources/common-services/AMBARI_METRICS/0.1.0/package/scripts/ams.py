@@ -20,7 +20,6 @@ limitations under the License.
 
 from resource_management import *
 from ambari_commons import OSConst
-from service_mapping import *
 from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
 from ambari_commons.str_utils import compress_backslashes
 import glob
@@ -30,7 +29,7 @@ import os
 def ams(name=None):
   import params
   if name == 'collector':
-    if not check_windows_service_exists(collector_win_service_name):
+    if not check_windows_service_exists(params.ams_collector_win_service_name):
       Execute(format("cmd /C cd {ams_collector_home_dir} & ambari-metrics-collector.cmd setup"))
 
     Directory(params.ams_collector_conf_dir,
@@ -121,10 +120,22 @@ def ams(name=None):
                     action="change_user",
                     username = params.ams_user,
                     password = Script.get_password(params.ams_user))
+      # creating symbolic links on ams jars to make them available to services
+      links_pairs = [
+        ("%COLLECTOR_HOME%\\hbase\\lib\\ambari-metrics-hadoop-sink-with-common.jar",
+         "%SINK_HOME%\\hadoop-sink\\ambari-metrics-hadoop-sink-with-common-*.jar"),
+        ]
+      for link_pair in links_pairs:
+        link, target = link_pair
+        real_link = os.path.expandvars(link)
+        target = compress_backslashes(glob.glob(os.path.expandvars(target))[0])
+        if not os.path.exists(real_link):
+          #TODO check the symlink destination too. Broken in Python 2.x on Windows.
+          Execute('cmd /c mklink "{0}" "{1}"'.format(real_link, target))
     pass
 
   elif name == 'monitor':
-    if not check_windows_service_exists(monitor_win_service_name):
+    if not check_windows_service_exists(params.ams_monitor_win_service_name):
       Execute(format("cmd /C cd {ams_monitor_home_dir} & ambari-metrics-monitor.cmd setup"))
 
     # creating symbolic links on ams jars to make them available to services
@@ -244,6 +255,21 @@ def ams(name=None):
     File(os.path.join(params.ams_hbase_home_dir, "bin", "hadoop"),
          owner=params.ams_user,
          mode=0755
+    )
+
+    # On some OS this folder could be not exists, so we will create it before pushing there files
+    Directory(params.limits_conf_dir,
+              recursive=True,
+              owner='root',
+              group='root'
+    )
+
+    # Setting up security limits
+    File(os.path.join(params.limits_conf_dir, 'ams.conf'),
+         owner='root',
+         group='root',
+         mode=0644,
+         content=Template("ams.conf.j2")
     )
 
     # Phoenix spool file dir if not /tmp

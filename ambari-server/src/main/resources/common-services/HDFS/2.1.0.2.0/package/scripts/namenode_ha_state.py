@@ -20,7 +20,7 @@ limitations under the License.
 
 from resource_management.core.logger import Logger
 from resource_management.libraries.functions.default import default
-from utils import get_value_from_jmx
+from resource_management.libraries.functions.jmx import get_value_from_jmx
 
 
 class NAMENODE_STATE:
@@ -81,7 +81,7 @@ class NamenodeHAState:
           raise Exception("Could not retrieve hostname from address " + actual_value)
 
         jmx_uri = jmx_uri_fragment.format(actual_value)
-        state = get_value_from_jmx(jmx_uri, "State")
+        state = get_value_from_jmx(jmx_uri, "State", params.security_enabled, params.hdfs_user, params.is_https_enabled)
 
         if not state:
           raise Exception("Could not retrieve Namenode state from URL " + jmx_uri)

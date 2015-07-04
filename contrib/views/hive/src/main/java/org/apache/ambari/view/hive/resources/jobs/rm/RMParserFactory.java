@@ -19,21 +19,31 @@
 package org.apache.ambari.view.hive.resources.jobs.rm;
 
 import org.apache.ambari.view.ViewContext;
+import org.apache.ambari.view.hive.utils.ServiceFormattedException;
+import org.apache.ambari.view.utils.ambari.AmbariApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RMParserFactory {
+  protected final static Logger LOG =
+      LoggerFactory.getLogger(RMParserFactory.class);
 
-  private ViewContext context;
+  private final ViewContext context;
+  private final AmbariApi ambariApi;
 
   public RMParserFactory(ViewContext context) {
     this.context = context;
+    this.ambariApi = new AmbariApi(context);
   }
 
   public RMParser getRMParser() {
-    RMRequestsDelegate delegate = new RMRequestsDelegateImpl(context, getRMUrl(context));
+    String rmUrl = getRMUrl();
+
+    RMRequestsDelegate delegate = new RMRequestsDelegateImpl(context, rmUrl);
     return new RMParser(delegate);
   }
 
-  public static String getRMUrl(ViewContext context) {
-    return context.getProperties().get("yarn.resourcemanager.url");
+  public String getRMUrl() {
+    return ambariApi.getServices().getRMUrl();
   }
 }

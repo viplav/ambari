@@ -96,6 +96,9 @@ App.WidgetSectionMixin = Ember.Mixin.create({
     return [];
   }.property('isWidgetsLoaded', 'activeWidgetLayout.widgets'),
 
+  isAmbariMetricsInstalled: function () {
+    return App.Service.find().someProperty('serviceName', 'AMBARI_METRICS');
+  }.property('App.router.mainServiceController.content.length'),
 
   /**
    * load widgets defined by user
@@ -232,10 +235,12 @@ App.WidgetSectionMixin = Ember.Mixin.create({
 
   /**
    * save layout after re-order widgets
+   * @param {Array} widgets
+   * @param {Object} widgetLayout:  Optional. by default active widget layout is honored.
    * return {$.ajax}
    */
-  saveWidgetLayout: function (widgets) {
-    var activeLayout = this.get('activeWidgetLayout');
+  saveWidgetLayout: function (widgets, widgetLayout) {
+    var activeLayout = widgetLayout || this.get('activeWidgetLayout');
     var data = {
       "WidgetLayoutInfo": {
         "display_name": activeLayout.get("displayName"),

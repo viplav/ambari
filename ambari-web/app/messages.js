@@ -158,6 +158,7 @@ Em.I18n.translations = {
   'common.confirm': 'Confirm',
   'common.upgrade': 'Upgrade',
   'common.reUpgrade': 'Retry Upgrade',
+  'common.reDowngrade': 'Retry Downgrade',
   'common.security':'Security',
   'common.kerberos':'Kerberos',
   'common.cluster':'Cluster',
@@ -252,7 +253,8 @@ Em.I18n.translations = {
   'common.dismiss': "Dismiss",
   'common.stdout': "stdout",
   'common.stderr': "stderr",
-  'common.fileName': 'File name',
+  'common.structuredOut': "structured_out",
+  'common.fileName': 'File Name',
   'common.days': "Days",
   'common.hours': "Hours",
   'common.minutes': "Minutes",
@@ -265,9 +267,11 @@ Em.I18n.translations = {
   'common.preview': 'Preview',
   'common.scope': 'Scope',
   'common.clone': 'Clone',
+  'common.removed': 'Removed',
+  'common.testing': 'Testing',
 
-  'models.alert_instance.tiggered.verbose': "Occured on {0} <br> Checked on {1}",
-  'models.alert_definition.triggered.verbose': "Occured on {0}",
+  'models.alert_instance.tiggered.verbose': "Occurred on {0} <br> Checked on {1}",
+  'models.alert_definition.triggered.verbose': "Occurred on {0}",
   'models.alert_definition.triggered.checked': "Status Changed: {0}\nLast Checked: {1}",
 
   'passiveState.turnOn':'Turn On Maintenance Mode',
@@ -337,8 +341,19 @@ Em.I18n.translations = {
   'popup.clusterCheck.failedOn': 'Failed on: ',
   'popup.clusterCheck.reason': 'Reason: ',
   'popup.clusterCheck.Upgrade.header': 'Upgrade to {0}',
-  'popup.clusterCheck.Upgrade.title': 'Upgrade Requirements Not Met',
-  'popup.clusterCheck.Upgrade.alert': 'You must meet the following requirements before you can proceed with rolling upgrade.',
+  'popup.clusterCheck.Upgrade.fail.title': 'Requirements',
+  'popup.clusterCheck.Upgrade.fail.alert': 'You <strong>must</strong> meet these requirements before you can proceed.',
+  'popup.clusterCheck.Upgrade.warning.title': 'Warnings',
+  'popup.clusterCheck.Upgrade.warning.alert': 'Correcting the warnings is not required but is <strong>recommended</strong>.',
+  'popup.clusterCheck.Upgrade.configsMerge.title': 'Configuration Changes',
+  'popup.clusterCheck.Upgrade.configsMerge.alert': 'During upgrade, the following configuration changes will be applied.',
+  'popup.clusterCheck.Upgrade.configsMerge.configType': 'Config Type',
+  'popup.clusterCheck.Upgrade.configsMerge.propertyName': 'Property Name',
+  'popup.clusterCheck.Upgrade.configsMerge.currentValue': 'Current Value',
+  'popup.clusterCheck.Upgrade.configsMerge.recommendedValue': 'Recommended Value',
+  'popup.clusterCheck.Upgrade.configsMerge.resultingValue': 'Resulting Value',
+  'popup.clusterCheck.Upgrade.configsMerge.deprecated': 'Property is deprecated',
+  'popup.clusterCheck.Upgrade.configsMerge.willBeRemoved': 'Will be removed',
   'popup.clusterCheck.Security.header': 'Enable Security',
   'popup.clusterCheck.Security.title': 'Security Requirements Not Met',
   'popup.clusterCheck.Security.alert': 'You must meet the following requirements before you can enable security.',
@@ -349,10 +364,11 @@ Em.I18n.translations = {
   'popup.invalid.KDC.admin.password': 'Admin password',
 
   'popup.dependent.configs.header': 'Dependent Configurations',
-  'popup.dependent.configs.title': 'Configurations depending on changes made are show below. It is recommended to update these values',
+  'popup.dependent.configs.title': 'Based on your configuration changes, Ambari is recommending the following dependent configuration changes. <br/> Ambari will update all checked configuration changes to the <b>Recommended Value</b>. Uncheck any configuration to retain the <b>Current Value</b>.',
   'popup.dependent.configs.table.saveProperty': 'Save property',
-  'popup.dependent.configs.table.currentValue': 'Current value',
-  'popup.dependent.configs.table.recommendedValue': 'Recommended',
+  'popup.dependent.configs.table.initValue': 'Initial value',
+  'popup.dependent.configs.table.currentValue': 'Current Value',
+  'popup.dependent.configs.table.recommendedValue': 'Recommended Value',
 
   'popup.dependent.configs.select.config.group.header': 'Select Config Group',
   'popup.dependent.configs.select.config.group': 'Please select to which config group would you like to save dependent properties',
@@ -361,6 +377,8 @@ Em.I18n.translations = {
   'popup.dependent.configs.dependencies.config.plural': 'There are {0} configuration changes ',
   'popup.dependent.configs.dependencies.service.singular': 'in {0} service',
   'popup.dependent.configs.dependencies.service.plural': 'in {0} services',
+
+  'popup.dependent.configs.dependencies.for.groups': 'You are changing not default group, please select config group to which you want to save dependent configs from other services',
 
   'login.header':'Sign in',
   'login.username':'Username',
@@ -372,7 +390,8 @@ Em.I18n.translations = {
   'titlebar.alerts.noAlerts': 'No Alerts',
 
   'graphs.noData.title': 'No Data',
-  'graphs.noData.message': 'There was no data available. Possible reasons include inaccessible/unsupported metrics service.',
+  'graphs.noData.message': 'No Data Available',
+  'graphs.noData.tooltip.title': 'No Data Available. The Ambari Metrics service may be not installed or inaccessible',
   'graphs.noDataAtTime.message': 'No available data for the time period.',
   'graphs.error.title': 'Error',
   'graphs.error.message': 'There was a problem getting data for the chart ({0}: {1})',
@@ -384,12 +403,12 @@ Em.I18n.translations = {
   'graphs.timeRange.week': 'Last 1 week',
   'graphs.timeRange.month': 'Last 1 month',
   'graphs.timeRange.year': 'Last 1 year',
+  'graphs.tooltip.title': 'Click to zoom',
 
   'users.userName.validationFail': 'Only lowercase letters and numbers are recommended; must start with a letter',
   'host.spacesValidation': 'Cannot contain whitespace',
   'host.trimspacesValidation': 'Cannot contain leading or trailing whitespace',
   'config.override.valueEqualToParentConfig': 'Configuration overrides must have different value',
-  'config.override.valueEqualToAnotherOverrideConfig': 'Multiple configuration overrides cannot have same value',
 
   'services.hdfs.rebalance.title' : 'HDFS Rebalance',
   'services.ganglia.description':'Ganglia Metrics Collection system',
@@ -467,6 +486,7 @@ Em.I18n.translations = {
   'installer.step0.clusterName.tooltip.title':'Cluster Name',
   'installer.step0.clusterName.tooltip.content':'Enter a unique cluster name.',
   'installer.step0.clusterName.error.required':'Cluster Name is required',
+  'installer.step0.clusterName.error.tooLong':'Cluster Name is too long',
   'installer.step0.clusterName.error.whitespace':'Cluster Name cannot contain whitespace',
   'installer.step0.clusterName.error.specialChar':'Cluster Name cannot contain special characters',
 
@@ -582,6 +602,7 @@ Em.I18n.translations = {
   'installer.step3.hostWarningsPopup.notice':'After manually resolving the issues, click <b>Rerun Checks</b>.'+
     '<br>To manually resolve issues on <b>each host</b> run the HostCleanup script (Python 2.6 or greater is required):'+
     '<br><div class="code-snippet">python /usr/lib/python2.6/site-packages/ambari_agent/HostCleanup.py --silent --skip=users</div>' +
+    '<div class="alert alert-warn"><b>Note</b>: Clean up of Firewall and Transparent Huge Page issues are not supported by the HostCleanup script.</div>' +
     '<div class="alert alert-warn"><b>Note</b>: To clean up in interactive mode, remove <b>--silent</b> option. To clean up all resources, including <i>users</i>, remove <b>--skip=users</b> option. Use <b>--help</b> for a list of available options.</div>',
   'installer.step3.hostWarningsPopup.summary':'{0} on {1}',
   'installer.step3.hostWarningsPopup.jdk':'JDK Issues',
@@ -700,7 +721,7 @@ Em.I18n.translations = {
   'installer.step4.ambariMetricsCheck.popup.body':'Ambari Metrics collects metrics from the cluster and makes them available to Ambari.  If you do not install Ambari Metrics service, metrics will not be accessible from Ambari.  Are you sure you want to proceed without Ambari Metrics?',
   'installer.step4.rangerRequirements.popup.header': 'Ranger Requirements',
   'installer.step4.rangerRequirements.popup.body.requirements': '<ol><li>You must have an <strong>MySQL/Oracle/Postgres/MSSQL Server</strong> database instance running to be used by Ranger.</li>' +
-    '<li>In Assign Masters step of this wizard, you will be prompted to specify which host for the Ranger Admin. On that host, you <strong>must have DB Client installed</strong> for Ranger to access to the database. (Note: This is only applicable for only HDP 2.2)</li>' +
+    '<li>In Assign Masters step of this wizard, you will be prompted to specify which host for the Ranger Admin. On that host, you <strong>must have DB Client installed</strong> for Ranger to access to the database. (Note: This is only applicable for only Ranger 0.4.0)</li>' +
     '<li>Ensure that the access for the DB Admin user is enabled in DB server from any host.</li>' +
     '<li>Execute the following command on the Ambari Server host. Replace <code>database-type</code> with <strong>mysql|oracle|postgres|mssql</strong> and <code>/jdbc/driver/path</code> based on the location of corresponding JDBC driver:' +
     '<pre>ambari-server setup --jdbc-db={database-type} --jdbc-driver={/jdbc/driver/path}</pre></li></ol>',
@@ -770,8 +791,9 @@ Em.I18n.translations = {
   'installer.step7.misc.notification.use_ssl':'Use SSL',
 
 
-  'installer.step8.header':'Review',
-  'installer.step8.body':'Please review the configuration before installation',
+  'installer.step8.header': 'Review',
+  'installer.step8.body': 'Please review the configuration before installation',
+  'installer.step8.kerberors.warning': '<strong>Because Kerberos has been manually installed on the cluster, you will have to create/distribute principals and keytabs when this operation is finished.</strong>',
   'installer.step8.deployPopup.message':'Preparing to Deploy: {0} of {1} tasks completed.',
   'installer.step8.hosts':' hosts',
   'installer.step8.host':' host',
@@ -1026,7 +1048,12 @@ Em.I18n.translations = {
   'admin.kerberos.wizard.step5.info.body': 'Please review the configuration before continuing the setup process',
   'admin.kerberos.wizard.step5.moreInfoNonManual.body': 'Using the <b>Download CSV button</b>, you can download a csv file which contains a list of the principals and keytabs that will automatically be created by Ambari.',
   'admin.kerberos.wizard.step5.moreInfoManual.body': 'Important: Use the <b>Download CSV</b> button to obtain a list of the <b>required</b> principals and keytabs that are needed by Ambari to enable Kerberos in the cluster. <b>Do not proceed</b> until you have manually created and distributed the principals and keytabs to the cluster hosts.',
+  'admin.kerberos.wizard.step5.kdc_type.label': 'KDC Type',
+  'admin.kerberos.wizard.step5.kdc_host.label': 'KDC Host',
   'admin.kerberos.wizard.step5.realm.label': 'Realm Name',
+  'admin.kerberos.wizard.step5.ldap_url.label': 'LDAP URL',
+  'admin.kerberos.wizard.step5.container_dn.label': 'Container DN',
+  'admin.kerberos.wizard.step5.executable_search_paths.label': 'Executable path',
   'admin.kerberos.wizard.step5.exitWizard': 'Exit Wizard',
   'admin.kerberos.wizard.step5.downloadCSV': 'Download CSV',
   'admin.kerberos.wizard.step6.task0.title' : 'Stop Services',
@@ -1124,8 +1151,9 @@ Em.I18n.translations = {
   'admin.highAvailability.wizard.step9.task1.title':'Install Failover Controllers',
   'admin.highAvailability.wizard.step9.task2.title':'Start Failover Controllers',
   'admin.highAvailability.wizard.step9.task3.title':'Reconfigure HBase',
-  'admin.highAvailability.wizard.step9.task4.title':'Delete Secondary NameNode',
-  'admin.highAvailability.wizard.step9.task5.title':'Start All Services',
+  'admin.highAvailability.wizard.step9.task4.title':'Reconfigure Accumulo',
+  'admin.highAvailability.wizard.step9.task5.title':'Delete Secondary NameNode',
+  'admin.highAvailability.wizard.step9.task6.title':'Start All Services',
   'admin.highAvailability.wizard.step9.notice.completed':'NameNode HA has been enabled successfully.',
 
   'admin.highAvailability.wizard.step3.curNameNode': '<b>Current NameNode:</b> ',
@@ -1257,7 +1285,7 @@ Em.I18n.translations = {
   'admin.rm_highAvailability.wizard.step3.configs_changes': '<b>Review Configuration Changes.</b></br>' +
   '<i>policymgr_external_url</i> in admin-properties.xml will be changed by the Wizard to enable Ranger Admin HA',
   'admin.ra_highAvailability.wizard.step4.header': 'Install, Start and Test',
-  'admin.ra_highAvailability.wizard.step4.task0.title': 'Stop Required Services',
+  'admin.ra_highAvailability.wizard.step4.task0.title': 'Stop All Services',
   'admin.ra_highAvailability.wizard.step4.task1.title': 'Install Additional Ranger Admin',
   'admin.ra_highAvailability.wizard.step4.task2.title': 'Reconfigure Ranger',
   'admin.ra_highAvailability.wizard.step4.task3.title': 'Start All Services',
@@ -1275,7 +1303,6 @@ Em.I18n.translations = {
   'admin.security.enable.popup.header': 'Add security',
   'admin.security.disable.popup.header': 'Remove security',
   'admin.security.disable.popup.body': 'You are about to disable Kerberos on the cluster. This will stop all the services in your cluster and remove the Kerberos configurations. <strong>Are you sure you wish to proceed with disabling Kerberos?</strong>',
-  'admin.addSecurity.header': 'Enable Security Wizard',
   'admin.security.step1.header': 'Get Started',
   'admin.security.step2.header': 'Configure Services',
   'admin.security.step3.header': 'Create Principals and Keytabs',
@@ -1303,32 +1330,7 @@ Em.I18n.translations = {
   'admin.security.disable.body.header' : 'Disabling kerberos security on the cluster',
   'admin.security.disable.body.success.header': 'Kerberos-based security has been disabled on your cluster. Please wait while services are started in non-secure mode.',
   'admin.security.disable.body.failure.header': 'Failed to disable Kerberos-based security on your cluster. Your cluster will keep running in secure mode.',
-  'admin.addSecurity.apply.stop.services': 'Stop Services',
-  'admin.addSecurity.apply.save.config': 'Save Configurations',
-  'admin.addSecurity.apply.start.services': 'Start Services',
-  'admin.addSecurity.apply.delete.ats': 'Delete ATS',
-  'admin.addSecurity.user.smokeUser': 'Ambari Smoke Test User',
-  'admin.addSecurity.user.hdfsUser': 'HDFS User',
-  'admin.addSecurity.user.hbaseUser': 'HBase User',
-  'admin.addSecurity.user.stormUser': 'Storm User',
-  'admin.addSecurity.hdfs.user.httpUser': 'HDFS SPNEGO User',
-  'admin.addSecurity.rm.user.httpUser': 'ResourceManager SPNEGO User',
-  'admin.addSecurity.nm.user.httpUser': 'NodeManager SPNEGO User',
-  'admin.addSecurity.historyServer.user.httpUser': 'History server SPNEGO User',
-  'admin.addSecurity.webhcat.user.httpUser': 'WebHCat SPNEGO User',
-  'admin.addSecurity.hive.user.httpUser': 'Hive SPNEGO User',
-  'admin.addSecurity.oozie.user.httpUser': 'Oozie SPNEGO User',
-  'admin.addSecurity.falcon.user.httpUser': 'Falcon SPNEGO User',
-  'admin.addSecurity.storm.user.httpUser': 'Storm UI Server',
-  'admin.addSecurity.user.yarn.atsHTTPUser': 'YARN ATS HTTP User',
-  'admin.addSecurity.knox.user': 'Knox Gateway',
-  'admin.addSecurity.enable.onClose': 'You are in the process of enabling security on your cluster. ' +
-    'Are you sure you want to quit? If you quit, ' +
-    'you may have to re-run the security wizard from the beginning to enable security.',
-  'admin.addSecurity.enable.after.stage2.onClose': 'Services are being started with the Kerberos settings you specified. '+
-    'It is recommended that you wait until all the services are started to ensure that they are set up properly. ' +
-    'Are you sure you want to quit?',
-  'admin.addSecurity.disable.onClose': 'You are in the process of disabling security on your cluster. ' +
+  'admin.security.disable.onClose': 'You are in the process of disabling security on your cluster. ' +
     'Are you sure you want to quit?',
   'admin.removeSecurity.header': 'Disable Security',
   'admin.security.applying.config.header': 'Applying Configurations',
@@ -1399,8 +1401,10 @@ Em.I18n.translations = {
   'admin.stackVersions.version.performUpgrade': "Perform Upgrade",
   'admin.stackVersions.version.upgrade.pause': "Upgrade: Action Required",
   'admin.stackVersions.version.upgrade.running': "Upgrade: In Process",
+  'admin.stackVersions.version.upgrade.aborted': "Upgrade: Aborted",
   'admin.stackVersions.version.downgrade.pause': "Downgrade: Action Required",
   'admin.stackVersions.version.downgrade.running': "Downgrade: In Process",
+  'admin.stackVersions.version.downgrade.aborted': "Downgrade: Aborted",
 
   'admin.stackVersions.hosts.popup.header.current': "Current",
   'admin.stackVersions.hosts.popup.header.installed': "Installed",
@@ -1420,17 +1424,24 @@ Em.I18n.translations = {
     "Click on <b>Finalize</b> when you are ready to finalize the downgrade and commit to the new version." +
     " You are strongly encouraged to run tests on your cluster to ensure it is fully operational before finalizing." +
     " <b>You cannot go back to the original version once the downgrade is finalized.</b>",
+  'admin.stackUpgrade.finalize.message.skippedServiceChecks': "During the upgrade, checks for the following services failed and were skipped:",
+  'admin.stackUpgrade.finalize.message.testServices': "You are strongly recommended to test these services before finalizing upgrade.",
   'admin.stackUpgrade.doThisLater': "Do This Later",
   'admin.stackUpgrade.pauseUpgrade': "Pause Upgrade",
+  'admin.stackUpgrade.pauseDowngrade': "Pause Downgrade",  
   'admin.stackUpgrade.downgrade.proceed': "Proceed with Downgrade",
   'admin.stackUpgrade.downgrade.body': "Are you sure you wish to abort the upgrade process and downgrade to <b>{0}</b>?",
+  'admin.stackUpgrade.downgrade.retry.body': "Are you sure you wish to retry downgrade to <b>{0}</b>?",
   'admin.stackUpgrade.upgrade.confirm.body': "You are about to perform an upgrade to {0}.",
+  'admin.stackUpgrade.upgrade.retry.confirm.body': "You are about to retry an upgrade to {0}.",
   'admin.stackUpgrade.title': "Stack and Versions",
   'admin.stackUpgrade.state.inProgress': "Upgrade in Progress",
   'admin.stackUpgrade.state.paused': "Upgrade Paused",
+  'admin.stackUpgrade.state.aborted': "Upgrade Aborted",
   'admin.stackUpgrade.state.completed': "Upgrade Finished",
   'admin.stackUpgrade.state.inProgress.downgrade': "Downgrade in Progress",
   'admin.stackUpgrade.state.paused.downgrade': "Downgrade Paused",
+  'admin.stackUpgrade.state.aborted.downgrade': "Downgrade Aborted",
   'admin.stackUpgrade.state.completed.downgrade': "Downgrade Finished",
   'admin.stackUpgrade.dialog.header': "Rolling Upgrade to {0}",
   'admin.stackUpgrade.dialog.downgrade.header': "Downgrade to {0}",
@@ -1445,6 +1456,8 @@ Em.I18n.translations = {
   'admin.stackUpgrade.dialog.manualDone': "I have performed the manual steps above.",
   'admin.stackUpgrade.dialog.closeProgress': "Upgrade is in progress. \n If you dismiss this window, Upgrade will keep running in background.",
   'admin.stackUpgrade.dialog.closePause': "Upgrade is paused. \n If you dismiss this window, you can resume Upgrade later.",
+  'admin.stackUpgrade.dialog.aborted': "Upgrade is aborted. \n You can either downgrade or retry upgrade.",
+  'admin.stackUpgrade.dialog.downgrade.aborted': "Downgrade is aborted. \n You can retry downgrade.",
   'admin.stackUpgrade.dialog.details.open': "show details",
   'admin.stackUpgrade.dialog.details.hide': "hide details",
   'admin.stackUpgrade.dialog.notActive': "Waiting to execute the next task...",
@@ -1740,12 +1753,14 @@ Em.I18n.translations = {
   'services.service.config.configOverride.head':'Config Override',
   'services.service.config.configOverride.body':'Cannot override a config that has not been saved yet.',
   'services.service.config.exitPopup.body':'You have unsaved changes. Save changes or discard?',
+  'services.service.config.exitChangesPopup.body':'You will be brought back to the \"Assign Slaves and Clients\" step and will lose all your current customizations. Are you sure?',
   'services.service.config.propertyFilterPopover.title':'Properties filter',
   'services.service.config.propertyFilterPopover.content':'Enter keywords to filter properties by property name, value, or description.',
   'services.service.config.hive.oozie.postgresql': 'Existing PostgreSQL Database',
   'services.service.config.database.connection.success': 'Connection OK',
   'services.service.config.database.connection.inProgress': 'Checking connectivity',
   'services.service.config.database.connection.failed': 'Connection Failed',
+  'services.service.config.connection.logsPopup.header': '{0} Connection: {1}',
   'services.service.config.connection.exitPopup.msg': 'Test connection is in progress. It\'s recommended to wait until it wil be complete. Are you sure you want to exit Enable Kerberos Wizard?',
   'services.service.config.database.btn.idle': 'Test Connection',
   'services.service.config.kdc.btn.idle': 'Test KDC Connection',
@@ -1834,6 +1849,7 @@ Em.I18n.translations = {
   'services.reassign.step4.tasks.testHiveMysqlConnection.title':'Test MYSQL Connection',
   'services.reassign.step4.tasks.configureMySqlServer.title':'Configure MYSQL Server',
   'services.reassign.step4.tasks.startMySqlServer.title':'Start MYSQL Server',
+  'services.reassign.step4.tasks.restartMySqlServer.title':'Restart MYSQL Server',
   'services.reassign.step4.tasks.testDBConnection.title':'Test DB Connection',
   'services.reassign.step4.tasks.testDBConnection.tooltip':'Database Host: {0}\n' +
   'Database Type: {1}\n' +
@@ -2177,6 +2193,7 @@ Em.I18n.translations = {
   'hosts.host.zooKeeper.configs.save.note': 'This configuration is created by ambari while installing/deleting zookeeper component on a host',
   'hosts.host.addComponent.securityNote':'You are running your cluster in secure mode. You must set up the keytab for {0} on {1} before you proceed. Otherwise, the component will not be able to start properly.',
   'hosts.host.addComponent.popup.confirm':'Confirm Add',
+  'hosts.host.manualKerberosWarning': '<br/><strong>Because Kerberos has been manually installed on the cluster, you will have to create/distribute principals and keytabs when this operation is finished.</strong>',
   'hosts.host.deleteComponent.popup.deleteNimbus':'Deleting <i>Storm Nimbus</i> will reconfigure <b>nimbus.seeds</b>, <b>topology.min.replication.count</b>, <b>topology.max.replication.wait.time.sec</b> properties if they are defined.',
   'hosts.host.storm.configs.save.note': 'This configuration is created by ambari while installing/deleting storm component on a host',
   'hosts.host.datanode.decommission':'Decommission DataNode',
@@ -2309,7 +2326,7 @@ Em.I18n.translations = {
   'dashboard.widgets.browser.action.share.confirmation': 'You are about to make this a shared widget. All cluster operators will be able to modify or delete this widget. Are you sure you want to share this widget?',
   'dashboard.widgets.browser.shareIcon.tooltip': 'Shared',
   'dashboard.widgets.browser.action.delete.shared.bodyMsg': 'You are about to permanently delete the <b>{0}</b> widget. ' +
-    'This widget is a shared and this operation will delete the widget from the shared widget library and remove the ' +
+    'This widget is a shared widget and this operation will delete the widget from the shared widget library and remove the ' +
     'widget from all users.<br /> <br /> <b>Are you sure you wish to permanently delete this shared widget?</b>',
   'dashboard.widgets.browser.action.delete.mine.bodyMsg': 'You are about to permanently delete the <b>{0}</b> widget. ' +
     'This operation will delete the widget from your widget library.<br /><br /><b>Are you sure you wish to permanently ' +
@@ -2444,7 +2461,6 @@ Em.I18n.translations = {
   'dashboard.services.hbase.phoenixServers':'Phoenix Query Servers',
   'dashboard.services.hbase.phoenixServersSummary':'{0} live / {1} total',
   'dashboard.services.hbase.chart.label':'Request Count',
-  'dashboard.services.hbase.version':'Version',
   'dashboard.services.hbase.masterWebUI':'Master Web UI',
   'dashboard.services.hbase.regions.transition':'Regions In Transition',
   'dashboard.services.hbase.masterStarted':'Master Started',
@@ -2475,7 +2491,7 @@ Em.I18n.translations = {
   'dashboard.configHistory.table.empty' : 'No history to display',
   'dashboard.configHistory.table.notes.default': 'Initial configurations for {0}',
   'dashboard.configHistory.table.notes.addService': 'Configuration updated while adding service',
-  'dashboard.configHistory.table.notes.no': '<i>No notes</i>',
+  'dashboard.configHistory.table.notes.no': '',
   'dashboard.configHistory.table.version.versionText' : 'V{0}',
   'dashboard.configHistory.table.version.prefix' : 'V',
   'dashboard.configHistory.table.current.tooltip' : 'Current config for {0}:{1}',
@@ -2553,8 +2569,10 @@ Em.I18n.translations = {
   'widget.create.wizard.step2.body.text':'Define the expression with any metrics and valid operators. </br>Use parentheses when necessary.',
   'widget.create.wizard.step2.body.template':'Define the template with any number of expressions and any string. An expression can be referenced from a template by enclosing its name with double curly braces.',
   'widget.create.wizard.step2.body.warning':'Note: Valid operators are +, -, *, /',
+  'widget.create.wizard.step2.body.template.invalid.msg':'Invalid expression name existed. Should use name "Expression#" with double curly braces.',
   'widget.create.wizard.step2.addExpression': 'Add Expression',
   'widget.create.wizard.step2.addDataset': 'Add data set',
+  'widget.create.wizard.step2.body.gauge.overflow.warning':'Overflowed! Gauge can only display number between 0 and 1.',
   'widget.create.wizard.step2.allComponents': 'All {0}s',
   'widget.create.wizard.step2.activeComponents': 'Active {0}',
   'widget.create.wizard.step2.noMetricFound': 'No metric found',
@@ -2562,6 +2580,8 @@ Em.I18n.translations = {
   'widget.create.wizard.step3.sharing': 'Sharing',
   'widget.create.wizard.step3.sharing.msg': 'Share this widget in the widget library',
   'widget.create.wizard.step3.header': 'Name and Description',
+  'widget.create.wizard.step3.name.invalid.msg': 'Widget name is too long. Please enter a widget name less than 129 characters.',
+  'widget.create.wizard.step3.description.invalid.msg': 'Description is too long. Please enter a description less than 2049 characters.',
 
   'widget.edit.wizard.header': 'Edit Widget',
 
@@ -2574,6 +2594,7 @@ Em.I18n.translations = {
   'dashboard.widgets.wizard.step2.addMetrics': 'Add Metrics and operators here...',
   'dashboard.widgets.wizard.step2.newMetric': '+ Add Metric',
   'dashboard.widgets.wizard.step2.newOperator': '+ Add Operator',
+  'dashboard.widgets.wizard.step2.newNumber': '+ Add Number',
   'dashboard.widgets.wizard.step2.Component': 'Component',
   'dashboard.widgets.wizard.step2.Metric': 'Metric',
   'dashboard.widgets.wizard.step2.selectComponent': 'Select a Component',
@@ -2581,9 +2602,12 @@ Em.I18n.translations = {
   'dashboard.widgets.wizard.step2.addMetric': 'Add Metric',
   'dashboard.widgets.wizard.step2.aggregateFunction': 'Aggregator Function',
   'dashboard.widgets.wizard.step2.aggregateFunction.scanOps': 'Select Aggregation',
+  'dashboard.widgets.wizard.step2.aggregateFunction.notFound': 'No aggregator function found',
   'dashboard.widgets.wizard.step2.aggregateTooltip': 'This mathematical function will be applied to compute single value for selected metric across all host components',
   'dashboard.widgets.wizard.step2.threshold.ok.tooltip': 'This is the threshold value at which the widget color changes from green (OK) to orange (Warning)',
   'dashboard.widgets.wizard.step2.threshold.warning.tooltip': 'This is the threshold value at which the widget color changes from orange (Warning) to red (Critical)',
+  'dashboard.widgets.wizard.onClose.popup.body': 'You have unsaved changes. Your changes will not be saved if you exit the wizard at this step.',
+  'dashboard.widgets.wizard.onClose.popup.discardAndExit': 'Discard and Exit',
 
   'restart.service.all': 'Restart All',
   'restart.service.all.affected': 'Restart All Affected',

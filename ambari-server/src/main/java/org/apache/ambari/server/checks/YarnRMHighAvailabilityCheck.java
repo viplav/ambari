@@ -34,7 +34,7 @@ import com.google.inject.Singleton;
  * for ResourceManager..
  */
 @Singleton
-@UpgradeCheck(group = UpgradeCheckGroup.DEFAULT, order = 1.0f)
+@UpgradeCheck(group = UpgradeCheckGroup.MULTIPLE_COMPONENT_WARNING, order = 2.0f)
 public class YarnRMHighAvailabilityCheck extends AbstractCheckDescriptor {
 
   /**

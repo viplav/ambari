@@ -38,6 +38,7 @@ import org.apache.ambari.view.Masker;
 import org.apache.ambari.view.ResourceProvider;
 import org.apache.ambari.view.SecurityException;
 import org.apache.ambari.view.SystemException;
+import org.apache.ambari.view.URLConnectionProvider;
 import org.apache.ambari.view.ViewContext;
 import org.apache.ambari.view.ViewController;
 import org.apache.ambari.view.ViewDefinition;
@@ -84,16 +85,6 @@ public class ViewContextImpl implements ViewContext, ViewController {
    * The view registry.
    */
   private final ViewRegistry viewRegistry;
-
-  /**
-   * The URL stream provider.
-   */
-  private ViewURLStreamProvider streamProvider;
-
-  /**
-   * The Ambari stream provider.
-   */
-  private ViewAmbariStreamProvider ambariStreamProvider;
 
   /**
    * The data store.
@@ -258,16 +249,17 @@ public class ViewContextImpl implements ViewContext, ViewController {
 
   @Override
   public org.apache.ambari.view.URLStreamProvider getURLStreamProvider() {
-    ensureURLStreamProvider();
-    return streamProvider;
+    return viewRegistry.createURLStreamProvider(this);
+  }
+
+  @Override
+  public URLConnectionProvider getURLConnectionProvider() {
+    return viewRegistry.createURLStreamProvider(this);
   }
 
   @Override
   public synchronized AmbariStreamProvider getAmbariStreamProvider() {
-    if (ambariStreamProvider == null) {
-      ambariStreamProvider = viewRegistry.createAmbariStreamProvider();
-    }
-    return ambariStreamProvider;
+    return viewRegistry.createAmbariStreamProvider();
   }
 
   @Override
@@ -302,7 +294,6 @@ public class ViewContextImpl implements ViewContext, ViewController {
 
   @Override
   public HttpImpersonatorImpl getHttpImpersonator() {
-    ensureURLStreamProvider();
     return new HttpImpersonatorImpl(this);
   }
 
@@ -348,14 +339,8 @@ public class ViewContextImpl implements ViewContext, ViewController {
     viewRegistry.unregisterListener(listener, viewName, viewVersion);
   }
 
-  // ----- helper methods ----------------------------------------------------
 
-  // ensure that the URL stream provider has been created
-  private synchronized void ensureURLStreamProvider() {
-    if (streamProvider == null) {
-      streamProvider = viewRegistry.createURLStreamProvider(this);
-    }
-  }
+  // ----- helper methods ----------------------------------------------------
 
   // check for an associated instance
   private void checkInstance() {

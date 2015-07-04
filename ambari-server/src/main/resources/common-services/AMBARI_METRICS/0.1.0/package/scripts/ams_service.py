@@ -25,11 +25,12 @@ from hbase_service import hbase_service
 
 @OsFamilyFuncImpl(os_family=OSConst.WINSRV_FAMILY)
 def ams_service(name, action):
-  import service_mapping
+  import params
   if name == 'collector':
-    Service(service_mapping.collector_win_service_name, action=action)
+    Service(params.ams_embedded_hbase_win_service_name, action=action)
+    Service(params.ams_collector_win_service_name, action=action)
   elif name == 'monitor':
-    Service(service_mapping.monitor_win_service_name, action=action)
+    Service(params.ams_monitor_win_service_name, action=action)
 
 @OsFamilyFuncImpl(os_family=OsFamilyImpl.DEFAULT)
 def ams_service(name, action):
@@ -49,6 +50,10 @@ def ams_service(name, action):
       cmd = format("{cmd} --distributed")
 
     if action == 'start':
+      if not params.hbase_tmp_dir.startswith('hdfs'):
+        Execute(format('{sudo} rm -f {hbase_tmp_dir}/*.tmp')
+        )
+
       daemon_cmd = format("{cmd} start")
       Execute(daemon_cmd,
               user=params.ams_user

@@ -34,7 +34,6 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.jar.JarInputStream;
@@ -64,18 +63,27 @@ public class ViewArchiveUtility {
    * @throws JAXBException if xml is malformed
    */
   public ViewConfig getViewConfigFromArchive(File archiveFile)
-      throws MalformedURLException, JAXBException {
+      throws JAXBException, IOException {
     ClassLoader cl = URLClassLoader.newInstance(new URL[]{archiveFile.toURI().toURL()});
 
     InputStream configStream = cl.getResourceAsStream(VIEW_XML);
     if (configStream == null) {
       configStream = cl.getResourceAsStream(WEB_INF_VIEW_XML);
+      if (configStream == null) {
+        throw new IllegalStateException(
+            String.format("Archive %s doesn't contain a view descriptor.", archiveFile.getAbsolutePath()));
+      }
     }
 
-    JAXBContext jaxbContext       = JAXBContext.newInstance(ViewConfig.class);
-    Unmarshaller jaxbUnmarshaller = jaxbContext.createUnmarshaller();
+    try {
 
-    return (ViewConfig) jaxbUnmarshaller.unmarshal(configStream);
+      JAXBContext jaxbContext       = JAXBContext.newInstance(ViewConfig.class);
+      Unmarshaller jaxbUnmarshaller = jaxbContext.createUnmarshaller();
+
+      return (ViewConfig) jaxbUnmarshaller.unmarshal(configStream);
+    } finally {
+      configStream.close();
+    }
   }
 
   /**
@@ -92,7 +100,6 @@ public class ViewArchiveUtility {
    */
   public ViewConfig getViewConfigFromExtractedArchive(String archivePath, boolean validate)
       throws JAXBException, IOException, SAXException {
-
     File configFile = new File(archivePath + File.separator + VIEW_XML);
 
     if (!configFile.exists()) {
@@ -103,11 +110,16 @@ public class ViewArchiveUtility {
       validateConfig(new FileInputStream(configFile));
     }
 
-    InputStream  configStream     = new FileInputStream(configFile);
-    JAXBContext  jaxbContext      = JAXBContext.newInstance(ViewConfig.class);
-    Unmarshaller jaxbUnmarshaller = jaxbContext.createUnmarshaller();
+    InputStream  configStream = new FileInputStream(configFile);
+    try {
 
-    return (ViewConfig) jaxbUnmarshaller.unmarshal(configStream);
+      JAXBContext  jaxbContext      = JAXBContext.newInstance(ViewConfig.class);
+      Unmarshaller jaxbUnmarshaller = jaxbContext.createUnmarshaller();
+
+      return (ViewConfig) jaxbUnmarshaller.unmarshal(configStream);
+    } finally {
+      configStream.close();
+    }
   }
 
   /**

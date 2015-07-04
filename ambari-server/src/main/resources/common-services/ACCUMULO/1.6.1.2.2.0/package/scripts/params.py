@@ -18,12 +18,12 @@ limitations under the License.
 
 """
 from resource_management.libraries.functions import conf_select
+from resource_management.libraries.functions import hdp_select
 from resource_management.libraries.resources.hdfs_resource import HdfsResource
 from resource_management.libraries.functions import format
 from resource_management.libraries.functions.version import format_hdp_stack_version
 from resource_management.libraries.functions.default import default
 from resource_management.libraries.script.script import Script
-
 
 import status_params
 
@@ -35,6 +35,8 @@ exec_tmp_dir = status_params.tmp_dir
 security_enabled = status_params.security_enabled
 
 # hdp version
+stack_name = default("/hostLevelParams/stack_name", None)
+version = default("/commandParams/version", None)
 stack_version_unformatted = str(config['hostLevelParams']['stack_version'])
 hdp_stack_version = format_hdp_stack_version(stack_version_unformatted)
 
@@ -47,8 +49,8 @@ conf_dir = status_params.conf_dir
 server_conf_dir = status_params.server_conf_dir
 
 # service locations
-hadoop_prefix = "/usr/hdp/current/hadoop-client"
-hadoop_bin_dir = conf_select.get_hadoop_dir("bin")
+hadoop_prefix = hdp_select.get_hadoop_dir("home")
+hadoop_bin_dir = hdp_select.get_hadoop_dir("bin")
 zookeeper_home = "/usr/hdp/current/zookeeper-client"
 
 # the configuration direction for HDFS/YARN/MapR is the hadoop config
@@ -148,6 +150,12 @@ hostname = status_params.hostname
 hdfs_user_keytab = config['configurations']['hadoop-env']['hdfs_user_keytab']
 hdfs_user = config['configurations']['hadoop-env']['hdfs_user']
 hdfs_principal_name = config['configurations']['hadoop-env']['hdfs_principal_name']
+
+
+
+hdfs_site = config['configurations']['hdfs-site']
+default_fs = config['configurations']['core-site']['fs.defaultFS']
+# dfs.namenode.https-address
 import functools
 #create partial functions with common arguments for every HdfsResource call
 #to create/delete hdfs directory/file/copyfromlocal we need to call params.HdfsResource in code
@@ -158,5 +166,8 @@ HdfsResource = functools.partial(
   keytab = hdfs_user_keytab,
   kinit_path_local = kinit_path_local,
   hadoop_bin_dir = hadoop_bin_dir,
-  hadoop_conf_dir = hadoop_conf_dir
+  hadoop_conf_dir = hadoop_conf_dir,
+  principal_name = hdfs_principal_name,
+  hdfs_site = hdfs_site,
+  default_fs = default_fs
 )

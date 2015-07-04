@@ -230,7 +230,7 @@ App.WizardStep3Controller = Em.Controller.extend(App.ReloadPopupMixin, {
     var bootStrapData = JSON.stringify({
         'verbose': true,
         'sshKey': this.get('content.installOptions.sshKey'),
-        'hosts': Em.keys(this.get('content.hosts')),
+        'hosts': this.getBootstrapHosts(),
         'user': this.get('content.installOptions.sshUser'),
         'userRunAs': App.get('supports.customizeAgentUserAccount') ? this.get('content.installOptions.agentUser') : 'root'
     });
@@ -245,16 +245,39 @@ App.WizardStep3Controller = Em.Controller.extend(App.ReloadPopupMixin, {
     });
   },
 
+  getBootstrapHosts: function () {
+    var hosts = this.get('content.hosts');
+    var bootstrapHosts = [];
+    for (var host in hosts) {
+      if (hosts.hasOwnProperty(host)) {
+        if (!hosts[host].isInstalled) {
+          bootstrapHosts.push(host);
+        }
+      }
+    }
+
+    return bootstrapHosts;
+  },
+
   /**
    * Make basic init steps
    * @method loadStep
    */
   loadStep: function () {
     console.log("TRACE: Loading step3: Confirm Hosts");
-    this.disablePreviousSteps();
-    this.clearStep();
-    App.router.get('clusterController').loadAmbariProperties();
-    this.loadHosts();
+    var wizardController = this.get('wizardController');
+    var previousStep = wizardController && wizardController.get('previousStep');
+    var currentStep = wizardController && wizardController.get('currentStep');
+    var isHostsLoaded = this.get('hosts').length !== 0;
+    var isPrevAndCurrStepsSetted = previousStep && currentStep;
+    var isPrevStepSmallerThenCurrent = previousStep < currentStep;
+    if (!isHostsLoaded || isPrevStepSmallerThenCurrent || 
+        !wizardController || !isPrevAndCurrStepsSetted) {
+      this.disablePreviousSteps();
+      this.clearStep();
+      App.router.get('clusterController').loadAmbariProperties();
+      this.loadHosts();
+    }
   },
 
   /**
@@ -870,7 +893,7 @@ App.WizardStep3Controller = Em.Controller.extend(App.ReloadPopupMixin, {
     });
   },
 
-  
+
   startHostcheck: function() {
     this.set('isWarningsLoaded', false);
     this.getHostNameResolution();

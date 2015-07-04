@@ -22,12 +22,26 @@ var hdp22properties = require('data/HDP2.2/site_properties').configProperties;
 
 var excludedConfigs = [
   'DB_FLAVOR',
-  'db_host',
-  'SQL_COMMAND_INVOKER',
   'db_name',
   'db_root_user',
   'db_root_password',
-  'nimbus.host'
+  'nimbus.host',
+  'XAAUDIT.DB.IS_ENABLED',
+  'XAAUDIT.HDFS.IS_ENABLED',
+  'UPDATE_XAPOLICIES_ON_GRANT_REVOKE',
+  'authServiceHostName',
+  'authServicePort',
+  'authentication_method',
+  'remoteLoginEnabled',
+  'xa_ldap_url',
+  'xa_ldap_userDNpattern',
+  'xa_ldap_groupSearchBase',
+  'xa_ldap_groupSearchFilter',
+  'xa_ldap_groupRoleAttribute',
+  'xa_ldap_ad_domain',
+  'xa_ldap_ad_url',
+  'policymgr_http_enabled',
+  'policymgr_external_url'
 ];
 
 var hdp23properties = hdp22properties.filter(function (item) {
@@ -39,7 +53,7 @@ hdp23properties.push({
     "name": "DB_FLAVOR",
     "displayName": "DB FLAVOR",
     "value": "",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "options": [
       {
@@ -67,14 +81,14 @@ hdp23properties.push({
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
     "category": "DBSettings",
-    "index": 0
+    "index": 1
   },
   {
     "name": "ranger_mysql_database",
     "id": "puppet var",
     "displayName": "Database Type",
     "value": "",
-    "defaultValue": "MySQL",
+    "recommendedValue": "MySQL",
     "description": "Using a MySQL database for Ranger",
     "displayType": "masterHost",
     "isOverridable": false,
@@ -90,7 +104,7 @@ hdp23properties.push({
     "id": "puppet var",
     "displayName": "Database Type",
     "value": "",
-    "defaultValue": "ORACLE",
+    "recommendedValue": "ORACLE",
     "description": "Using an Oracle database for Ranger",
     "displayType": "masterHost",
     "isOverridable": false,
@@ -106,7 +120,7 @@ hdp23properties.push({
     "id": "puppet var",
     "displayName": "Database Type",
     "value": "",
-    "defaultValue": "Postgres",
+    "recommendedValue": "Postgres",
     "description": "Using a Postgres database for Ranger",
     "displayType": "masterHost",
     "isOverridable": false,
@@ -122,7 +136,7 @@ hdp23properties.push({
     "id": "puppet var",
     "displayName": "Database Type",
     "value": "",
-    "defaultValue": "MSSQL",
+    "recommendedValue": "MSSQL",
     "description": "Using a MS SQL database for Ranger",
     "displayType": "masterHost",
     "isOverridable": false,
@@ -138,7 +152,7 @@ hdp23properties.push({
     "id": "puppet var",
     "displayName": "Ranger Server host",
     "value": "",
-    "defaultValue": "",
+    "recommendedValue": "",
     "description": "The host that has been assigned to run Ranger Server",
     "displayType": "masterHost",
     "isOverridable": false,
@@ -150,25 +164,358 @@ hdp23properties.push({
     "index": 0
   },
   {
-    "name": "db_host",
     "id": "site property",
-    "displayName": "Ranger DB host",
-    "defaultValue": "",
-    "isObserved": true,
-    "isReconfigurable": true,
-    "displayType": "masterHost",
+    "name": "create_db_dbuser",
+    "displayName": "Setup DB and DB user",
+    "displayType": "checkbox",
+    "filename": "ranger-env.xml",
+    "category": "Advanced ranger-env",
+    "serviceName": "RANGER"
+  },
+  /**************************************** RANGER - HDFS Plugin ***************************************/
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.db",
+    "displayName": "Audit to DB",
+    "displayType": "checkbox",
+    "filename": "ranger-hdfs-audit.xml",
+    "category": "Advanced ranger-hdfs-audit",
+    "serviceName": "HDFS"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.hdfs",
+    "displayName": "Audit to HDFS",
+    "displayType": "checkbox",
+    "filename": "ranger-hdfs-audit.xml",
+    "category": "Advanced ranger-hdfs-audit",
+    "serviceName": "HDFS"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.solr",
+    "displayName": "Audit to SOLR",
+    "displayType": "checkbox",
+    "filename": "ranger-hdfs-audit.xml",
+    "category": "Advanced ranger-hdfs-audit",
+    "serviceName": "HDFS"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.db",
+    "displayName": "Audit to DB",
+    "displayType": "checkbox",
+    "filename": "ranger-kms-audit.xml",
+    "category": "Advanced ranger-kms-audit",
+    "serviceName": "RANGER_KMS"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.hdfs",
+    "displayName": "Audit to HDFS",
+    "displayType": "checkbox",
+    "filename": "ranger-kms-audit.xml",
+    "category": "Advanced ranger-kms-audit",
+    "serviceName": "RANGER_KMS"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.solr",
+    "displayName": "Audit to SOLR",
+    "displayType": "checkbox",
+    "filename": "ranger-kms-audit.xml",
+    "category": "Advanced ranger-kms-audit",
+    "serviceName": "RANGER_KMS"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.provider.summary.enabled",
+    "displayName": "Audit provider summary enabled",
+    "displayType": "checkbox",
+    "filename": "ranger-kms-audit.xml",
+    "category": "Advanced ranger-kms-audit",
+    "serviceName": "RANGER_KMS"
+  },        
+  {
+    "id": "site property",
+    "name": "ranger-yarn-plugin-enabled",
+    "displayType": "checkbox",
+    "displayName": "Enable Ranger for YARN",
     "isOverridable": false,
-    "isVisible": false,
-    "serviceName": "RANGER",
-    "filename": "admin-properties.xml",
-    "category": "DBSettings"
+    "filename": "ranger-yarn-plugin-properties.xml",
+    "category": "Advanced ranger-yarn-plugin-properties",
+    "serviceName": "YARN",
+    "index": 1
+  },
+  {
+    "id": "site property",
+    "name": "ranger-kafka-plugin-enabled",
+    "displayType": "checkbox",
+    "displayName": "Enable Ranger for KAFKA",
+    "isOverridable": false,
+    "filename": "ranger-kafka-plugin-properties.xml",
+    "category": "Advanced ranger-kafka-plugin-properties",
+    "serviceName": "KAFKA",
+    "index": 1
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.db",
+    "displayName": "Audit to DB",
+    "displayType": "checkbox",
+    "filename": "ranger-hbase-audit.xml",
+    "category": "Advanced ranger-hbase-audit",
+    "serviceName": "HBASE"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.hdfs",
+    "displayName": "Audit to HDFS",
+    "displayType": "checkbox",
+    "filename": "ranger-hbase-audit.xml",
+    "category": "Advanced ranger-hbase-audit",
+    "serviceName": "HBASE"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.solr",
+    "displayName": "Audit to SOLR",
+    "displayType": "checkbox",
+    "filename": "ranger-hbase-audit.xml",
+    "category": "Advanced ranger-hbase-audit",
+    "serviceName": "HBASE"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.db",
+    "displayName": "Audit to DB",
+    "displayType": "checkbox",
+    "filename": "ranger-hive-audit.xml",
+    "category": "Advanced ranger-hive-audit",
+    "serviceName": "HIVE"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.hdfs",
+    "displayName": "Audit to HDFS",
+    "displayType": "checkbox",
+    "filename": "ranger-hive-audit.xml",
+    "category": "Advanced ranger-hive-audit",
+    "serviceName": "HIVE"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.solr",
+    "displayName": "Audit to SOLR",
+    "displayType": "checkbox",
+    "filename": "ranger-hive-audit.xml",
+    "category": "Advanced ranger-hive-audit",
+    "serviceName": "HIVE"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.db",
+    "displayName": "Audit to DB",
+    "displayType": "checkbox",
+    "filename": "ranger-knox-audit.xml",
+    "category": "Advanced ranger-knox-audit",
+    "serviceName": "KNOX"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.hdfs",
+    "displayName": "Audit to HDFS",
+    "displayType": "checkbox",
+    "filename": "ranger-knox-audit.xml",
+    "category": "Advanced ranger-knox-audit",
+    "serviceName": "KNOX"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.solr",
+    "displayName": "Audit to SOLR",
+    "displayType": "checkbox",
+    "filename": "ranger-knox-audit.xml",
+    "category": "Advanced ranger-knox-audit",
+    "serviceName": "KNOX"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.db",
+    "displayName": "Audit to DB",
+    "displayType": "checkbox",
+    "filename": "ranger-storm-audit.xml",
+    "category": "Advanced ranger-storm-audit",
+    "serviceName": "STORM"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.hdfs",
+    "displayName": "Audit to HDFS",
+    "displayType": "checkbox",
+    "filename": "ranger-storm-audit.xml",
+    "category": "Advanced ranger-storm-audit",
+    "serviceName": "STORM"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.solr",
+    "displayName": "Audit to SOLR",
+    "displayType": "checkbox",
+    "filename": "ranger-storm-audit.xml",
+    "category": "Advanced ranger-storm-audit",
+    "serviceName": "STORM"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.db",
+    "displayName": "Audit to DB",
+    "displayType": "checkbox",
+    "filename": "ranger-yarn-audit.xml",
+    "category": "Advanced ranger-yarn-audit",
+    "serviceName": "YARN"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.hdfs",
+    "displayName": "Audit to HDFS",
+    "displayType": "checkbox",
+    "filename": "ranger-yarn-audit.xml",
+    "category": "Advanced ranger-yarn-audit",
+    "serviceName": "YARN"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.solr",
+    "displayName": "Audit to SOLR",
+    "displayType": "checkbox",
+    "filename": "ranger-yarn-audit.xml",
+    "category": "Advanced ranger-yarn-audit",
+    "serviceName": "YARN"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.db",
+    "displayName": "Audit to DB",
+    "displayType": "checkbox",
+    "filename": "ranger-kafka-audit.xml",
+    "category": "Advanced ranger-kafka-audit",
+    "serviceName": "KAFKA"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.hdfs",
+    "displayName": "Audit to HDFS",
+    "displayType": "checkbox",
+    "filename": "ranger-kafka-audit.xml",
+    "category": "Advanced ranger-kafka-audit",
+    "serviceName": "KAFKA"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.destination.solr",
+    "displayName": "Audit to SOLR",
+    "displayType": "checkbox",
+    "filename": "ranger-kafka-audit.xml",
+    "category": "Advanced ranger-kafka-audit",
+    "serviceName": "KAFKA"
+  },
+  {
+    "id": "site property",
+    "name": "hadoop.rpc.protection",
+    "displayName": "hadoop.rpc.protection",
+    "isRequired": false,
+    "filename": "ranger-kafka-plugin-properties.xml",
+    "category": "Advanced ranger-kafka-plugin-properties",
+    "serviceName": "KAFKA"
+  },
+  {
+    "id": "site property",
+    "name": "common.name.for.certificate",
+    "displayName": "common.name.for.certificate",
+    "isRequired": false,
+    "filename": "ranger-kafka-plugin-properties.xml",
+    "category": "Advanced ranger-kafka-plugin-properties",
+    "serviceName": "KAFKA"
+  },
+  {
+    "id": "site property",
+    "name": "hadoop.rpc.protection",
+    "displayName": "hadoop.rpc.protection",
+    "isRequired": false,
+    "filename": "ranger-yarn-plugin-properties.xml",
+    "category": "Advanced ranger-yarn-plugin-properties",
+    "serviceName": "YARN"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.provider.summary.enabled",
+    "displayName": "Audit provider summary enabled",
+    "displayType": "checkbox",
+    "filename": "ranger-hdfs-audit.xml",
+    "category": "Advanced ranger-hdfs-audit",
+    "serviceName": "HDFS"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.provider.summary.enabled",
+    "displayName": "Audit provider summary enabled",
+    "displayType": "checkbox",
+    "filename": "ranger-hbase-audit.xml",
+    "category": "Advanced ranger-hbase-audit",
+    "serviceName": "HBASE"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.provider.summary.enabled",
+    "displayName": "Audit provider summary enabled",
+    "displayType": "checkbox",
+    "filename": "ranger-hive-audit.xml",
+    "category": "Advanced ranger-hive-audit",
+    "serviceName": "HIVE"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.provider.summary.enabled",
+    "displayName": "Audit provider summary enabled",
+    "displayType": "checkbox",
+    "filename": "ranger-knox-audit.xml",
+    "category": "Advanced ranger-knox-audit",
+    "serviceName": "KNOX"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.provider.summary.enabled",
+    "displayName": "Audit provider summary enabled",
+    "displayType": "checkbox",
+    "filename": "ranger-yarn-audit.xml",
+    "category": "Advanced ranger-yarn-audit",
+    "serviceName": "YARN"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.provider.summary.enabled",
+    "displayName": "Audit provider summary enabled",
+    "displayType": "checkbox",
+    "filename": "ranger-storm-audit.xml",
+    "category": "Advanced ranger-storm-audit",
+    "serviceName": "STORM"
+  },
+  {
+    "id": "site property",
+    "name": "xasecure.audit.provider.summary.enabled",
+    "displayName": "Audit provider summary enabled",
+    "displayType": "checkbox",
+    "filename": "ranger-kafka-audit.xml",
+    "category": "Advanced ranger-kafka-audit",
+    "serviceName": "KAFKA"
   },
   {
     "name": "ranger_mysql_host",
     "id": "puppet var",
     "displayName": "MYSQL database Host",
     "description": "Specify the host on which the existing database is hosted",
-    "defaultValue": "",
+    "recommendedValue": "",
     "value": "",
     "displayType": "host",
     "isOverridable": false,
@@ -184,7 +531,7 @@ hdp23properties.push({
     "id": "puppet var",
     "displayName": "Oracle database Host",
     "description": "Specify the host on which the existing database is hosted",
-    "defaultValue": "",
+    "recommendedValue": "",
     "value": "",
     "displayType": "host",
     "isOverridable": false,
@@ -200,7 +547,7 @@ hdp23properties.push({
     "id": "puppet var",
     "displayName": "Database Host",
     "description": "Specify the host on which the existing database is hosted",
-    "defaultValue": "",
+    "recommendedValue": "",
     "value": "",
     "displayType": "host",
     "isOverridable": false,
@@ -216,7 +563,7 @@ hdp23properties.push({
     "id": "puppet var",
     "displayName": "Database Host",
     "description": "Specify the host on which the existing database is hosted",
-    "defaultValue": "",
+    "recommendedValue": "",
     "value": "",
     "displayType": "host",
     "isOverridable": false,
@@ -228,55 +575,40 @@ hdp23properties.push({
     "index": 9
   },
   {
-    "name": "SQL_COMMAND_INVOKER",
-    "id": "site property",
-    "displayName": "SQL Command Invoker",
-    "defaultValue": "mysql",
-    "isObserved": true,
-    "isReconfigurable": true,
-    "displayType": "",
-    "isOverridable": false,
-    "isVisible": true,
-    "serviceName": "RANGER",
-    "filename": "admin-properties.xml",
-    "category": "DBSettings",
-    "index": 10
-  },
-  {
-    "name": "ranger_jdbc_connection_url",
+    "name": "ranger.jpa.jdbc.url",
     "id": "site property",
     "displayName": "JDBC connect string for a Ranger database",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
     "isObserved": true,
     "isVisible": true,
     "serviceName": "RANGER",
-    "filename": "admin-properties.xml",
+    "filename": "ranger-admin-site.xml",
     "category": "DBSettings",
-    "index": 11
+    "index": 9
   },
   {
-    "name": "ranger_jdbc_driver",
+    "name": "ranger.jpa.jdbc.driver",
     "id": "site property",
     "displayName": "Driver class name for a JDBC Ranger database",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "isObserved": true,
     "displayType": "",
     "isOverridable": false,
     "isVisible": true,
     "serviceName": "RANGER",
-    "filename": "admin-properties.xml",
+    "filename": "ranger-admin-site.xml",
     "category": "DBSettings",
-    "index": 12
+    "index": 8
   },
   {
     "name": "db_root_user",
     "id": "site property",
     "displayName": "Ranger DB root user",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "isObserved": true,
     "displayType": "",
@@ -285,13 +617,13 @@ hdp23properties.push({
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
     "category": "DBSettings",
-    "index": 13
+    "index": 5
   },
   {
     "name": "db_root_password",
     "id": "site property",
     "displayName": "Ranger DB root password",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "isObserved": true,
     "displayType": "password",
@@ -300,13 +632,13 @@ hdp23properties.push({
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
     "category": "DBSettings",
-    "index": 14
+    "index": 6
   },
   {
     "name": "db_name",
     "id": "site property",
     "displayName": "Ranger DB name",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "isObserved": true,
     "displayType": "",
@@ -315,7 +647,7 @@ hdp23properties.push({
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
     "category": "DBSettings",
-    "index": 15
+    "index": 7
   },
   {
     "id": "site property",
@@ -325,6 +657,323 @@ hdp23properties.push({
     "serviceName": "TEZ",
     "filename": "tez-site.xml",
     "category": "Advanced tez-site"
+  },
+  {
+    "id": "puppet var",
+    "name": "ranger.external.url",
+    "displayName": "External URL",
+    "recommendedValue": "http://localhost:6080",
+    "isReconfigurable": true,
+    "displayType": "",
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "RangerSettings"
+  },
+  {
+    "id": "puppet var",
+    "name": "ranger.externalurl",
+    "displayName": "External URL",
+    "recommendedValue": "http://localhost:6080",
+    "isReconfigurable": true,
+    "displayType": "",
+    "isOverridable": false,
+    "isVisible": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "RangerSettings"
+  },
+  {
+    "id": "puppet var",
+    "name": "ranger.service.http.enabled",
+    "displayName": "HTTP enabled",
+    "recommendedValue": true,
+    "isReconfigurable": true,
+    "displayType": "checkbox",
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "RangerSettings"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.authentication.method",
+    "displayName": "Authentication method",
+    "recommendedValue": "NONE",
+    "options": [
+      {
+        displayName: 'LDAP',
+        foreignKeys: ['xa_ldap_userDNpattern', 'xa_ldap_groupRoleAttribute', 'xa_ldap_url', 'xa_ldap_groupSearchBase', 'xa_ldap_groupSearchFilter']
+      },
+      {
+        displayName: 'ACTIVE_DIRECTORY',
+        foreignKeys: ['xa_ldap_ad_domain', 'xa_ldap_ad_url']
+      },
+      {
+        displayName: 'UNIX',
+        foreignKeys: ['remoteLoginEnabled', 'authServiceHostName', 'authServicePort']
+      },
+      {
+        displayName: 'NONE'
+      }
+    ],
+    "displayType": "radio button",
+    "radioName": "authentication-method",
+    "isReconfigurable": true,
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "RangerSettings"
+  },
+  {
+    "id": "puppet var",
+    "name": "policymgr_external_url",
+    "displayName": "External URL",
+    "recommendedValue": "http://localhost:6080",
+    "isReconfigurable": true,
+    "displayType": "",
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "admin-properties.xml",
+    "category": "RangerSettings"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.unixauth.remote.login.enabled",
+    "displayName": "Allow remote Login",
+    "recommendedValue": true,
+    "isReconfigurable": true,
+    "displayType": "checkbox",
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "UnixAuthenticationSettings"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.unixauth.service.hostname",
+    "displayName": "ranger.unixauth.service.hostname",
+    "recommendedValue": 'localhost',
+    "isReconfigurable": true,
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "UnixAuthenticationSettings"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.unixauth.service.port",
+    "displayName": "ranger.unixauth.service.port",
+    "recommendedValue": '5151',
+    "isReconfigurable": true,
+    "displayType": "int",
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "UnixAuthenticationSettings"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.ldap.url",
+    "displayName": "ranger.ldap.url",
+    "isReconfigurable": true,
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "LDAPSettings"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.ldap.user.dnpattern",
+    "displayName": "ranger.ldap.user.dnpattern",
+    "isReconfigurable": true,
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "LDAPSettings"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.ldap.group.roleattribute",
+    "displayName": "ranger.ldap.group.roleattribute",
+    "isReconfigurable": true,
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "LDAPSettings"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.ldap.ad.domain",
+    "displayName": "ranger.ldap.ad.domain",
+    "isReconfigurable": true,
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "ADSettings"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.ldap.ad.url",
+    "displayName": "ranger.ldap.ad.url",
+    "isReconfigurable": true,
+    "isOverridable": false,
+    "isVisible": true,
+    "serviceName": "RANGER",
+    "filename": "ranger-admin-site.xml",
+    "category": "ADSettings"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.ldap.bindkeystore",
+    "displayName": "ranger.usersync.ldap.bindkeystore",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.ldap.ldapbindpassword",
+    "displayName": "ranger.usersync.ldap.ldapbindpassword",
+    "displayType": "password",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.group.memberattributename",
+    "displayName": "ranger.usersync.group.memberattributename",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.group.nameattribute",
+    "displayName": "ranger.usersync.group.nameattribute",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.group.objectclass",
+    "displayName": "ranger.usersync.group.objectclass",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.group.searchbase",
+    "displayName": "ranger.usersync.group.searchbase",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.group.searchenabled",
+    "displayName": "ranger.usersync.group.searchenabled",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.group.searchfilter",
+    "displayName": "ranger.usersync.group.searchfilter",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.group.searchscope",
+    "displayName": "ranger.usersync.group.searchscope",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.group.usermapsyncenabled",
+    "displayName": "ranger.usersync.group.usermapsyncenabled",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.ldap.searchBase",
+    "displayName": "ranger.usersync.ldap.searchBase",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "ranger.usersync.source.impl.class",
+    "displayName": "ranger.usersync.source.impl.class",
+    "category": "Advanced ranger-ugsync-site",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "ranger-ugsync-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "common.name.for.certificate",
+    "displayName": "common.name.for.certificate",
+    "category": "Advanced ranger-yarn-plugin-properties",
+    "isRequired": false,
+    "serviceName": "YARN",
+    "filename": "ranger-yarn-plugin-properties.xml"
+  },
+
+  /*********RANGER FOR HBASE************/
+  {
+    "id": "site property",
+    "name": "xasecure.hbase.update.xapolicies.on.grant.revoke",
+    "recommendedValue": true,
+    "displayName": "Should HBase GRANT/REVOKE update XA policies?",
+    "displayType": "checkbox",
+    "filename": "ranger-hbase-security.xml",
+    "category": "Advanced ranger-hbase-security",
+    "serviceName": "HBASE"
+  },
+  /*********RANGER FOR HIVE************/
+  {
+    "id": "site property",
+    "name": "xasecure.hive.update.xapolicies.on.grant.revoke",
+    "recommendedValue": true,
+    "displayName": "Should Hive GRANT/REVOKE update XA policies?",
+    "displayType": "checkbox",
+    "filename": "ranger-hive-security.xml",
+    "category": "Advanced ranger-hive-security",
+    "serviceName": "HIVE"
   }
 );
 

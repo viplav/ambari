@@ -18,18 +18,6 @@
 
 package org.apache.ambari.server.topology;
 
-import com.google.inject.Singleton;
-import org.apache.ambari.server.AmbariException;
-import org.apache.ambari.server.actionmanager.HostRoleCommand;
-import org.apache.ambari.server.actionmanager.Request;
-import org.apache.ambari.server.controller.RequestStatusResponse;
-import org.apache.ambari.server.controller.internal.Stack;
-import org.apache.ambari.server.orm.dao.HostRoleCommandStatusSummaryDTO;
-import org.apache.ambari.server.orm.entities.StageEntity;
-import org.apache.ambari.server.state.host.HostImpl;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -41,6 +29,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import org.apache.ambari.server.AmbariException;
+import org.apache.ambari.server.actionmanager.HostRoleCommand;
+import org.apache.ambari.server.actionmanager.Request;
+import org.apache.ambari.server.controller.RequestStatusResponse;
+import org.apache.ambari.server.controller.internal.Stack;
+import org.apache.ambari.server.orm.dao.HostRoleCommandStatusSummaryDTO;
+import org.apache.ambari.server.orm.entities.StageEntity;
+import org.apache.ambari.server.state.host.HostImpl;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.inject.Singleton;
 
 /**
  * Manages all cluster provisioning actions on the cluster topology.
@@ -62,14 +63,18 @@ public class TopologyManager {
   private final Collection<LogicalRequest> outstandingRequests = new ArrayList<LogicalRequest>();
   //todo: currently only support a single cluster
   private Map<String, ClusterTopology> clusterTopologyMap = new HashMap<String, ClusterTopology>();
-  //private final Map<TopologyTask.Type, Set<TopologyTask>> pendingTasks = new HashMap<TopologyTask.Type, Set<TopologyTask>>();
 
   //todo: inject
   private static LogicalRequestFactory logicalRequestFactory = new LogicalRequestFactory();
   private static AmbariContext ambariContext = new AmbariContext();
 
   private final Object initializationLock = new Object();
-  private boolean isInitialized;
+
+  /**
+   * A boolean not cached thread-local (volatile) to prevent double-checked
+   * locking on the synchronized keyword.
+   */
+  private volatile boolean isInitialized;
 
   private final static Logger LOG = LoggerFactory.getLogger(TopologyManager.class);
 
@@ -80,10 +85,12 @@ public class TopologyManager {
   //todo: can't call in constructor.
   //todo: Very important that this occurs prior to any usage
   private void ensureInitialized() {
-    synchronized(initializationLock) {
-      if (! isInitialized) {
-        replayRequests(persistedState.getAllRequests());
-        isInitialized = true;
+    if (!isInitialized) {
+      synchronized (initializationLock) {
+        if (!isInitialized) {
+          replayRequests(persistedState.getAllRequests());
+          isInitialized = true;
+        }
       }
     }
   }
@@ -93,13 +100,16 @@ public class TopologyManager {
     ClusterTopology topology = new ClusterTopologyImpl(ambariContext, request);
     // persist request after it has successfully validated
     PersistedTopologyRequest persistedRequest = persistedState.persistTopologyRequest(request);
+
+    // get the id prior to creating ambari resources which increments the counter
+    Long provisionId = ambariContext.getNextRequestId();
     ambariContext.createAmbariResources(topology);
 
     String clusterName = topology.getClusterName();
     clusterTopologyMap.put(clusterName, topology);
 
     addClusterConfigRequest(topology, new ClusterConfigurationRequest(ambariContext, topology, true));
-    LogicalRequest logicalRequest = processRequest(persistedRequest, topology);
+    LogicalRequest logicalRequest = processRequest(persistedRequest, topology, provisionId);
 
     //todo: this should be invoked as part of a generic lifecycle event which could possibly
     //todo: be tied to cluster state
@@ -115,13 +125,18 @@ public class TopologyManager {
     String clusterName = request.getClusterName();
     ClusterTopology topology = clusterTopologyMap.get(clusterName);
     if (topology == null) {
-      throw new AmbariException("TopologyManager: Unable to retrieve cluster topology for cluster: " + clusterName);
+      throw new InvalidTopologyException("Unable to retrieve cluster topology for cluster. This is most likely a " +
+                                         "result of trying to scale a cluster via the API which was created using " +
+                                         "the Ambari UI. At this time only clusters created via the API using a " +
+                                         "blueprint can be scaled with this API.  If the cluster was originally created " +
+                                         "via the API as described above, please file a Jira for this matter.");
     }
 
     PersistedTopologyRequest persistedRequest = persistedState.persistTopologyRequest(request);
     // this registers/updates all request host groups
     topology.update(request);
-    return getRequestStatus(processRequest(persistedRequest, topology).getRequestId());
+    return getRequestStatus(processRequest(persistedRequest, topology,
+        ambariContext.getNextRequestId()).getRequestId());
   }
 
   public void onHostRegistered(HostImpl host, boolean associatedWithCluster) {
@@ -272,11 +287,11 @@ public class TopologyManager {
     return hostComponentMap;
   }
 
-  private LogicalRequest processRequest(PersistedTopologyRequest persistedRequest, ClusterTopology topology)
+  private LogicalRequest processRequest(PersistedTopologyRequest request, ClusterTopology topology, Long requestId)
       throws AmbariException {
 
-    finalizeTopology(persistedRequest.getRequest(), topology);
-    LogicalRequest logicalRequest = createLogicalRequest(persistedRequest, topology);
+    finalizeTopology(request.getRequest(), topology);
+    LogicalRequest logicalRequest = createLogicalRequest(request, topology, requestId);
 
     boolean requestHostComplete = false;
     //todo: overall synchronization. Currently we have nested synchronization here
@@ -323,13 +338,13 @@ public class TopologyManager {
     return logicalRequest;
   }
 
-  private LogicalRequest createLogicalRequest(PersistedTopologyRequest persistedRequest, ClusterTopology topology)
+  private LogicalRequest createLogicalRequest(PersistedTopologyRequest request, ClusterTopology topology, Long requestId)
       throws AmbariException {
 
     LogicalRequest logicalRequest = logicalRequestFactory.createRequest(
-        ambariContext.getNextRequestId(), persistedRequest.getRequest(), topology);
+        requestId, request.getRequest(), topology);
 
-    persistedState.persistLogicalRequest(logicalRequest, persistedRequest.getId());
+    persistedState.persistLogicalRequest(logicalRequest, request.getId());
 
     allRequests.put(logicalRequest.getRequestId(), logicalRequest);
     synchronized (reservedHosts) {

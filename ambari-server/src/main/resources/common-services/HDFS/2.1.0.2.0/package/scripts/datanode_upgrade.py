@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 """
+import re
 
 from resource_management.core.logger import Logger
 from resource_management.core.exceptions import Fail
@@ -31,7 +32,7 @@ def pre_upgrade_shutdown():
   DataNode in preparation for an upgrade. This will then periodically check
   "getDatanodeInfo" to ensure the DataNode has shutdown correctly.
   This function will obtain the Kerberos ticket if security is enabled.
-  :return:
+  :return: Return True if ran ok (even with errors), and False if need to stop the datanode forcefully.
   """
   import params
 
@@ -40,10 +41,17 @@ def pre_upgrade_shutdown():
     Execute(params.dn_kinit_cmd, user = params.hdfs_user)
 
   command = format('hdfs dfsadmin -shutdownDatanode {dfs_dn_ipc_address} upgrade')
-  Execute(command, user=params.hdfs_user, tries=1 )
 
-  # verify that the datanode is down
-  _check_datanode_shutdown()
+  code, output = shell.call(command, user=params.hdfs_user)
+  if code == 0:
+    # verify that the datanode is down
+    _check_datanode_shutdown()
+  else:
+    # Due to bug HDFS-7533, DataNode may not always shutdown during rolling upgrade, and it is necessary to kill it.
+    if output is not None and re.search("Shutdown already in progress", output):
+      Logger.error("Due to a known issue in DataNode, the command {0} did not work, so will need to shutdown the datanode forcefully.".format(command))
+      return False
+  return True
 
 
 def post_upgrade_check():
@@ -62,18 +70,27 @@ def post_upgrade_check():
   _check_datanode_startup()
 
 
-@retry(times=12, sleep_time=10, err_class=Fail)
+@retry(times=24, sleep_time=5, err_class=Fail)
 def _check_datanode_shutdown():
   """
   Checks that a DataNode is down by running "hdfs dfsamin getDatanodeInfo"
   several times, pausing in between runs. Once the DataNode stops responding
   this method will return, otherwise it will raise a Fail(...) and retry
   automatically.
+  The stack defaults for retrying for HDFS are also way too slow for this
+  command; they are set to wait about 45 seconds between client retries. As
+  a result, a single execution of dfsadmin will take 45 seconds to retry and
+  the DataNode may be marked as dead, causing problems with HBase.
+  https://issues.apache.org/jira/browse/HDFS-8510 tracks reducing the
+  times for ipc.client.connect.retry.interval. In the meantime, override them
+  here, but only for RU.
   :return:
   """
   import params
 
-  command = format('hdfs dfsadmin -getDatanodeInfo {dfs_dn_ipc_address}')
+  # override stock retry timeouts since after 30 seconds, the datanode is
+  # marked as dead and can affect HBase during RU
+  command = format('hdfs dfsadmin -D ipc.client.connect.max.retries=5 -D ipc.client.connect.retry.interval=1000 -getDatanodeInfo {dfs_dn_ipc_address}')
 
   try:
     Execute(command, user=params.hdfs_user, tries=1)

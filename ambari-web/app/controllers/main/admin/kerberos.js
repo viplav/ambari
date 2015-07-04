@@ -23,9 +23,17 @@ require('controllers/main/admin/kerberos/step4_controller');
 App.MainAdminKerberosController = App.KerberosWizardStep4Controller.extend({
   name: 'mainAdminKerberosController',
   securityEnabled: false,
+  defaultKerberosLoaded: false,
   dataIsLoaded: false,
   isRecommendedLoaded: true,
-  kdc_type: 'none',
+  kdc_type: '',
+
+  kdcTypesValues: {
+    'mit-kdc'         : Em.I18n.t('admin.kerberos.wizard.step1.option.kdc'),
+    'active-directory': Em.I18n.t('admin.kerberos.wizard.step1.option.ad'),
+    'none'            : Em.I18n.t('admin.kerberos.wizard.step1.option.manual')
+  },
+
   getAddSecurityWizardStatus: function () {
     return App.db.getSecurityWizardStatus();
   },
@@ -55,7 +63,7 @@ App.MainAdminKerberosController = App.KerberosWizardStep4Controller.extend({
         this.hide();
       },
       bodyClass: Ember.View.extend({
-        templateName: require('templates/main/admin/security/notify_security_off_popup')
+        templateName: require('templates/main/admin/kerberos/notify_security_off_popup')
       })
     });
   },
@@ -202,7 +210,6 @@ App.MainAdminKerberosController = App.KerberosWizardStep4Controller.extend({
    * @param data {object}
    * @param opt {object}
    * @param params {object}
-   * @returns {App.ModalPopup|undefined}
    */
   runSecurityCheckSuccess: function (data, opt, params) {
     //TODO correct check
@@ -254,16 +261,22 @@ App.MainAdminKerberosController = App.KerberosWizardStep4Controller.extend({
         sender: this,
         success: 'getSecurityStatusSuccessCallback',
         error: 'errorCallback'
-      }).always(function() {
+      })
+      .always(this.getSecurityType.bind(this))
+      .always(function() {
         // check for kerberos descriptor artifact
         if (self.get('securityEnabled')) {
           self.loadClusterDescriptorConfigs().then(function() {
             dfd.resolve();
           }, function() {
-            // if kerberos descriptor doesn't exist in cluster artifacts we have to kerberize cluster.
-            // Show `Enable kerberos` button and set unsecure status.
-            self.set('securityEnabled', false);
-            dfd.resolve();
+            // if kerberos descriptor doesn't exist in cluster artifacts get the default descriptor
+            self.loadStackDescriptorConfigs().then(function() {
+              self.set('defaultKerberosLoaded', true);
+              dfd.resolve();
+            }, function() {
+              self.set('securityEnabled', false);
+              dfd.resolve();
+            });
           });
         } else {
           dfd.resolve();
@@ -326,7 +339,7 @@ App.MainAdminKerberosController = App.KerberosWizardStep4Controller.extend({
       if (property.get('observesValueFrom')) {
         var observedValue = allConfigs.findProperty('name', property.get('observesValueFrom')).get('value');
         property.set('value', observedValue);
-        property.set('defaultValue', observedValue);
+        property.set('recommendedValue', observedValue);
       }
       if (property.get('serviceName') == 'Cluster') {
         property.set('category', 'Global');
@@ -352,7 +365,7 @@ App.MainAdminKerberosController = App.KerberosWizardStep4Controller.extend({
     return configProperties;
   },
 
-  getKDCSessionState: function(callback) {
+  getKDCSessionState: function(callback, kdcCancelHandler) {
     if (this.get('securityEnabled')) {
       App.ajax.send({
         name: 'kerberos.session.state',
@@ -360,28 +373,39 @@ App.MainAdminKerberosController = App.KerberosWizardStep4Controller.extend({
         data: {
           callback: callback
         },
-        success: 'checkState'
+        success: 'checkState',
+        kdcCancelHandler: kdcCancelHandler
       })
     } else {
       callback();
     }
   },
 
-  getSecurityType: function () {
+  getSecurityType: function (callback) {
     if (this.get('securityEnabled')) {
-      App.ajax.send({
+      return App.ajax.send({
         name: 'admin.security.cluster_configs.kerberos',
         sender: this,
         data: {
-          clustName: 'c1'
+          clusterName: App.get('clusterName'),
+          additionalCallback: callback
         },
         success: 'getSecurityTypeSuccess'
-      })
+      });
+    } else if (Em.typeOf(callback)=== 'function') {
+      callback();
+    } else {
+      return $.Deferred().resolve().promise;
     }
   },
 
   getSecurityTypeSuccess: function (data, opt, params) {
-    this.set('kdc_type', data.items && Em.get(data.items[0], 'properties.kdc_type') ? Em.get(data.items[0], 'properties.kdc_type') : 'none' );
+    var kdcType = data.items && data.items[0] &&
+      Em.getWithDefault(Em.getWithDefault(data.items[0], 'configurations', {}).findProperty('type', 'kerberos-env') || {}, 'properties.kdc_type', 'none') || 'none';
+    this.set('kdc_type', kdcType);
+    if (Em.typeOf(params.additionalCallback) === 'function') {
+      params.additionalCallback();
+    }
   },
 
   isManualKerberos: function () {

@@ -20,27 +20,31 @@ import Ember from 'ember';
 import constants from 'hive/utils/constants';
 
 export default Ember.Controller.extend({
-  needs: [ constants.namingConventions.index,
-           constants.namingConventions.jobProgress ],
+  jobProgressService: Ember.inject.service(constants.namingConventions.jobProgress),
+  notifyService: Ember.inject.service(constants.namingConventions.notify),
 
-  index: Ember.computed.alias('controllers.' + constants.namingConventions.index),
-  jobProgress: Ember.computed.alias('controllers.' + constants.namingConventions.jobProgress),
-
-  updateProgress: function () {
-    this.set('verticesProgress', this.get('jobProgress.stages'));
-  }.observes('jobProgress.stages', 'jobProgress.stages.@each.value'),
+  index: Ember.inject.controller(),
+  verticesProgress: Ember.computed.alias('jobProgressService.currentJob.stages'),
 
   actions: {
     onTabOpen: function () {
       var self = this;
 
-      this.get('index')._executeQuery(true, true).then(function (json) {
+      if (!this.get('shouldChangeGraph') && this.get('json')) {
+        this.set('rerender', true);
+        return;
+      }
+
+      this.set('rerender');
+      this.toggleProperty('shouldChangeGraph');
+
+      this.get('index')._executeQuery(constants.jobReferrer.visualExplain, true, true).then(function (json) {
         //this condition should be changed once we change the way of retrieving this json
         if (json['STAGE PLANS']['Stage-1']) {
           self.set('json', json);
         }
-      }, function (err) {
-        self.notify.error(err.responseJSON.message, err.responseJSON.trace);
+      }, function (error) {
+        self.get('notifyService').error(error);
       });
     }
   }

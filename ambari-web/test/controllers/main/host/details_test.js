@@ -313,21 +313,57 @@ describe('App.MainHostDetailsController', function () {
     });
   });
 
-  describe('#deleteComponent()', function () {
-    it('confirm popup should be displayed', function () {
-      var event = {
-        context: Em.Object.create({})
-      };
-      sinon.spy(App.ModalPopup, "show");
-      sinon.stub(controller, '_doDeleteHostComponent', Em.K);
+  describe.skip('#deleteComponent()', function () {
 
-      var popup = controller.deleteComponent(event);
-      expect(App.ModalPopup.show.calledOnce).to.be.true;
-      popup.onPrimary();
-      expect(controller._doDeleteHostComponent.calledWith(Em.Object.create({}))).to.be.true;
+    var jQueryMock,
+      cases = [
+        {
+          isDisabled: false,
+          showCallCount: 1,
+          title: 'confirm popup should be displayed'
+        },
+        {
+          isDisabled: true,
+          showCallCount: 0,
+          title: 'confirm popup shouldn\'t be displayed'
+        }
+      ];
+
+    beforeEach(function () {
+      jQueryMock = sinon.stub(window, '$');
+      sinon.spy(App.ModalPopup, 'show');
+      sinon.stub(controller, '_doDeleteHostComponent', Em.K);
+    });
+
+    afterEach(function () {
+      window.$.restore();
       App.ModalPopup.show.restore();
       controller._doDeleteHostComponent.restore();
     });
+
+    cases.forEach(function (item) {
+      it(item.title, function () {
+        jQueryMock.returns({
+          closest: function () {
+            return {
+              hasClass: function () {
+                return item.isDisabled;
+              }
+            }
+          }
+        });
+        var event = {
+            context: Em.Object.create({})
+          },
+          popup = controller.deleteComponent(event);
+        expect(App.ModalPopup.show.callCount).to.equal(item.showCallCount);
+        if (item.showCallCount) {
+          popup.onPrimary();
+          expect(controller._doDeleteHostComponent.calledWith(Em.Object.create({}))).to.be.true;
+        }
+      });
+    });
+
   });
 
   describe('#mimicWorkStatusChange()', function () {
@@ -397,17 +433,6 @@ describe('App.MainHostDetailsController', function () {
     });
   });
 
-  describe('#securityEnabled', function () {
-    it('', function () {
-      sinon.stub(App.router, 'get').withArgs('mainAdminSecurityController.securityEnabled').returns(true);
-
-      controller.propertyDidChange('securityEnabled');
-      expect(controller.get('securityEnabled')).to.be.true;
-      App.router.get.restore();
-    });
-  });
-
-
   describe('#addComponent()', function () {
     beforeEach(function () {
       sinon.spy(App, "showConfirmationPopup");
@@ -416,15 +441,14 @@ describe('App.MainHostDetailsController', function () {
       controller.set('content', {hostComponents: [Em.Object.create({
         componentName: "HDFS_CLIENT"
       })]});
-      controller.reopen({
-        securityEnabled: false
-      });
+      sinon.stub(componentsUtils, 'checkComponentDependencies', Em.K);
     });
 
     afterEach(function () {
       App.showConfirmationPopup.restore();
       controller.addClientComponent.restore();
       controller.primary.restore();
+      componentsUtils.checkComponentDependencies.restore();
     });
 
     it('add ZOOKEEPER_SERVER', function () {
@@ -531,7 +555,7 @@ describe('App.MainHostDetailsController', function () {
     });
 
     it('should display add component confirmation', function () {
-      var popup = controller.showAddComponentPopup(message, function () {
+      var popup = controller.showAddComponentPopup(message, false, function () {
         controller.primary(component);
       });
       expect(App.ModalPopup.show.calledOnce).to.be.true;
@@ -547,6 +571,7 @@ describe('App.MainHostDetailsController', function () {
         componentName: 'COMP1',
         displayName: 'comp1'
       });
+      App.serviceComponents = ['COMP1'];
       controller.primary(component);
       expect(App.ajax.send.calledOnce).to.be.true;
     });
@@ -1564,6 +1589,42 @@ describe('App.MainHostDetailsController', function () {
       expect(controller.getHostComponentsInfo().nonDeletableComponents).to.eql(['ZK1']);
       App.HostComponent.find.restore();
     });
+
+
+    it('content.hostComponents has master deletable with cardinality 1+ and only one installed component', function () {
+      sinon.stub(App.HostComponent, 'find', function () {
+        return [
+          {
+            id: 'TASKTRACKER_host1',
+            componentName: 'TASKTRACKER'
+          }
+        ];
+      });
+      sinon.stub(App.StackServiceComponent, 'find', function (component) {
+        return Em.Object.create(
+          {
+            componentName: 'TASKTRACKER',
+            minToInstall: 1,
+            isMaster: true
+          });
+      });
+      sinon.stub(App.SlaveComponent, 'find', function () {
+        return [];
+      });
+      controller.set('content', {hostComponents: [Em.Object.create({
+        componentName: 'TASKTRACKER',
+        workStatus: 'INIT',
+        isDeletable: true,
+        isMaster: true,
+        displayName: 'ZK1'
+      })]});
+      expect(controller.getHostComponentsInfo().masterComponents.contains('ZK1')).to.be.true;
+      App.HostComponent.find.restore();
+      App.StackServiceComponent.find.restore();
+      App.SlaveComponent.find.restore();
+    });
+
+
     it('content.hostComponents has running component', function () {
       sinon.stub(App.HostComponent, 'find', function () {
         return [
@@ -1768,37 +1829,71 @@ describe('App.MainHostDetailsController', function () {
     });
   });
 
-  describe('#moveComponent()', function () {
-    it('popup should be displayed', function () {
-      var mock = {
+  describe.skip('#moveComponent()', function () {
+
+    var jQueryMock,
+      mock = {
         saveComponentToReassign: Em.K,
         getSecurityStatus: Em.K,
         setCurrentStep: Em.K
-      };
+      },
+      cases = [
+        {
+          isDisabled: false,
+          showConfirmationPopupCallCount: 1,
+          title: 'popup should be displayed'
+        },
+        {
+          isDisabled: true,
+          showConfirmationPopupCallCount: 0,
+          title: 'popup shouldn\'t be displayed'
+        }
+      ];
+
+    beforeEach(function () {
+      jQueryMock = sinon.stub(window, '$');
       sinon.spy(App, "showConfirmationPopup");
       sinon.stub(App.router, 'get').withArgs('reassignMasterController').returns(mock);
       sinon.stub(App.router, 'transitionTo', Em.K);
       sinon.spy(mock, "saveComponentToReassign");
       sinon.spy(mock, "getSecurityStatus");
       sinon.spy(mock, "setCurrentStep");
+    });
 
-      var popup = controller.moveComponent({context: {}});
-      expect(App.showConfirmationPopup.calledOnce).to.be.true;
-      popup.onPrimary();
-      expect(App.router.get.calledWith('reassignMasterController')).to.be.true;
-      expect(mock.saveComponentToReassign.calledWith({})).to.be.true;
-      expect(mock.getSecurityStatus.calledOnce).to.be.true;
-      expect(mock.setCurrentStep.calledWith('1')).to.be.true;
-      expect(App.router.transitionTo.calledWith('reassign')).to.be.true;
-
+    afterEach(function () {
+      window.$.restore();
       App.showConfirmationPopup.restore();
       App.router.get.restore();
       App.router.transitionTo.restore();
       mock.saveComponentToReassign.restore();
       mock.getSecurityStatus.restore();
       mock.setCurrentStep.restore();
-
     });
+
+    cases.forEach(function (item) {
+      it(item.title, function () {
+        jQueryMock.returns({
+          closest: function () {
+            return {
+              hasClass: function () {
+                return item.isDisabled;
+              }
+            }
+          }
+        });
+        var popup = controller.moveComponent({context: {}});
+        expect(App.showConfirmationPopup.callCount).to.equal(item.showConfirmationPopupCallCount);
+        if (item.showConfirmationPopupCallCount) {
+          popup.onPrimary();
+          expect(App.router.get.calledWith('reassignMasterController')).to.be.true;
+          expect(mock.saveComponentToReassign.calledWith({})).to.be.true;
+          expect(mock.getSecurityStatus.calledOnce).to.be.true;
+          expect(mock.setCurrentStep.calledWith('1')).to.be.true;
+          expect(App.router.transitionTo.calledWith('reassign')).to.be.true;
+        }
+      });
+    });
+
   });
 
   describe('#refreshConfigs()', function () {
@@ -2191,6 +2286,7 @@ describe('App.MainHostDetailsController', function () {
             c1: [],
             c2: []
           },
+          getSecurityTypeCalled: null, //should have same value as getKDCSessionStateCalled, always
           getKDCSessionStateCalled: true,
           sendComponentCommandCalled: true,
           showAlertPopupCalled: false,
@@ -2206,6 +2302,7 @@ describe('App.MainHostDetailsController', function () {
           dependencies: {
             c3: []
           },
+          getSecurityTypeCalled: null, //should have same value as getKDCSessionStateCalled, always
           getKDCSessionStateCalled: true,
           sendComponentCommandCalled: false,
           showAlertPopupCalled: false,
@@ -2221,6 +2318,7 @@ describe('App.MainHostDetailsController', function () {
           dependencies: {
             c4: ['c5']
           },
+          getSecurityTypeCalled: null, //should have same value as getKDCSessionStateCalled, always
           getKDCSessionStateCalled: false,
           sendComponentCommandCalled: false,
           showAlertPopupCalled: true,
@@ -2241,6 +2339,7 @@ describe('App.MainHostDetailsController', function () {
             c5: ['c6'],
             c6: ['c5']
           },
+          getSecurityTypeCalled: null, //should have same value as getKDCSessionStateCalled, always
           getKDCSessionStateCalled: true,
           sendComponentCommandCalled: false,
           showAlertPopupCalled: false,
@@ -2255,6 +2354,9 @@ describe('App.MainHostDetailsController', function () {
       sinon.stub(App.get('router.mainAdminKerberosController'), 'getKDCSessionState', function (arg) {
         return arg();
       });
+      sinon.stub(App.get('router.mainAdminKerberosController'), 'getSecurityType', function (arg) {
+        return arg();
+      });
       sinon.stub(App, 'showAlertPopup', Em.K);
       sinon.stub(App.StackServiceComponent, 'find', function (componentName) {
         return Em.Object.create({
@@ -2267,6 +2369,7 @@ describe('App.MainHostDetailsController', function () {
       controller.sendComponentCommand.restore();
       controller.showAddComponentPopup.restore();
       App.get('router.mainAdminKerberosController').getKDCSessionState.restore();
+      App.get('router.mainAdminKerberosController').getSecurityType.restore();
       App.showAlertPopup.restore();
       App.StackServiceComponent.find.restore();
       componentsUtils.checkComponentDependencies.restore();
@@ -2280,6 +2383,7 @@ describe('App.MainHostDetailsController', function () {
         controller.installClients({
           context: item.context
         });
+        expect(App.get('router.mainAdminKerberosController').getSecurityType.calledOnce).to.equal(item.getKDCSessionStateCalled);
         expect(App.get('router.mainAdminKerberosController').getKDCSessionState.calledOnce).to.equal(item.getKDCSessionStateCalled);
         expect(controller.sendComponentCommand.calledOnce).to.equal(item.sendComponentCommandCalled);
         expect(App.showAlertPopup.calledOnce).to.equal(item.showAlertPopupCalled);
@@ -2550,6 +2654,82 @@ describe('App.MainHostDetailsController', function () {
         expect(controller.get('hiveMetastoreHost')).to.be.empty;
         expect(controller.get('fromDeleteHost')).to.be.false;
         expect(controller.get('deleteHiveMetaStore')).to.be.false;
+      });
+    });
+
+  });
+
+  describe('#onLoadRangerConfigs()', function () {
+
+    var cases = [
+      {
+        'kmsHosts': ['host1'],
+        'kmsPort': 'port',
+        'title': 'single host',
+        'hostToInstall': undefined,
+        'result': [
+          {
+            properties: {
+              'core-site': {'hadoop.security.key.provider.path': 'kms://http@host1:port/kms'},
+              'hdfs-site': {'dfs.encryption.key.provider.uri': 'kms://http@host1:port/kms'}
+            },
+            properties_attributes: {
+              'core-site': undefined,
+              'hdfs-site': undefined
+            }
+          }
+        ]
+      },
+      {
+        'kmsHosts': ['host1', 'host2'],
+        'kmsPort': 'port',
+        'title': 'two hosts',
+        'hostToInstall': 'host2',
+        'result': [
+          {
+            properties: {
+              'core-site': {'hadoop.security.key.provider.path': 'kms://http@host1;host2:port/kms'},
+              'hdfs-site': {'dfs.encryption.key.provider.uri': 'kms://http@host1;host2:port/kms'}
+            },
+            properties_attributes: {
+              'core-site': undefined,
+              'hdfs-site': undefined
+            }
+          }
+        ]
+      }
+    ];
+
+    beforeEach(function () {
+      sinon.spy(controller, 'saveConfigsBatch')
+    });
+
+    afterEach(function () {
+      controller.saveConfigsBatch.restore();
+    });
+
+    cases.forEach(function (item) {
+      it(item.title, function () {
+        controller.set('rangerKMSServerHost', item.hostToInstall);
+        sinon.stub(controller, 'getRangerKMSServerHosts').returns(item.kmsHosts);
+        var data = {
+          items: [
+            {
+              type: 'kms-env',
+              properties: {'kms_port': item.kmsPort}
+            },
+            {
+              type: 'core-site',
+              properties: {}
+            },
+            {
+              type: 'hdfs-site',
+              properties: {}
+            }
+          ]
+        };
+        controller.onLoadRangerConfigs(data);
+        expect(controller.saveConfigsBatch.calledWith(item.result, 'RANGER_KMS_SERVER', item.hostToInstall)).to.be.true;
       });
     });
 

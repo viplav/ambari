@@ -17,9 +17,15 @@
  */
 
 var App = require('app');
+var stringUtils = require('utils/string_utils');
 
 App.WidgetMixin = Ember.Mixin.create({
 
+  /**
+   *  type of metric query from which the widget is comprised
+   */
+
+  metricType: 'POINT_IN_TIME',
   /**
    * @type {RegExp}
    * @const
@@ -110,14 +116,26 @@ App.WidgetMixin = Ember.Mixin.create({
           });
         }
       } else if (request.host_component_criteria) {
-        this.getHostComponentMetrics(request).always(function () {
-          requestCounter--;
-          if (requestCounter === 0) self.onMetricsLoaded();
+        App.WidgetLoadAggregator.add({
+          data: request,
+          context: this,
+          startCallName: 'getHostComponentMetrics',
+          successCallback: this.getHostComponentMetricsSuccessCallback,
+          completeCallback: function () {
+            requestCounter--;
+            if (requestCounter === 0) this.onMetricsLoaded();
+          }
         });
       } else {
-        this.getServiceComponentMetrics(request).complete(function () {
-          requestCounter--;
-          if (requestCounter === 0) self.onMetricsLoaded();
+        App.WidgetLoadAggregator.add({
+          data: request,
+          context: this,
+          startCallName: 'getServiceComponentMetrics',
+          successCallback: this.getMetricsSuccessCallback,
+          completeCallback: function () {
+            requestCounter--;
+            if (requestCounter === 0) this.onMetricsLoaded();
+          }
         });
       }
     }
@@ -133,7 +151,6 @@ App.WidgetMixin = Ember.Mixin.create({
       metrics.forEach(function (metric, index) {
         var key;
         if (metric.host_component_criteria) {
-          this.tweakHostComponentCriteria(metric);
           key = metric.service_name + '_' + metric.component_name + '_' + metric.host_component_criteria;
         } else {
           key = metric.service_name + '_' + metric.component_name;
@@ -141,9 +158,18 @@ App.WidgetMixin = Ember.Mixin.create({
         var requestMetric = $.extend({}, metric);
 
         if (requestsData[key]) {
-          requestsData[key]["metric_paths"].push(requestMetric["metric_path"]);
+          requestsData[key]["metric_paths"].push({
+            metric_path: requestMetric["metric_path"],
+            metric_type: this.get('metricType'),
+            id: requestMetric["metric_path"] + "_" + this.get('metricType'),
+            context: this
+          });
         } else {
-          requestMetric["metric_paths"] = [requestMetric["metric_path"]];
+          requestMetric["metric_paths"] = [{
+            metric_path: requestMetric["metric_path"],
+            metric_type: this.get('metricType'),
+            id: requestMetric["metric_path"] + "_" + this.get('metricType'),
+            context: this}];
           delete requestMetric["metric_path"];
           requestsData[key] = requestMetric;
         }
@@ -153,31 +179,30 @@ App.WidgetMixin = Ember.Mixin.create({
   },
 
   /**
-   * Tweak necessary host component criteria
-   * NameNode HA host component criteria is applicable only in HA mode
+   * Create actual host component criteria  from persisted host component criteria
+   * NameNode HA and ResourceManager HA host component criteria is applicable only in HA mode
+   * @param {object} request
    */
-  tweakHostComponentCriteria: function (metric) {
-    switch (metric.component_name) {
+  computeHostComponentCriteria: function (request) {
+    switch (request.component_name) {
       case 'NAMENODE':
-        if (metric.host_component_criteria === 'host_components/metrics/dfs/FSNamesystem/HAState=active') {
-          //if (metric.host_component_criteria)
+        if (request.host_component_criteria === 'host_components/metrics/dfs/FSNamesystem/HAState=active') {
           var hdfs = App.HDFSService.find().objectAt(0);
-          var activeNNHostName = !hdfs.get('snameNode') && hdfs.get('activeNameNode');
-          if (!activeNNHostName) {
-            metric.host_component_criteria = 'host_components/HostRoles/component_name=NAMENODE';
+          if (!hdfs.get('isNnHaEnabled')) {
+            return '';
           }
         }
         break;
       case 'RESOURCEMANAGER':
-        if (metric.host_component_criteria === 'host_components/HostRoles/ha_state=ACTIVE') {
-          //if (metric.host_component_criteria)
+        if (request.host_component_criteria === 'host_components/HostRoles/ha_state=ACTIVE') {
           var yarn = App.YARNService.find().objectAt(0);
           if (!yarn.get('isRMHaEnabled')) {
-            metric.host_component_criteria = 'host_components/HostRoles/component_name=RESOURCEMANAGER';
+            return '';
           }
         }
         break;
     }
+    return request.host_component_criteria.replace('host_components/', '&').trim();
   },
 
   /**
@@ -192,64 +217,49 @@ App.WidgetMixin = Ember.Mixin.create({
       data: {
         serviceName: request.service_name,
         componentName: request.component_name,
-        metricPaths: request.metric_paths.join(',')
-      },
-      success: 'getMetricsSuccessCallback'
-    });
-  },
-
-  /**
-   * make GET call to server in order to fetch specifc host-component metrics
-   * @param {object} request
-   * @returns {$.Deferred}
-   */
-  getHostComponentMetrics: function (request) {
-    var dfd;
-    var self = this;
-    dfd = $.Deferred();
-    this.getHostComponentName(request).done(function (data) {
-      if (data) {
-        request.host_name = data.host_components[0].HostRoles.host_name;
-        App.ajax.send({
-          name: 'widgets.hostComponent.metrics.get',
-          sender: self,
-          data: {
-            componentName: request.component_name,
-            hostName: request.host_name,
-            metricPaths: request.metric_paths.join(',')
-          }
-        }).done(function (metricData) {
-          self.getMetricsSuccessCallback(metricData);
-          dfd.resolve();
-        }).fail(function (data) {
-          dfd.reject();
-        });
+        metricPaths: this.prepareMetricPaths(request.metric_paths)
       }
-    }).fail(function (data) {
-      dfd.reject();
     });
-    return dfd.promise();
+  },
+
+  /**
+   *  aggregate all metric names in the query. Add time range and step to temporal queries
+   */
+  prepareMetricPaths: function(metricPaths) {
+    var temporalMetrics = metricPaths.filterProperty('metric_type', 'TEMPORAL');
+    var pointInTimeMetrics = metricPaths.filterProperty('metric_type', 'POINT_IN_TIME');
+    var result = temporalMetrics.length ? temporalMetrics[0].context.addTimeProperties(temporalMetrics.mapProperty('metric_path')) : [];
+
+    if (pointInTimeMetrics.length) {
+      result = result.concat(pointInTimeMetrics.mapProperty('metric_path'));
+    }
+
+    return result.join(',');
   },
 
 
   /**
-   * make GET call to server in order to fetch host-component names
+   * make GET call to server in order to fetch specific host-component metrics
    * @param {object} request
    * @returns {$.ajax}
    */
-  getHostComponentName: function (request) {
+  getHostComponentMetrics: function (request) {
     return App.ajax.send({
-      name: 'widgets.hostComponent.get.hostName',
+      name: 'widgets.hostComponent.metrics.get',
       sender: this,
       data: {
-        serviceName: request.service_name,
         componentName: request.component_name,
-        metricPaths: request.metric_paths.join(','),
-        hostComponentCriteria: request.host_component_criteria
+        metricPaths: this.prepareMetricPaths(request.metric_paths),
+        hostComponentCriteria: this.computeHostComponentCriteria(request)
       }
     });
   },
 
+  getHostComponentMetricsSuccessCallback: function (data) {
+    if (data.items[0]) {
+      this.getMetricsSuccessCallback(data.items[0]);
+    }
+  },
 
   /**
    * callback on getting aggregated metrics and host component metrics
@@ -288,13 +298,13 @@ App.WidgetMixin = Ember.Mixin.create({
   },
 
   /**
-   * make GET call to get host component metrics accross
+   * make GET call to get metrics value for all host components
    * @param {object} request
    * @return {$.ajax}
    */
   getHostComponentsMetrics: function (request) {
     request.metric_paths.forEach(function (_metric, index) {
-      request.metric_paths[index] = "host_components/" + _metric;
+      request.metric_paths[index] = "host_components/" + _metric.metric_path;
     });
     return App.ajax.send({
       name: 'widgets.serviceComponent.metrics.get',
@@ -324,11 +334,12 @@ App.WidgetMixin = Ember.Mixin.create({
   },
 
   getHostsMetrics: function (request) {
+    var metricPaths = request.metric_paths.mapProperty('metric_path');
     return App.ajax.send({
       name: 'widgets.hosts.metrics.get',
       sender: this,
       data: {
-        metricPaths: request.metric_paths.join(',')
+        metricPaths: metricPaths.join(',')
       },
       success: 'getHostsMetricsSuccessCallback'
     });
@@ -445,7 +456,7 @@ App.WidgetMixin = Ember.Mixin.create({
             return metrics.findProperty('name', match).data;
           } else {
             validExpression = false;
-            console.error('Metrics with name "' + match + '" not found to compute expression');
+            console.warn('Metrics with name "' + match + '" not found to compute expression');
           }
         } else {
           return match;
@@ -455,7 +466,7 @@ App.WidgetMixin = Ember.Mixin.create({
       //check for correct math expression
       if (!(validExpression && this.get('MATH_EXPRESSION_REGEX').test(beforeCompute))) {
         validExpression = false;
-        console.error('Value for metric is not correct mathematical expression: ' + beforeCompute);
+        console.warn('Value for metric is not correct mathematical expression: ' + beforeCompute);
       }
 
       result['${' + _expression + '}'] = (validExpression) ? Number(window.eval(beforeCompute)).toString() : value;
@@ -485,7 +496,7 @@ App.WidgetMixin = Ember.Mixin.create({
       function () {
         self.postWidgetDefinition(true);
       },
-      Em.I18n.t('widget.clone.body').format(self.get('content.widgetName')),
+      Em.I18n.t('widget.clone.body').format(stringUtils.htmlEntities(self.get('content.widgetName'))),
       null,
       null,
       Em.I18n.t('common.clone')
@@ -617,20 +628,127 @@ App.WidgetPreviewMixin = Ember.Mixin.create({
       'values': this.get('controller.widgetValues'),
       'properties': this.get('controller.widgetProperties'),
       'widgetName': this.get('controller.widgetName'),
-      'metrics': this.get('controller.widgetMetrics').map(function (metric) {
-        return {
-          "name": metric.name,
-          "service_name": metric.serviceName,
-          "component_name": metric.componentName,
-          "metric_path": metric.metricPath,
-          "host_component_criteria": metric.hostComponentCriteria,
-          "category": metric.category
-        }
-      })
+      'metrics': this.get('controller.widgetMetrics')
     });
     this._super();
   }.observes('controller.widgetProperties', 'controller.widgetValues', 'controller.widgetMetrics', 'controller.widgetName'),
   onMetricsLoaded: function () {
     this.drawWidget();
+  }
+});
+
+
+/**
+ * aggregate requests to load metrics by component name
+ * requests can be added via add method
+ * input example:
+ * {
+ *   data: request,
+ *   context: this,
+ *   startCallName: this.getServiceComponentMetrics,
+ *   successCallback: this.getMetricsSuccessCallback,
+ *   completeCallback: function () {
+ *     requestCounter--;
+ *     if (requestCounter === 0) this.onMetricsLoaded();
+ *   }
+ * }
+ * @type {Em.Object}
+ */
+App.WidgetLoadAggregator = Em.Object.create({
+  /**
+   * @type {Array}
+   */
+  requests: [],
+
+  /**
+   * @type {number|null}
+   */
+  timeoutId: null,
+
+  /**
+   * @type {number}
+   * @const
+   */
+  BULK_INTERVAL: 1000,
+
+  arrayUtils: require('utils/array_utils'),
+
+  /**
+   * add request
+   * every {{BULK_INTERVAL}} requests get collected, aggregated and sent to server
+   *
+   * @param {object} request
+   */
+  add: function (request) {
+    var self = this;
+
+    this.get('requests').push(request);
+    if (Em.isNone(this.get('timeoutId'))) {
+      this.set('timeoutId', window.setTimeout(function () {
+        self.runRequests(self.get('requests'));
+        self.get('requests').clear();
+        clearTimeout(self.get('timeoutId'));
+        self.set('timeoutId', null);
+      }, this.get('BULK_INTERVAL')));
+    }
+  },
+
+  /**
+   * return requests which grouped into bulks
+   * @param {Array} requests
+   * @returns {object} bulks
+   */
+  groupRequests: function (requests) {
+    var bulks = {};
+
+    requests.forEach(function (request) {
+      var id = request.startCallName + "_" + request.data.component_name;
+
+      if (Em.isNone(bulks[id])) {
+        bulks[id] = {
+          data: request.data,
+          context: request.context,
+          startCallName: request.startCallName
+        };
+        bulks[id].subRequests = [{
+          context: request.context,
+          successCallback: request.successCallback,
+          completeCallback: request.completeCallback
+        }];
+      } else {
+        bulks[id].data.metric_paths.pushObjects(request.data.metric_paths);
+        bulks[id].subRequests.push({
+          context: request.context,
+          successCallback: request.successCallback,
+          completeCallback: request.completeCallback
+        });
+      }
+    }, this);
+    return bulks;
+  },
+
+  /**
+   * run aggregated requests
+   * @param {Array} requests
+   */
+  runRequests: function (requests) {
+    var bulks = this.groupRequests(requests);
+    var self = this;
+    for (var id in bulks) {
+      (function (_request) {
+        if (_request.context.get('state') !== 'inDOM') return;
+
+        _request.data.metric_paths = self.arrayUtils.uniqObjectsbyId(_request.data.metric_paths, "id");
+        _request.context[_request.startCallName].call(_request.context, _request.data).done(function (response) {
+          _request.subRequests.forEach(function (subRequest) {
+            subRequest.successCallback.call(subRequest.context, response);
+          }, this);
+        }).complete(function () {
+          _request.subRequests.forEach(function (subRequest) {
+            subRequest.completeCallback.call(subRequest.context);
+          }, this);
+        });
+      })(bulks[id]);
+    }
   }
 });

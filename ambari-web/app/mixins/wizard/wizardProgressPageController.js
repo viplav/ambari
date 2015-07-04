@@ -17,6 +17,7 @@
  */
 
 var App = require('app');
+var componentsUtils = require('utils/components');
 
 /**
  * Mixin for wizard controller for showing command progress on wizard pages
@@ -125,13 +126,18 @@ App.wizardProgressPageControllerMixin = Em.Mixin.create({
   },
 
   submitRequest: function () {
+    var self = this;
     return App.ajax.send({
       name: this.get('request.ajaxName'),
       data: this.get('request.ajaxData'),
       sender: this,
       error: 'onSingleRequestError',
       success: 'submitRequestSuccess',
-      kdcCancelHandler: 'failTaskOnKdcCheck'
+      kdcCancelHandler: function() {
+        self.set('status', 'FAILED');
+        self.set('isLoaded', true);
+        self.set('showRetry', true);
+      }
     });
   },
 
@@ -147,12 +153,6 @@ App.wizardProgressPageControllerMixin = Em.Mixin.create({
         this.set('isLoaded', true);
       }
     }
-  },
-
-  failTaskOnKdcCheck: function() {
-    this.set('status', 'FAILED');
-    this.set('isLoaded', true);
-    this.set('showRetry', true);
   },
 
   doPollingForPageRequest: function () {
@@ -277,6 +277,10 @@ App.wizardProgressPageControllerMixin = Em.Mixin.create({
     this.get('tasks').findProperty('id', taskId).set('status', status);
   },
 
+  setTaskCanSkip: function (taskId, canSkip) {
+    this.get('tasks').findProperty('id', taskId).set('canSkip', true);
+  },
+
   setRequestIds: function (taskId, requestIds) {
     this.get('tasks').findProperty('id', taskId).set('requestIds', requestIds);
   },
@@ -336,12 +340,19 @@ App.wizardProgressPageControllerMixin = Em.Mixin.create({
       } else {
         this.set('showRetry', true);
       }
+
+      if (this.get('tasks').someProperty('canSkip', true)) {
+        this.get('tasks').findProperty('canSkip', true).set('showSkip', true);
+      }
+
       if (App.supports.autoRollbackHA) {
         this.get('tasks').findProperty('status', 'FAILED').set('showRollback', true);
       }
     }
     this.get('tasks').filterProperty('status', 'COMPLETED').setEach('showRetry', false);
     this.get('tasks').filterProperty('status', 'COMPLETED').setEach('showRollback', false);
+    this.get('tasks').filterProperty('status', 'COMPLETED').setEach('showSkip', false);
+    this.get('tasks').filterProperty('status', 'IN_PROGRESS').setEach('showSkip', false);
 
     if (data && data.deferred) {
       data.deferred.resolve();
@@ -357,6 +368,11 @@ App.wizardProgressPageControllerMixin = Em.Mixin.create({
 
   onTaskError: function () {
     this.setTaskStatus(this.get('currentTaskId'), 'FAILED');
+  },
+
+  onTaskErrorWithSkip: function () {
+    this.onTaskError();
+    this.setTaskCanSkip(this.get('currentTaskId'), true);
   },
 
   onSingleRequestError: function (jqXHR, ajaxOptions, error, opt) {
@@ -499,20 +515,22 @@ App.wizardProgressPageControllerMixin = Em.Mixin.create({
         }
       };
       if (!!hostsWithoutComponents.length) {
-        App.ajax.send({
-          name: 'wizard.step8.register_host_to_component',
-          sender: self,
-          data: {
-            data: JSON.stringify(requestData),
-            hostName: result.mapProperty('hostName'),
-            componentName: componentName,
-            serviceName: serviceName,
-            taskNum: taskNum,
-            cluster: App.get('clusterName')
-          },
-          success: 'onCreateComponent',
-          error: 'onCreateComponent'
-        });        
+        componentsUtils.createServiceComponent(componentName).done(function () {
+          App.ajax.send({
+            name: 'wizard.step8.register_host_to_component',
+            sender: self,
+            data: {
+              data: JSON.stringify(requestData),
+              hostName: result.mapProperty('hostName'),
+              componentName: componentName,
+              serviceName: serviceName,
+              taskNum: taskNum,
+              cluster: App.get('clusterName')
+            },
+            success: 'onCreateComponent',
+            error: 'onCreateComponent'
+          });
+        });
       } else {
         self.onCreateComponent(null, null, {
           hostName: result.mapProperty('hostName'),
@@ -542,7 +560,7 @@ App.wizardProgressPageControllerMixin = Em.Mixin.create({
 
   /**
    * Update component status on selected hosts.
-   * 
+   *
    * @param {string} componentName
    * @param {(string|string[])} hostName
    * @param {string} serviceName
@@ -638,10 +656,13 @@ App.wizardProgressPageControllerMixin = Em.Mixin.create({
   },
 
   showHostProgressPopup: function (event) {
-    var popupTitle = event.contexts[0].title;
-    var requestIds = event.contexts[0].requestIds;
-    var stageId = event.contexts[0].stageId;
-    var hostProgressPopupController = App.router.get('highAvailabilityProgressPopupController');
+    if (!['IN_PROGRESS', 'FAILED', 'COMPLETED'].contains(Em.get(event.context, 'status')) || !event.contexts[0].requestIds.length) {
+      return;
+    }
+    var popupTitle = event.contexts[0].title,
+     requestIds = event.contexts[0].requestIds,
+     stageId = event.contexts[0].stageId,
+     hostProgressPopupController = App.router.get('highAvailabilityProgressPopupController');
     hostProgressPopupController.initPopup(popupTitle, requestIds, this, true, stageId);
   },
 
@@ -660,5 +681,3 @@ App.wizardProgressPageControllerMixin = Em.Mixin.create({
   }
 
 });
-
-

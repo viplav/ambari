@@ -21,7 +21,29 @@ import json
 from resource_management import *
 from stacks.utils.RMFTestCase import *
 from mock.mock import patch
+from mock.mock import MagicMock
 
+
+class TarfileFake:
+  """
+  Dummy class to mock the calls to tarfile module.
+  """
+  def __init__(self):
+    self.extractall_count = 0
+    self.add_count = 0
+    self.close_count = 0
+
+  def extractall(self, path=".", members=None):
+    self.extractall_count += 1
+
+  def add(self, name, arcname=None, recursive=True, exclude=None, filter=None):
+    self.add_count += 1
+
+  def close(self):
+    self.close_count += 1
+
+
+@patch("platform.linux_distribution", new = MagicMock(return_value="Linux"))
 class TestKnoxGateway(RMFTestCase):
   COMMON_SERVICES_PACKAGE_DIR = "KNOX/0.5.0.2.2/package"
   STACK_VERSION = "2.2"
@@ -55,6 +77,11 @@ class TestKnoxGateway(RMFTestCase):
                               group = 'knox',
                               recursive = True
     )
+    self.assertResourceCalled('Directory', '/usr/hdp/current/knox-server/conf/topologies',
+                              owner = 'knox',
+                              group = 'knox',
+                              recursive = True
+    )
 
     self.assertResourceCalled('XmlConfig', 'gateway-site.xml',
                               owner = 'knox',
@@ -81,7 +108,8 @@ class TestKnoxGateway(RMFTestCase):
      '/var/lib/knox/data',
      '/var/log/knox',
      '/var/run/knox',
-     '/usr/hdp/current/knox-server/conf'),
+     '/usr/hdp/current/knox-server/conf',
+     '/usr/hdp/current/knox-server/conf/topologies'),
         sudo = True,
     )
     self.assertResourceCalled('Execute', '/usr/hdp/current/knox-server/bin/knoxcli.sh create-master --master sa',
@@ -214,7 +242,7 @@ class TestKnoxGateway(RMFTestCase):
   @patch("os.path.isdir")
   def test_pre_rolling_restart(self, isdir_mock, tarfile_open_mock):
     isdir_mock.return_value = True
-    config_file = self.get_src_folder()+"/test/python/stacks/2.2/configs/default.json"
+    config_file = self.get_src_folder()+"/test/python/stacks/2.2/configs/knox_upgrade.json"
     with open(config_file, "r") as f:
       json_content = json.load(f)
     version = '2.2.1.0-3242'
@@ -229,20 +257,26 @@ class TestKnoxGateway(RMFTestCase):
 
     self.assertTrue(tarfile_open_mock.called)
 
-    self.assertResourceCalled("Execute", "hdp-select set knox-server %s" % version)
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'knox-server', version), sudo=True)
 
+  @patch("os.remove")
+  @patch("os.path.exists")
   @patch("tarfile.open")
   @patch("os.path.isdir")
   @patch("resource_management.core.shell.call")
-  def test_pre_rolling_restart_23(self, call_mock, isdir_mock, tarfile_open_mock):
+  def test_pre_rolling_restart_23(self, call_mock, isdir_mock, tarfile_open_mock, path_exists_mock, remove_mock):
     isdir_mock.return_value = True
-    config_file = self.get_src_folder()+"/test/python/stacks/2.2/configs/default.json"
+    config_file = self.get_src_folder()+"/test/python/stacks/2.2/configs/knox_upgrade.json"
     with open(config_file, "r") as f:
       json_content = json.load(f)
     version = '2.3.0.0-1234'
     json_content['commandParams']['version'] = version
 
+    path_exists_mock.return_value = True
+    knox_conf_tarfile = TarfileFake()
+    tarfile_open_mock.return_value = knox_conf_tarfile
     mocks_dict = {}
+
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/knox_gateway.py",
                        classname = "KnoxGateway",
                        command = "pre_rolling_restart",
@@ -254,7 +288,7 @@ class TestKnoxGateway(RMFTestCase):
 
     self.assertTrue(tarfile_open_mock.called)
 
-    self.assertResourceCalled("Execute", "hdp-select set knox-server %s" % version)
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'knox-server', version), sudo=True)
 
     self.assertEquals(2, mocks_dict['call'].call_count)
     self.assertEquals(
@@ -263,6 +297,8 @@ class TestKnoxGateway(RMFTestCase):
     self.assertEquals(
       "conf-select set-conf-dir --package knox --stack-version 2.3.0.0-1234 --conf-version 0",
        mocks_dict['call'].call_args_list[1][0][0])
+
+    self.assertTrue(2, knox_conf_tarfile.close_count)
 
   @patch("os.path.islink")
   @patch("os.path.realpath")
@@ -299,6 +335,11 @@ class TestKnoxGateway(RMFTestCase):
                               group = 'knox',
                               recursive = True
     )
+    self.assertResourceCalled('Directory', '/usr/hdp/current/knox-server/conf/topologies',
+                              owner = 'knox',
+                              group = 'knox',
+                              recursive = True
+    )
 
     self.assertResourceCalled('XmlConfig', 'gateway-site.xml',
                               owner = 'knox',
@@ -325,7 +366,7 @@ class TestKnoxGateway(RMFTestCase):
                                           '/var/lib/knox/data',
                                           '/var/log/knox',
                                           '/var/run/knox',
-                                          '/usr/hdp/current/knox-server/conf'),
+                                          '/usr/hdp/current/knox-server/conf', '/usr/hdp/current/knox-server/conf/topologies'),
                               sudo = True,
                               )
     self.assertResourceCalled('Execute', '/usr/hdp/current/knox-server/bin/knoxcli.sh create-master --master sa',

@@ -102,270 +102,93 @@ describe('App.ServiceConfigsByCategoryView', function () {
     })
   });
 
-  describe('#filteredCategoryConfigs', function () {
+  describe('#isShowBlock', function() {
+    var tests = [
+      {
+        categoryConfigs: Em.A([
+          Em.Object.create({ isHiddenByFilter: false })
+        ]),
+        category: {},
+        m: 'no configs with widget, filtered properties are visible. Panel should be shown',
+        e: true
+      },
+      {
+        categoryConfigs: Em.A([]),
+        category: Em.Object.create({ customCanAddProperty: true}),
+        m: 'Category with custom properties. Panel shouldn\'t be shown',
+        e: false
+      },
+      {
+        categoryConfigs: Em.A([
+          Em.Object.create({ isHiddenByFilter: false })
+        ]),
+        category: Em.Object.create({ customCanAddProperty: true}),
+        m: 'Category with custom properties. Filtered configs are hidden. Panel should be shown',
+        e: true
+      },
+      {
+        categoryConfigs: Em.A([
+          Em.Object.create({ isHiddenByFilter: true })
+        ]),
+        category: Em.Object.create({ customCanAddProperty: false }),
+        m: 'Filtered configs are hidden. Category not for custom properties. Panel should be hidden',
+        e: false
+      },
+      {
+        categoryConfigs: Em.A([]),
+        category: Em.Object.create({ customCanAddProperty: false }),
+        m: 'Category without properties and not for custom configurations. Panel should be hidden',
+        e: false
+      },
+      {
+        categoryConfigs: Em.A([
+          Em.Object.create({ widget: {someProp: 'a'}}),
+          Em.Object.create({ widget: {someProp: 'b'}})
+        ]),
+        category: Em.Object.create({ customCanAddProperty: false }),
+        m: 'All properties have widgets and category is not custom. Panel should be hidden',
+        e: false
+      },
+      {
+        categoryConfigs: Em.A([
+          Em.Object.create({ widget: null }),
+          Em.Object.create({ widget: null })
+        ]),
+        category: Em.Object.create({ customCanAddProperty: false }),
+        m: 'All properties have widgets set to `null` and category is not custom. Panel should be hidden',
+        e: false
+      },
+      {
+        categoryConfigs: Em.A([
+          Em.Object.create({ widget: {someProp: 'a'} }),
+          Em.Object.create({ isHiddenByFilter: true })
+        ]),
+        category: Em.Object.create({ customCanAddProperty: false }),
+        m: 'Category contains mixed properties. Properties are hidden by filter. Panel should be hidden',
+        e: false
+      },
+      {
+        categoryConfigs: Em.A([
+          Em.Object.create({ widget: {someProp: 'a'} }),
+          Em.Object.create({ isHiddenByFilter: false })
+        ]),
+        category: Em.Object.create({ customCanAddProperty: false }),
+        m: 'Category contains mixed properties. Properties are visible. Panel should be shown',
+        e: true
+      }
+    ];
 
-    var view,
-      cases = [
-        {
-          filter: '',
-          serviceConfigs: [],
-          propertyToChange: null,
-          isCollapsed: false,
-          expectedIsCollapsed: true,
-          title: 'no filter, empty category, initial rendering'
-        },
-        {
-          filter: '',
-          serviceConfigs: [],
-          propertyToChange: 'categoryConfigs',
-          isCollapsed: false,
-          expectedIsCollapsed: false,
-          title: 'no filter, new property added'
-        },
-        {
-          filter: '',
-          serviceConfigs: [
-            Em.Object.create({
-              category: 'c',
-              isVisible: true,
-              isHiddenByFilter: false
-            })
-          ],
-          propertyToChange: null,
-          isCollapsed: false,
-          expectedIsCollapsed: false,
-          title: 'no filter, initial rendering, not empty category'
-        },
-        {
-          filter: '',
-          serviceConfigs: [],
-          propertyToChange: null,
-          isCollapsed: false,
-          collapsedByDefault: true,
-          expectedIsCollapsed: true,
-          title: 'no filter, restore after filtering'
-        },
-        {
-          filter: 'n',
-          serviceConfigs: [
-            Em.Object.create({
-              name: 'nm',
-              category: 'c',
-              isVisible: true
-            })
-          ],
-          propertyToChange: null,
-          isCollapsed: false,
-          expectedIsCollapsed: false,
-          title: 'filtering by name, not empty category'
-        },
-        {
-          filter: 'd',
-          serviceConfigs: [
-            Em.Object.create({
-              displayName: 'dn',
-              category: 'c',
-              isVisible: true
-            })
-          ],
-          propertyToChange: null,
-          isCollapsed: false,
-          expectedIsCollapsed: false,
-          title: 'filtering by display name, not empty category'
-        },
-        {
-          filter: 'd',
-          serviceConfigs: [
-            Em.Object.create({
-              description: 'desc',
-              category: 'c',
-              isVisible: true
-            })
-          ],
-          propertyToChange: null,
-          isCollapsed: false,
-          expectedIsCollapsed: false,
-          title: 'filtering by description, not empty category'
-        },
-        {
-          filter: 'd',
-          serviceConfigs: [
-            Em.Object.create({
-              defaultValue: 'dv',
-              category: 'c',
-              isVisible: true
-            })
-          ],
-          propertyToChange: null,
-          isCollapsed: false,
-          expectedIsCollapsed: false,
-          title: 'filtering by default value, not empty category'
-        },
-        {
-          filter: 'v',
-          serviceConfigs: [
-            Em.Object.create({
-              value: 'val',
-              category: 'c',
-              isVisible: true
-            })
-          ],
-          propertyToChange: null,
-          isCollapsed: false,
-          expectedIsCollapsed: false,
-          title: 'filtering by value, not empty category'
-        },
-        {
-          filter: 'v',
-          serviceConfigs: [
-            Em.Object.create({
-              category: 'c',
-              isVisible: true,
-              overrides: [
-                Em.Object.create({
-                  value: 'val'
-                })
-              ]
-            })
-          ],
-          propertyToChange: null,
-          isCollapsed: false,
-          expectedIsCollapsed: false,
-          title: 'filtering by overridden property value, not empty category'
-        },
-        {
-          filter: 'n',
-          serviceConfigs: [
-            Em.Object.create({
-              category: 'c',
-              isVisible: true,
-              overrides: [
-                Em.Object.create({
-                  group: {
-                    name: 'nm'
-                  }
-                })
-              ]
-            })
-          ],
-          propertyToChange: null,
-          isCollapsed: false,
-          expectedIsCollapsed: false,
-          title: 'filtering by overridden property name, not empty category'
-        }
-      ];
-
-    cases.forEach(function (item) {
-      it(item.title, function () {
-        view = App.ServiceConfigsByCategoryView.create({
-          parentView: {
-            filter: item.filter,
-            columns: []
-          },
-          category: {
-            name: 'c',
-            isCollapsed: item.isCollapsed,
-            collapsedByDefault: item.collapsedByDefault
-          },
-          serviceConfigs: item.serviceConfigs
+    tests.forEach(function(test) {
+      it(test.m, function() {
+        var _view = App.ServiceConfigsByCategoryView.create({
+          serviceConfigs: Em.A([]),
+          category: test.category,
+          categoryConfigs: test.categoryConfigs
         });
-        if (item.propertyToChange) {
-          view.propertyDidChange(item.propertyToChange);
-        } else {
-          view.filteredCategoryConfigs();
-        }
-        expect(view.get('category.isCollapsed')).to.equal(item.expectedIsCollapsed);
-      });
-    });
-
-    describe('#isShowBlock', function() {
-      var tests = [
-        {
-          categoryConfigs: Em.A([
-            { isHiddenByFilter: false }
-          ]),
-          category: {},
-          m: 'no configs with widget, filtered properties are visible. Panel should be shown',
-          e: true
-        },
-        {
-          categoryConfigs: Em.A([]),
-          category: Em.Object.create({ customCanAddProperty: true}),
-          m: 'Category with custom properties. Panel shouldn\'t be shown',
-          e: false
-        },
-        {
-          categoryConfigs: Em.A([
-            { isHiddenByFilter: false }
-          ]),
-          category: Em.Object.create({ customCanAddProperty: true}),
-          m: 'Category with custom properties. Filtered configs are hidden. Panel should be shown',
-          e: true
-        },
-        {
-          categoryConfigs: Em.A([
-            { isHiddenByFilter: true }
-          ]),
-          category: Em.Object.create({ customCanAddProperty: false }),
-          m: 'Filtered configs are hidden. Category not for custom properties. Panel should be hidden',
-          e: false
-        },
-        {
-          categoryConfigs: Em.A([]),
-          category: Em.Object.create({ customCanAddProperty: false }),
-          m: 'Category without properties and not for custom configurations. Panel should be hidden',
-          e: false
-        },
-        {
-          categoryConfigs: Em.A([
-            { widget: {someProp: 'a'}},
-            { widget: {someProp: 'b'}}
-          ]),
-          category: Em.Object.create({ customCanAddProperty: false }),
-          m: 'All properties have widgets and category is not custom. Panel should be hidden',
-          e: false
-        },
-        {
-          categoryConfigs: Em.A([
-            { widget: null },
-            { widget: null }
-          ]),
-          category: Em.Object.create({ customCanAddProperty: false }),
-          m: 'All properties have widgets set to `null` and category is not custom. Panel should be hidden',
-          e: false
-        },
-        {
-          categoryConfigs: Em.A([
-            { widget: {someProp: 'a'} },
-            { isHiddenByFilter: true }
-          ]),
-          category: Em.Object.create({ customCanAddProperty: false }),
-          m: 'Category contains mixed properties. Properties are hidden by filter. Panel should be hidden',
-          e: false
-        },
-        {
-          categoryConfigs: Em.A([
-            { widget: {someProp: 'a'} },
-            { isHiddenByFilter: false }
-          ]),
-          category: Em.Object.create({ customCanAddProperty: false }),
-          m: 'Category contains mixed properties. Properties are visible. Panel should be shown',
-          e: true
-        }
-      ];
-
-      tests.forEach(function(test) {
-        it(test.m, function() {
-          var _view = App.ServiceConfigsByCategoryView.create({
-            serviceConfigs: Em.A([]),
-            category: test.category,
-            categoryConfigs: test.categoryConfigs
-          });
-          sinon.stub(_view, 'filteredCategoryConfigs', Em.K);
-          _view.filteredCategoryConfigs.restore();
-          expect(_view.get('isShowBlock')).to.be.eql(test.e);
-          _view.destroy();
-        });
+        sinon.stub(_view, 'filteredCategoryConfigs', Em.K);
+        _view.filteredCategoryConfigs.restore();
+        expect(_view.get('isShowBlock')).to.be.eql(test.e);
+        _view.destroy();
       });
     });
   });
@@ -394,23 +217,21 @@ describe('App.ServiceConfigsByCategoryView', function () {
     ];
 
     before(function () {
-      view.reopen({
-        controller: {
-          secureConfigs: [
-            {
-              name: 'n0',
-              filename: 'f0'
-            },
-            {
-              name: 'n1',
-              filename: 'f0'
-            },
-            {
-              name: 'n2',
-              filename: 'f1'
-            }
-          ]
-        }
+      App.config.reopen({
+        secureConfigs: [
+          {
+            name: 'n0',
+            filename: 'f0'
+          },
+          {
+            name: 'n1',
+            filename: 'f0'
+          },
+          {
+            name: 'n2',
+            filename: 'f1'
+          }
+        ]
       })
     });
 
@@ -444,7 +265,7 @@ describe('App.ServiceConfigsByCategoryView', function () {
           category: 'c0',
           id: 'site property',
           serviceName: 's0',
-          defaultValue: null,
+          savedValue: null,
           supportsFinal: true,
           filename: 'f0',
           isUserProperty: true,
@@ -473,7 +294,7 @@ describe('App.ServiceConfigsByCategoryView', function () {
           category: 'c1',
           id: 'site property',
           serviceName: 's1',
-          defaultValue: null,
+          savedValue: null,
           supportsFinal: false,
           filename: '',
           isUserProperty: true,
@@ -513,7 +334,7 @@ describe('App.ServiceConfigsByCategoryView', function () {
         view.createProperty(item.propertyObj);
         expect(view.get('serviceConfigs').filterProperty('name', item.propertyObj.name)).to.have.length(1);
         expect(view.get('serviceConfigs').findProperty('name', item.propertyObj.name).getProperties([
-          'name', 'displayName', 'value', 'displayType', 'isSecureConfig', 'category', 'id', 'serviceName', 'defaultValue',
+          'name', 'displayName', 'value', 'displayType', 'isSecureConfig', 'category', 'id', 'serviceName', 'savedValue',
           'supportsFinal', 'filename', 'isUserProperty', 'isNotSaved', 'isRequired', 'group', 'isOverridable'
         ])).to.eql(item.result);
       });

@@ -35,11 +35,20 @@ class TestServiceCheck(RMFTestCase):
                         hdp_stack_version = self.STACK_VERSION,
                         target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    
+
+    self.assertResourceCalled('XmlConfig', 'yarn-site.xml',
+      owner = 'hdfs',
+      group = 'hadoop',
+      conf_dir = '/etc/hadoop/conf',
+      mode = 0644,
+      configurations = self.getConfig()['configurations']['yarn-site'],
+    )
+
     self.assert_service_check()
     self.assertNoMoreResources()
     
   def test_service_check_secured(self):
+    self.maxDiff = None
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/service_check.py",
                         classname="OozieServiceCheck",
                         command="service_check",
@@ -47,7 +56,15 @@ class TestServiceCheck(RMFTestCase):
                         hdp_stack_version = self.STACK_VERSION,
                         target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    
+
+    self.assertResourceCalled('XmlConfig', 'yarn-site.xml',
+      owner = 'hdfs',
+      group = 'hadoop',
+      conf_dir = '/etc/hadoop/conf',
+      mode = 0644,
+      configurations = self.getConfig()['configurations']['yarn-site'],
+    )
+
     self.assert_service_check()
     self.assertNoMoreResources()
         
@@ -70,9 +87,31 @@ class TestServiceCheck(RMFTestCase):
         hadoop_bin_dir = '/usr/bin',
         keytab = UnknownConfigurationMock(),
         kinit_path_local = '/usr/bin/kinit',
+        user = 'hdfs',
+        action = ['delete_on_execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name=UnknownConfigurationMock(), default_fs='hdfs://c6401.ambari.apache.org:8020',
+        hadoop_conf_dir = '/etc/hadoop/conf',
+        type = 'directory',
+    )
+    self.assertResourceCalled('HdfsResource', '/user/ambari-qa/examples',
+        security_enabled = False,
+        hadoop_bin_dir = '/usr/bin',
+        keytab = UnknownConfigurationMock(),
+        kinit_path_local = '/usr/bin/kinit',
         source = '//examples',
         user = 'hdfs',
-        action = ['create_on_execute'],
+        action = ['create_on_execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name=UnknownConfigurationMock(), default_fs='hdfs://c6401.ambari.apache.org:8020',
+        hadoop_conf_dir = '/etc/hadoop/conf',
+        type = 'directory',
+        owner = 'ambari-qa',
+        group = 'hadoop'
+    )
+    self.assertResourceCalled('HdfsResource', '/user/ambari-qa/input-data',
+        security_enabled = False,
+        hadoop_bin_dir = '/usr/bin',
+        keytab = UnknownConfigurationMock(),
+        kinit_path_local = '/usr/bin/kinit',
+        user = 'hdfs',
+        action = ['delete_on_execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name=UnknownConfigurationMock(), default_fs='hdfs://c6401.ambari.apache.org:8020',
         hadoop_conf_dir = '/etc/hadoop/conf',
         type = 'directory',
     )
@@ -83,9 +122,11 @@ class TestServiceCheck(RMFTestCase):
         kinit_path_local = '/usr/bin/kinit',
         source = '//examples/input-data',
         user = 'hdfs',
-        action = ['create_on_execute'],
+        action = ['create_on_execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name=UnknownConfigurationMock(), default_fs='hdfs://c6401.ambari.apache.org:8020',
         hadoop_conf_dir = '/etc/hadoop/conf',
         type = 'directory',
+        owner = 'ambari-qa',
+        group = 'hadoop'
     )
     self.assertResourceCalled('HdfsResource', None,
         security_enabled = False,
@@ -93,7 +134,7 @@ class TestServiceCheck(RMFTestCase):
         keytab = UnknownConfigurationMock(),
         kinit_path_local = '/usr/bin/kinit',
         user = 'hdfs',
-        action = ['execute'],
+        action = ['execute'], hdfs_site=self.getConfig()['configurations']['hdfs-site'], principal_name=UnknownConfigurationMock(), default_fs='hdfs://c6401.ambari.apache.org:8020',
         hadoop_conf_dir = '/etc/hadoop/conf',
     )
     self.assertResourceCalled('Execute', '/tmp/oozieSmoke2.sh suse /var/lib/oozie /etc/oozie/conf /usr/bin / /etc/hadoop/conf /usr/bin ambari-qa False',

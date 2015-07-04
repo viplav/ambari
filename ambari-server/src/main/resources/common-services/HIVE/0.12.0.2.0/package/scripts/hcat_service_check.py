@@ -18,6 +18,7 @@ limitations under the License.
 
 """
 
+import os
 from resource_management import *
 from resource_management.libraries.functions import get_unique_id_and_date
 from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
@@ -40,7 +41,7 @@ def hcat_service_check():
 
     if params.security_enabled:
       kinit_cmd = format(
-        "{kinit_path_local} -kt {smoke_user_keytab} {smokeuser}; ")
+        "{kinit_path_local} -kt {smoke_user_keytab} {smokeuser_principal}; ")
     else:
       kinit_cmd = ""
 
@@ -49,13 +50,18 @@ def hcat_service_check():
          mode=0755
     )
 
-    prepare_cmd = format("{kinit_cmd}env JAVA_HOME={java64_home} {tmp_dir}/hcatSmoke.sh hcatsmoke{unique} prepare")
+    prepare_cmd = format("{kinit_cmd}env JAVA_HOME={java64_home} {tmp_dir}/hcatSmoke.sh hcatsmoke{unique} prepare {purge_tables}")
+
+    exec_path = params.execute_path
+    if params.version and params.stack_name:
+      upgrade_hive_bin = format("/usr/hdp/{version}/hive/bin") 
+      exec_path =  os.environ['PATH'] + os.pathsep + params.hadoop_bin_dir + os.pathsep + upgrade_hive_bin
 
     Execute(prepare_cmd,
             tries=3,
             user=params.smokeuser,
             try_sleep=5,
-            path=['/usr/sbin', '/usr/local/bin', '/bin', '/usr/bin', params.execute_path],
+            path=['/usr/sbin', '/usr/local/bin', '/bin', '/usr/bin', exec_path],
             logoutput=True)
 
     if params.security_enabled:
@@ -67,8 +73,7 @@ def hcat_service_check():
                     kinit_path_local=params.kinit_path_local,
                     keytab=params.hdfs_user_keytab,
                     principal=params.hdfs_principal_name,
-                    bin_dir=params.execute_path
-      )
+                    bin_dir=params.execute_path)
     else:
       ExecuteHadoop(test_cmd,
                     user=params.hdfs_user,
@@ -80,12 +85,11 @@ def hcat_service_check():
                     bin_dir=params.execute_path
       )
 
-    cleanup_cmd = format("{kinit_cmd} {tmp_dir}/hcatSmoke.sh hcatsmoke{unique} cleanup")
+    cleanup_cmd = format("{kinit_cmd} {tmp_dir}/hcatSmoke.sh hcatsmoke{unique} cleanup {purge_tables}")
 
     Execute(cleanup_cmd,
             tries=3,
             user=params.smokeuser,
             try_sleep=5,
-            path=['/usr/sbin', '/usr/local/bin', '/bin', '/usr/bin', params.execute_path],
-            logoutput=True
-    )
+            path=['/usr/sbin', '/usr/local/bin', '/bin', '/usr/bin', exec_path],
+            logoutput=True)

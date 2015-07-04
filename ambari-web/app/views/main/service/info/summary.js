@@ -296,9 +296,6 @@ App.MainServiceInfoSummaryView = Em.View.extend(App.UserPref, {
   rollingRestartStaleConfigSlaveComponents: function (componentName) {
     batchUtils.launchHostComponentRollingRestart(componentName.context, this.get('service.displayName'), this.get('service.passiveState') === "ON", true);
   },
-  /*
-   * 'Restart Required bar' ended
-   */
 
    /*
    * Find the graph class associated with the graph name, and split
@@ -323,7 +320,9 @@ App.MainServiceInfoSummaryView = Em.View.extend(App.UserPref, {
       if (graphNames) {
         graphNames.forEach(function(graphName) {
           graphObjects.push(App["ChartServiceMetrics" + graphName].extend({
-            currentTimeIndex : index
+            setCurrentTimeIndex: function () {
+              this.set('currentTimeIndex', this.get('parentView.currentTimeRangeIndex'));
+            }.observes('parentView.currentTimeRangeIndex')
           }));
         });
       }

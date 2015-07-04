@@ -25,18 +25,23 @@ angular.module('ambariAdminConsole')
     delete data.app.loginName;
     delete data.app.user;
     localStorage.ambari = JSON.stringify(data);
-    $window.location.pathname = '';
     $scope.hello = "hello";
-    Auth.signout();
+    Auth.signout().finally(function() {
+      $window.location.pathname = '';
+    });
   };
 
+  $scope.ambariVersion = null;
+
   $scope.about = function() {
+   var ambariVersion = $scope.ambariVersion;
   	var modalInstance = $modal.open({
   		templateUrl:'views/modals/AboutModal.html',
   		controller: ['$scope', function($scope) {
   			$scope.ok = function() {
   				modalInstance.close();
   			};
+        $scope.ambariVersion = ambariVersion;
   		}]
   	});
   };
@@ -45,6 +50,12 @@ angular.module('ambariAdminConsole')
 
   $scope.cluster = null;
   $scope.isLoaded = null;
+
+  function loadAmbariVersion() {
+    Cluster.getAmbariVersion().then(function(version){
+      $scope.ambariVersion = version;
+    });
+  }
 
   function loadClusterData(){
     Cluster.getStatus().then(function(cluster) {
@@ -58,14 +69,23 @@ angular.module('ambariAdminConsole')
     });
   }
   loadClusterData();
+  loadAmbariVersion();
 
   $scope.viewInstances = [];
-  View.getAllVisibleInstance().then(function(instances) {
-    $scope.viewInstances = instances;
-  });
+
+  $scope.updateInstances = function () {
+    View.getAllVisibleInstance().then(function(instances) {
+      $scope.viewInstances = instances;
+    });
+  };
 
   $scope.gotoViewsDashboard =function() {
     window.location = '/#/main/views';
   };
 
+  $scope.$root.$on('instancesUpdate', function (event, data) {
+    $scope.updateInstances();
+  });
+
+  $scope.updateInstances();
 }]);

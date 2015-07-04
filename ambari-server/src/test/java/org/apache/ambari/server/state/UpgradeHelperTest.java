@@ -44,7 +44,6 @@ import org.apache.ambari.server.controller.ConfigurationRequest;
 import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
 import org.apache.ambari.server.orm.OrmTestHelper;
-import org.apache.ambari.server.orm.dao.HostDAO;
 import org.apache.ambari.server.stack.HostsType;
 import org.apache.ambari.server.stack.MasterHostResolver;
 import org.apache.ambari.server.state.UpgradeHelper.UpgradeGroupHolder;
@@ -60,6 +59,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.google.inject.Binder;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
@@ -84,7 +85,7 @@ public class UpgradeHelperTest {
   private UpgradeHelper m_upgradeHelper;
   private ConfigHelper m_configHelper;
   private AmbariManagementController m_managementController;
-  private HostDAO m_hostDAO;
+  private Gson m_gson = new Gson();
 
   @Before
   public void before() throws Exception {
@@ -110,7 +111,6 @@ public class UpgradeHelperTest {
     m_upgradeHelper = injector.getInstance(UpgradeHelper.class);
     m_masterHostResolver = EasyMock.createMock(MasterHostResolver.class);
     m_managementController = injector.getInstance(AmbariManagementController.class);
-    m_hostDAO = injector.getInstance(HostDAO.class);
   }
 
   @After
@@ -370,6 +370,80 @@ public class UpgradeHelperTest {
   }
 
   @Test
+  public void testConditionalDeleteTask() throws Exception {
+    Map<String, UpgradePack> upgrades = ambariMetaInfo.getUpgradePacks("HDP",
+                                                                       "2.1.1");
+
+    assertTrue(upgrades.containsKey("upgrade_test"));
+    UpgradePack upgrade = upgrades.get("upgrade_test");
+    assertNotNull(upgrade);
+
+    Cluster cluster = makeCluster();
+
+    UpgradeContext context = new UpgradeContext(m_masterHostResolver, HDP_21,
+                                                HDP_21, UPGRADE_VERSION, Direction.UPGRADE);
+
+    List<UpgradeGroupHolder> groups = m_upgradeHelper.createSequence(upgrade,
+                                                                     context);
+
+    assertEquals(6, groups.size());
+
+    // grab the configure task out of Hive
+    UpgradeGroupHolder hiveGroup = groups.get(4);
+    assertEquals("HIVE", hiveGroup.name);
+    ConfigureTask configureTask = (ConfigureTask) hiveGroup.items.get(1).getTasks().get(
+        1).getTasks().get(0);
+
+    // now change the thrift port to http to have the 2nd condition invoked
+    Map<String, String> hiveConfigs = new HashMap<String, String>();
+    hiveConfigs.put("hive.server2.transport.mode", "http");
+    hiveConfigs.put("hive.server2.thrift.port", "10001");
+    ConfigurationRequest configurationRequest = new ConfigurationRequest();
+    configurationRequest.setClusterName(cluster.getClusterName());
+    configurationRequest.setType("hive-site");
+    configurationRequest.setVersionTag("version2");
+    configurationRequest.setProperties(hiveConfigs);
+
+    final ClusterRequest clusterRequest = new ClusterRequest(
+        cluster.getClusterId(), cluster.getClusterName(),
+        cluster.getDesiredStackVersion().getStackVersion(), null);
+
+    clusterRequest.setDesiredConfig(Collections.singletonList(configurationRequest));
+    m_managementController.updateClusters(new HashSet<ClusterRequest>() {
+      {
+        add(clusterRequest);
+      }
+    }, null);
+
+    Map<String, String> configProperties = configureTask.getConfigurationChanges(cluster);
+    assertFalse(configProperties.isEmpty());
+    assertEquals(configProperties.get(ConfigureTask.PARAMETER_CONFIG_TYPE), "hive-site");
+
+    String configurationJson = configProperties.get(ConfigureTask.PARAMETER_TRANSFERS);
+    assertNotNull(configurationJson);
+
+    List<ConfigureTask.Transfer> transfers = m_gson.fromJson(configurationJson,
+                                                                              new TypeToken<List<ConfigureTask.Transfer>>() {
+                                                                              }.getType());
+
+    assertEquals(8, transfers.size());
+    assertEquals("copy-key", transfers.get(0).fromKey);
+    assertEquals("copy-key-to", transfers.get(0).toKey);
+
+    assertEquals("move-key", transfers.get(1).fromKey);
+    assertEquals("move-key-to", transfers.get(1).toKey);
+
+    assertEquals("delete-key", transfers.get(2).deleteKey);
+
+    assertEquals("delete-http", transfers.get(3).deleteKey);
+    assertEquals("delete-null-if-value", transfers.get(4).deleteKey);
+    assertEquals("delete-blank-if-key", transfers.get(5).deleteKey);
+    assertEquals("delete-blank-if-type", transfers.get(6).deleteKey);
+    assertEquals("delete-thrift", transfers.get(7).deleteKey);
+  }
+
+
+  @Test
   public void testConfigureTask() throws Exception {
     Map<String, UpgradePack> upgrades = ambariMetaInfo.getUpgradePacks("HDP",
         "2.1.1");
@@ -394,11 +468,19 @@ public class UpgradeHelperTest {
     ConfigureTask configureTask = (ConfigureTask) hiveGroup.items.get(1).getTasks().get(
         0).getTasks().get(0);
 
-    Map<String, String> configProperties = configureTask.getConfigurationProperties(cluster);
+    Map<String, String> configProperties = configureTask.getConfigurationChanges(cluster);
     assertFalse(configProperties.isEmpty());
-    assertEquals( configProperties.get(ConfigureTask.PARAMETER_CONFIG_TYPE), "hive-site");
-    assertEquals( configProperties.get(ConfigureTask.PARAMETER_KEY), "hive.server2.thrift.port");
-    assertEquals( configProperties.get(ConfigureTask.PARAMETER_VALUE), "10010");
+    assertEquals(configProperties.get(ConfigureTask.PARAMETER_CONFIG_TYPE), "hive-site");
+
+    String configurationJson = configProperties.get(ConfigureTask.PARAMETER_KEY_VALUE_PAIRS);
+    assertNotNull(configurationJson);
+
+    List<ConfigureTask.ConfigurationKeyValue> keyValuePairs = m_gson.fromJson(configurationJson,
+        new TypeToken<List<ConfigureTask.ConfigurationKeyValue>>() {
+        }.getType());
+
+    assertEquals("hive.server2.thrift.port", keyValuePairs.get(0).key);
+    assertEquals("10010", keyValuePairs.get(0).value);
 
     // now change the thrift port to http to have the 2nd condition invoked
     Map<String, String> hiveConfigs = new HashMap<String, String>();
@@ -422,11 +504,72 @@ public class UpgradeHelperTest {
     }, null);
 
     // the configure task should now return different properties
-    configProperties = configureTask.getConfigurationProperties(cluster);
+    configProperties = configureTask.getConfigurationChanges(cluster);
     assertFalse(configProperties.isEmpty());
     assertEquals( configProperties.get(ConfigureTask.PARAMETER_CONFIG_TYPE), "hive-site");
-    assertEquals( configProperties.get(ConfigureTask.PARAMETER_KEY), "hive.server2.http.port");
-    assertEquals( configProperties.get(ConfigureTask.PARAMETER_VALUE), "10011");
+
+    configurationJson = configProperties.get(ConfigureTask.PARAMETER_KEY_VALUE_PAIRS);
+    assertNotNull(configurationJson);
+
+    keyValuePairs = m_gson.fromJson(configurationJson,
+        new TypeToken<List<ConfigureTask.ConfigurationKeyValue>>() {
+        }.getType());
+
+    assertEquals("hive.server2.http.port", keyValuePairs.get(0).key);
+    assertEquals("10011", keyValuePairs.get(0).value);
+  }
+
+  @Test
+  public void testConfigureTaskWithMultipleConfigurations() throws Exception {
+    Map<String, UpgradePack> upgrades = ambariMetaInfo.getUpgradePacks("HDP", "2.1.1");
+
+    assertTrue(upgrades.containsKey("upgrade_test"));
+    UpgradePack upgrade = upgrades.get("upgrade_test");
+    assertNotNull(upgrade);
+
+    Cluster cluster = makeCluster();
+
+    UpgradeContext context = new UpgradeContext(m_masterHostResolver, HDP_21, HDP_21,
+        UPGRADE_VERSION, Direction.UPGRADE);
+
+    List<UpgradeGroupHolder> groups = m_upgradeHelper.createSequence(upgrade, context);
+
+    assertEquals(6, groups.size());
+
+    // grab the configure task out of Hive
+    UpgradeGroupHolder hiveGroup = groups.get(4);
+    assertEquals("HIVE", hiveGroup.name);
+    ConfigureTask configureTask = (ConfigureTask) hiveGroup.items.get(1).getTasks().get(1).getTasks().get(0);
+
+    Map<String, String> configProperties = configureTask.getConfigurationChanges(cluster);
+    assertFalse(configProperties.isEmpty());
+    assertEquals(configProperties.get(ConfigureTask.PARAMETER_CONFIG_TYPE), "hive-site");
+
+    String configurationJson = configProperties.get(ConfigureTask.PARAMETER_KEY_VALUE_PAIRS);
+    String transferJson = configProperties.get(ConfigureTask.PARAMETER_TRANSFERS);
+    assertNotNull(configurationJson);
+    assertNotNull(transferJson);
+
+    List<ConfigureTask.ConfigurationKeyValue> keyValuePairs = m_gson.fromJson(configurationJson,
+        new TypeToken<List<ConfigureTask.ConfigurationKeyValue>>() {
+        }.getType());
+
+    List<ConfigureTask.Transfer> transfers = m_gson.fromJson(transferJson,
+        new TypeToken<List<ConfigureTask.Transfer>>() {
+        }.getType());
+
+    assertEquals("fooKey", keyValuePairs.get(0).key);
+    assertEquals("fooValue", keyValuePairs.get(0).value);
+    assertEquals("fooKey2", keyValuePairs.get(1).key);
+    assertEquals("fooValue2", keyValuePairs.get(1).value);
+    assertEquals("fooKey3", keyValuePairs.get(2).key);
+    assertEquals("fooValue3", keyValuePairs.get(2).value);
+
+    assertEquals("copy-key", transfers.get(0).fromKey);
+    assertEquals("copy-key-to", transfers.get(0).toKey);
+
+    assertEquals("move-key", transfers.get(1).fromKey);
+    assertEquals("move-key-to", transfers.get(1).toKey);
   }
 
 
@@ -525,6 +668,84 @@ public class UpgradeHelperTest {
         "This is a manual task with a placeholder of placeholder-rendered-properly",
         manualTask.message);
   }
+
+  @Test
+  public void testUpgradeOrchestrationFullTask() throws Exception {
+    Map<String, UpgradePack> upgrades = ambariMetaInfo.getUpgradePacks("HDP", "2.1.1");
+
+    ServiceInfo si = ambariMetaInfo.getService("HDP", "2.1.1", "ZOOKEEPER");
+    si.setDisplayName("Zk");
+    ComponentInfo ci = si.getComponentByName("ZOOKEEPER_SERVER");
+    ci.setDisplayName("ZooKeeper1 Server2");
+
+    assertTrue(upgrades.containsKey("upgrade_to_new_stack"));
+    UpgradePack upgrade = upgrades.get("upgrade_to_new_stack");
+    assertNotNull(upgrade);
+
+    makeCluster();
+
+    UpgradeContext context = new UpgradeContext(m_masterHostResolver, HDP_21,
+        HDP_21, UPGRADE_VERSION, Direction.UPGRADE);
+
+    List<UpgradeGroupHolder> groups = m_upgradeHelper.createSequence(upgrade, context);
+
+    assertEquals(6, groups.size());
+
+    assertEquals("PRE_CLUSTER", groups.get(0).name);
+    assertEquals("ZOOKEEPER", groups.get(1).name);
+    assertEquals("CORE_MASTER", groups.get(2).name);
+    assertEquals("CORE_SLAVES", groups.get(3).name);
+    assertEquals("HIVE", groups.get(4).name);
+
+    UpgradeGroupHolder holder = groups.get(2);
+    boolean found = false;
+    for (StageWrapper sw : holder.items) {
+      if (sw.getTasksJson().contains("Upgrading your database")) {
+        found = true;
+      }
+    }
+    assertTrue("Expected to find replaced text for Upgrading", found);
+
+    UpgradeGroupHolder group = groups.get(1);
+    // check that the display name is being used
+    assertTrue(group.items.get(1).getText().contains("ZooKeeper1 Server2"));
+    assertEquals(group.items.get(5).getText(), "Service Check Zk");
+
+    group = groups.get(3);
+    assertEquals(8, group.items.size());
+    StageWrapper sw = group.items.get(3);
+    assertEquals("Validate Partial Upgrade", sw.getText());
+    assertEquals(1, sw.getTasks().size());
+    assertEquals(1, sw.getTasks().get(0).getTasks().size());
+    Task t = sw.getTasks().get(0).getTasks().get(0);
+    assertEquals(ManualTask.class, t.getClass());
+    ManualTask mt = (ManualTask) t;
+    assertTrue(mt.message.contains("DataNode and NodeManager"));
+    assertNotNull(mt.structuredOut);
+    assertTrue(mt.structuredOut.contains("DATANODE"));
+    assertTrue(mt.structuredOut.contains("NODEMANAGER"));
+
+    UpgradeGroupHolder postGroup = groups.get(5);
+    assertEquals(postGroup.name, "POST_CLUSTER");
+    assertEquals(postGroup.title, "Finalize Upgrade");
+    assertEquals(4, postGroup.items.size());
+    assertEquals("Confirm Finalize", postGroup.items.get(0).getText());
+    assertEquals("Execute HDFS Finalize", postGroup.items.get(1).getText());
+    assertEquals("Save Cluster State", postGroup.items.get(2).getText());
+    assertEquals(StageWrapper.Type.SERVER_SIDE_ACTION, postGroup.items.get(2).getType());
+    assertEquals("Run On All 2.2.1.0-1234", postGroup.items.get(3).getText());
+
+    assertEquals(1, postGroup.items.get(3).getTasks().size());
+    Set<String> hosts = postGroup.items.get(3).getTasks().get(0).getHosts();
+    assertNotNull(hosts);
+    assertEquals(4, hosts.size());
+
+    assertEquals(4, groups.get(0).items.size());
+    assertEquals(6, groups.get(1).items.size());
+    assertEquals(8, groups.get(2).items.size());
+    assertEquals(8, groups.get(3).items.size());
+  }
+
 
   private Cluster makeCluster() throws AmbariException {
     return makeCluster(true);
@@ -657,6 +878,8 @@ public class UpgradeHelperTest {
 
     return c;
   }
+
+
 
   /**
    *

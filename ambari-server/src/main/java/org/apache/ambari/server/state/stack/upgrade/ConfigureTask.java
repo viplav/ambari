@@ -31,10 +31,15 @@ import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.XmlTransient;
 import javax.xml.bind.annotation.XmlType;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.ambari.server.serveraction.upgrades.ConfigureAction;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Config;
 import org.apache.ambari.server.state.DesiredConfig;
+
+import com.google.gson.Gson;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The {@link ConfigureTask} represents a configuration change. This task can be
@@ -59,15 +64,16 @@ import org.apache.ambari.server.state.DesiredConfig;
  * }
  * </pre>
  *
- * It's also possible to simple set a value directly without a precondition
+ * It's also possible to simple set values directly without a precondition
  * check.
  *
  * <pre>
  * {@code
  * <task xsi:type="configure">
  *   <type>hive-site</type>
- *   <key>hive.server2.thrift.port</key>
- *   <value>10010</value>
+ *   <set key="hive.server2.thrift.port" value="10010"/>
+ *   <set key="foo" value="bar"/>
+ *   <set key="foobar" value="baz"/>
  * </task>
  * }
  * </pre>
@@ -78,28 +84,35 @@ import org.apache.ambari.server.state.DesiredConfig;
 @XmlType(name="configure")
 public class ConfigureTask extends ServerSideActionTask {
 
+  private static Logger LOG = LoggerFactory.getLogger(ConfigureTask.class);
+
   /**
    * The key that represents the configuration type to change (ie hdfs-site).
    */
   public static final String PARAMETER_CONFIG_TYPE = "configure-task-config-type";
 
   /**
-   * The key that represents the configuration key to change (ie
-   * hive.server2.thrift.port)
+   * Setting key/value pairs can be several per task, so they're passed in as a
+   * json-ified list of objects.
    */
-  public static final String PARAMETER_KEY = "configure-task-key";
+  public static final String PARAMETER_KEY_VALUE_PAIRS = "configure-task-key-value-pairs";
 
   /**
-   * The key that represents the configuration value to set on
-   * {@link #PARAMETER_CONFIG_TYPE}/{@link #PARAMETER_KEY}.
-   */
-  public static final String PARAMETER_VALUE = "configure-task-value";
-
-  /**
-   * Transfers can be several per task, so they're passed in as a json-ified list of
-   * objects.
+   * Transfers can be several per task, so they're passed in as a json-ified
+   * list of objects.
    */
   public static final String PARAMETER_TRANSFERS = "configure-task-transfers";
+
+  /**
+   * Replacements can be several per task, so they're passed in as a json-ified list of
+   * objects.
+   */
+  public static final String PARAMETER_REPLACEMENTS = "configure-task-replacements";
+
+  /**
+   * Gson
+   */
+  private Gson m_gson = new Gson();
 
   /**
    * Constructor.
@@ -115,14 +128,8 @@ public class ConfigureTask extends ServerSideActionTask {
   @XmlElement(name="type")
   private String configType;
 
-  @XmlElement(name="key")
-  private String key;
-
-  @XmlElement(name="value")
-  private String value;
-
-  @XmlElement(name="summary")
-  public String summary;
+  @XmlElement(name = "set")
+  private List<ConfigurationKeyValue> keyValuePairs;
 
   @XmlElement(name = "condition")
   private List<Condition> conditions;
@@ -130,6 +137,12 @@ public class ConfigureTask extends ServerSideActionTask {
   @XmlElement(name = "transfer")
   private List<Transfer> transfers;
 
+  @XmlElement(name="replace")
+  private List<Replace> replacements;
+
+  /**
+   * {@inheritDoc}
+   */
   @Override
   public Type getType() {
     return type;
@@ -142,6 +155,29 @@ public class ConfigureTask extends ServerSideActionTask {
     return configType;
   }
 
+  /**
+   * Used for configuration updates that should mask their values from being
+   * printed in plain text.
+   */
+  @XmlAccessorType(XmlAccessType.FIELD)
+  public static class Masked {
+    @XmlAttribute(name = "mask")
+    public boolean mask = false;
+  }
+
+
+  /**
+   * A key/value pair to set in the type specified by {@link ConfigureTask#type}
+   */
+  @XmlAccessorType(XmlAccessType.FIELD)
+  @XmlType(name = "set")
+  public static class ConfigurationKeyValue extends Masked {
+    @XmlAttribute(name = "key")
+    public String key;
+
+    @XmlAttribute(name = "value")
+    public String value;
+  }
 
   /**
    * A conditional element that will only perform the configuration if the
@@ -174,31 +210,84 @@ public class ConfigureTask extends ServerSideActionTask {
    */
   @XmlAccessorType(XmlAccessType.FIELD)
   @XmlType(name = "transfer")
-  public static class Transfer {
+  public static class Transfer extends Masked {
+    /**
+     * The type of operation, such as COPY or DELETE.
+     */
     @XmlAttribute(name = "operation")
     public TransferOperation operation;
 
+    /**
+     * The configuration type to copy or move from.
+     */
     @XmlAttribute(name = "from-type")
     public String fromType;
 
+    /**
+     * The key to copy or move the configuration from.
+     */
     @XmlAttribute(name = "from-key")
     public String fromKey;
 
+    /**
+     * The key to copy the configuration value to.
+     */
     @XmlAttribute(name = "to-key")
     public String toKey;
 
+    /**
+     * The configuration key to delete, or "*" for all.
+     */
     @XmlAttribute(name = "delete-key")
     public String deleteKey;
 
+    /**
+     * If {@code true}, this will ensure that any changed properties are not
+     * removed during a {@link TransferOperation#DELETE}.
+     */
     @XmlAttribute(name = "preserve-edits")
     public boolean preserveEdits = false;
 
+    /**
+     * A default value to use when the configurations don't contain the
+     * {@link #fromKey}.
+     */
     @XmlAttribute(name = "default-value")
     public String defaultValue;
 
+    /**
+     * A data type to convert the configuration value to when the action is
+     * {@link TransferOperation#COPY}.
+     */
+    @XmlAttribute(name = "coerce-to")
+    public TransferCoercionType coerceTo;
+
+    // if the condition is true apply the transfer action
+    // only supported conditional action is DELETE
+    // if-type/if-key == if-value
+    /**
+     * The key to read for the if condition.
+     */
+    @XmlAttribute(name = "if-key")
+    public String ifKey;
+
+    /**
+     * The config type to read for the if condition.
+     */
+    @XmlAttribute(name = "if-type")
+    public String ifType;
+
+    /**
+     * The property value to compare against for the if condition.
+     */
+    @XmlAttribute(name = "if-value")
+    public String ifValue;
+
+    /**
+     * The keys to keep when the action is {@link TransferOperation#DELETE}.
+     */
     @XmlElement(name = "keep-key")
     public List<String> keepKeys = new ArrayList<String>();
-
   }
 
   /**
@@ -231,52 +320,149 @@ public class ConfigureTask extends ServerSideActionTask {
   }
 
   /**
+   * Used to replace strings in a key with other strings.  More complex
+   * scenarios will be possible with regex (when needed)
+   */
+  @XmlAccessorType(XmlAccessType.FIELD)
+  @XmlType(name = "replace")
+  public static class Replace extends Masked {
+    /**
+     * The key name
+     */
+    @XmlAttribute(name="key")
+    public String key;
+
+    /**
+     * The string to find
+     */
+    @XmlAttribute(name="find")
+    public String find;
+
+    /**
+     * The string to replace
+     */
+    @XmlAttribute(name="replace-with")
+    public String replaceWith;
+  }
+
+  /**
+   * @return the replacement tokens, never {@code null}
+   */
+  public List<Replace> getReplacements() {
+    if (null == replacements) {
+      return Collections.emptyList();
+    }
+
+    List<Replace> list = new ArrayList<Replace>();
+    for (Replace r : replacements) {
+      if (null == r.key || null == r.find || null == r.replaceWith) {
+        continue;
+      }
+      list.add(r);
+    }
+
+    return list;
+  }
+
+  /**
    * Gets a map containing the following properties pertaining to the
    * configuration value to change:
    * <ul>
-   * <li>type - the configuration type (ie hdfs-site)</li>
-   * <li>key - the lookup key for the type</li>
-   * <li>value - the value to set the key to</li>
+   * <li>{@link #PARAMETER_CONFIG_TYPE} - the configuration type (ie hdfs-site)</li>
+   * <li>{@link #PARAMETER_KEY_VALUE_PAIRS} - key/value pairs for the
+   * configurations</li>
+   * <li>{@link #PARAMETER_KEY_VALUE_PAIRS} - key/value pairs for the
+   * configurations</li>
+   * <li>{@link #PARAMETER_TRANSFERS} - COPY/MOVE/DELETE changes</li>
+   * <li>{@link #PARAMETER_REPLACEMENTS} - value replacements</li>
    * </ul>
    *
    * @param cluster
    *          the cluster to use when retrieving conditional properties to test
    *          against (not {@code null}).
-   * @return the a map containing the configuration type, key, and value to use
-   *         when updating a configuration property (never {@code null).
-   *         This could potentially be an empty map if no conditions are
-   *         met. Callers should decide how to handle a configuration task
-   *         that is unable to set any configuration values.
+   * @return the a map containing the changes to make. This could potentially be
+   *         an empty map if no conditions are met. Callers should decide how to
+   *         handle a configuration task that is unable to set any configuration
+   *         values.
    */
-  public Map<String, String> getConfigurationProperties(Cluster cluster) {
+  public Map<String, String> getConfigurationChanges(Cluster cluster) {
     Map<String, String> configParameters = new HashMap<String, String>();
 
-    // if there are no conditions then just take the direct values
-    if (null == conditions || conditions.isEmpty()) {
-      configParameters.put(PARAMETER_CONFIG_TYPE, configType);
-      configParameters.put(PARAMETER_KEY, key);
-      configParameters.put(PARAMETER_VALUE, value);
-      return configParameters;
+    // the first matched condition will win; conditions make configuration tasks singular in
+    // the properties that can be set - when there is a condition the task will only contain
+    // conditions
+    if( null != conditions && !conditions.isEmpty() ){
+      for (Condition condition : conditions) {
+        String conditionConfigType = condition.conditionConfigType;
+        String conditionKey = condition.conditionKey;
+        String conditionValue = condition.conditionValue;
+
+        // always add the condition's target type just so that we have one to
+        // return even if none of the conditions match
+        configParameters.put(PARAMETER_CONFIG_TYPE, condition.configType);
+
+        // check the condition; if it passes, set the configuration properties
+        // and break
+        String checkValue = getDesiredConfigurationValue(cluster,
+            conditionConfigType, conditionKey);
+
+        if (conditionValue.equals(checkValue)) {
+          List<ConfigurationKeyValue> configurations = new ArrayList<ConfigurationKeyValue>(1);
+          ConfigurationKeyValue keyValue = new ConfigurationKeyValue();
+          keyValue.key = condition.key;
+          keyValue.value = condition.value;
+          configurations.add(keyValue);
+
+          configParameters.put(ConfigureTask.PARAMETER_KEY_VALUE_PAIRS,
+              m_gson.toJson(configurations));
+
+          return configParameters;
+        }
+      }
     }
 
-    // the first matched condition will win; a single configuration task
-    // should only ever set a single configuration property
-    for (Condition condition : conditions) {
-      String conditionConfigType = condition.conditionConfigType;
-      String conditionKey = condition.conditionKey;
-      String conditionValue = condition.conditionValue;
+    // this task is not a condition task, so process the other elements normally
+    if (null != configType) {
+      configParameters.put(PARAMETER_CONFIG_TYPE, configType);
+    }
 
-      // check the condition; if it passes, set the configuration properties
-      // and break
-      String checkValue = getDesiredConfigurationValue(cluster,
-          conditionConfigType, conditionKey);
+    // for every <set key=foo value=bar/> add it to this list
+    if (null != keyValuePairs && !keyValuePairs.isEmpty()) {
+      configParameters.put(ConfigureTask.PARAMETER_KEY_VALUE_PAIRS,
+          m_gson.toJson(keyValuePairs));
+    }
 
-      if (conditionValue.equals(checkValue)) {
-        configParameters.put(PARAMETER_CONFIG_TYPE, condition.configType);
-        configParameters.put(PARAMETER_KEY, condition.key);
-        configParameters.put(PARAMETER_VALUE, condition.value);
-        break;
+    // transfers
+    if (null != transfers && !transfers.isEmpty()) {
+
+      List<Transfer> allowedTransfers = new ArrayList<Transfer>();
+      for (Transfer transfer : transfers) {
+        if (transfer.operation == TransferOperation.DELETE) {
+          if (StringUtils.isNotBlank(transfer.ifKey) &&
+              StringUtils.isNotBlank(transfer.ifType) &&
+              transfer.ifValue != null) {
+
+            String ifConfigType = transfer.ifType;
+            String ifKey = transfer.ifKey;
+            String ifValue = transfer.ifValue;
+
+            String checkValue = getDesiredConfigurationValue(cluster, ifConfigType, ifKey);
+            if (!ifValue.toLowerCase().equals(StringUtils.lowerCase(checkValue))) {
+              // skip adding
+              LOG.info("Skipping property delete for {}/{} as the value {} for {}/{} is not equal to {}",
+                       this.getConfigType(), transfer.deleteKey, checkValue, ifConfigType, ifKey, ifValue);
+              continue;
+            }
+          }
+        }
+        allowedTransfers.add(transfer);
       }
+      configParameters.put(ConfigureTask.PARAMETER_TRANSFERS, m_gson.toJson(allowedTransfers));
+    }
+
+    // replacements
+    if( null != replacements && !replacements.isEmpty() ){
+      configParameters.put(ConfigureTask.PARAMETER_REPLACEMENTS, m_gson.toJson(replacements));
     }
 
     return configParameters;
@@ -309,4 +495,5 @@ public class ConfigureTask extends ServerSideActionTask {
 
     return config.getProperties().get(propertyKey);
   }
+
 }

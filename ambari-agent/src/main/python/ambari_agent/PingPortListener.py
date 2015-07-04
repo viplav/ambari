@@ -20,12 +20,11 @@ limitations under the License.
 
 import sys
 import logging
-import AmbariConfig
 import threading
 import socket
 import subprocess
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 FUSER_CMD = "fuser {0}/tcp 2>/dev/null | awk '{1}'"
 PSPF_CMD = "ps -fp {0}"
 PORT_IN_USE_MESSAGE = "Could not open port {0} because port already used by another process:\n{1}"

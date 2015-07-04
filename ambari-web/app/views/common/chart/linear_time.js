@@ -144,9 +144,19 @@ App.ChartLinearTimeView = Ember.View.extend({
    */
   height: 150,
 
+  /**
+   * @type {string}
+   * @default null
+   */
+  displayUnit: null,
+
   didInsertElement: function () {
     this.loadData();
     this.registerGraph();
+    App.tooltip(this.$("[rel='ZoomInTooltip']"), {
+      placement: 'left',
+      template: '<div class="tooltip"><div class="tooltip-arrow"></div><div class="tooltip-inner graph-tooltip"></div></div>'
+    });
   },
 
   registerGraph: function() {
@@ -159,13 +169,17 @@ App.ChartLinearTimeView = Ember.View.extend({
   },
 
   loadData: function() {
-    App.ajax.send({
-      name: this.get('ajaxIndex'),
-      sender: this,
-      data: this.getDataForAjaxRequest(),
-      success: '_refreshGraph',
-      error: 'loadDataErrorCallback'
-    });
+    if (this.get('loadGroup')) {
+      App.ChartLinearTimeView.LoadAggregator.add(this, this.get('loadGroup'));
+    } else {
+      App.ajax.send({
+        name: this.get('ajaxIndex'),
+        sender: this,
+        data: this.getDataForAjaxRequest(),
+        success: '_refreshGraph',
+        error: 'loadDataErrorCallback'
+      });
+    }
   },
 
   getDataForAjaxRequest: function() {
@@ -206,15 +220,18 @@ App.ChartLinearTimeView = Ember.View.extend({
    * @param type  Can be any of 'warn', 'error', 'info', 'success'
    * @param title Bolded title for the message
    * @param message String representing the message
+   * @param tooltip Tooltip content
    * @type: Function
    */
-  _showMessage: function(type, title, message) {
+  _showMessage: function(type, title, message, tooltip) {
     var chartOverlay = '#' + this.get('id');
     var chartOverlayId = chartOverlay + '-chart';
     var chartOverlayY = chartOverlay + '-yaxis';
     var chartOverlayX = chartOverlay + '-xaxis';
     var chartOverlayLegend = chartOverlay + '-legend';
     var chartOverlayTimeline = chartOverlay + '-timeline';
+    var tooltipTitle = tooltip ? tooltip : Em.I18n.t('graphs.tooltip.title');
+    var chartContent = '';
     if (this.get('isPopup')) {
       chartOverlayId += this.get('popupSuffix');
       chartOverlayY += this.get('popupSuffix');
@@ -238,7 +255,13 @@ App.ChartLinearTimeView = Ember.View.extend({
         break;
     }
     $(chartOverlayId+', '+chartOverlayY+', '+chartOverlayX+', '+chartOverlayLegend+', '+chartOverlayTimeline).html('');
-    $(chartOverlayId).append('<div class=\"alert '+typeClass+'\"><strong>'+title+'</strong> '+message+'</div>');
+    chartContent += '<div class=\"alert ' + typeClass + '\">';
+    if (title) {
+      chartContent += '<strong>' + title + '</strong> ';
+    }
+    chartContent += message + '</div>';
+    $(chartOverlayId).append(chartContent);
+    $(chartOverlayId).parent().attr('data-original-title', tooltipTitle);
   },
 
   /**
@@ -363,17 +386,19 @@ App.ChartLinearTimeView = Ember.View.extend({
     if (this.checkSeries(seriesData)) {
       // Check container exists (may be not, if we go to another page and wait while graphs loading)
       if (graph_container.length) {
+        var container = $("#" + this.get('id') + "-container");
         this.draw(seriesData);
         this.set('hasData', true);
           //move yAxis value lower to make them fully visible
-        $("#" + this.id + "-container").find('.y_axis text').attr('y',8);
+        container.find('.y_axis text').attr('y', 8);
+        container.attr('data-original-title', Em.I18n.t('graphs.tooltip.title'));
       }
     }
     else {
       this.set('isReady', true);
       //if Axis X time interval is default(60 minutes)
       if(this.get('timeUnitSeconds') === 3600){
-        this._showMessage('info', this.t('graphs.noData.title'), this.t('graphs.noData.message'));
+        this._showMessage('info', null, this.t('graphs.noData.message'), this.t('graphs.noData.tooltip.title'));
         this.set('hasData', false);
       }
       else {
@@ -451,44 +476,47 @@ App.ChartLinearTimeView = Ember.View.extend({
     var palette = new Rickshaw.Color.Palette({ scheme: 'munin'});
     // Format series for display
     var series_min_length = 100000000;
-    data.forEach(function (series, index) {
+    data.forEach(function (series) {
+      var displayUnit = self.get('displayUnit');
       var seriesColor = self.colorForSeries(series);
-      if (seriesColor == null) {
+      if (Em.isNone(seriesColor)) {
         seriesColor = palette.color();
       }
       series.color = seriesColor;
       series.stroke = 'rgba(0,0,0,0.3)';
-      if (this.get('isPopup')) {
+      if (self.get('isPopup')) {
         // calculate statistic data for popup legend
         var avg = 0;
         var min = Number.MAX_VALUE;
         var max = Number.MIN_VALUE;
         for (var i = 0; i < series.data.length; i++) {
           avg += series.data[i]['y'];
-          if (series.data[i]['y'] < min) {
-            min = series.data[i]['y'];
-          }
-          else {
-            if (series.data[i]['y'] > max) {
-              max = series.data[i]['y'];
+          if (!Em.isNone(series.data[i]['y'])) {
+            if (series.data[i]['y'] < min) {
+              min = series.data[i]['y'];
             }
           }
+          if (series.data[i]['y'] > max) {
+            max = series.data[i]['y'];
+          }
         }
-        series.name = string_utils.pad(series.name, 30, '&nbsp;', 2) +
-                      string_utils.pad('min', 5, '&nbsp;', 3) +
-                      string_utils.pad(this.get('yAxisFormatter')(min), 12, '&nbsp;', 3) +
-                      string_utils.pad('avg', 5, '&nbsp;', 3) +
-                      string_utils.pad(this.get('yAxisFormatter')(avg/series.data.length), 12, '&nbsp;', 3) +
-                      string_utils.pad('max', 12, '&nbsp;', 3) +
-                      string_utils.pad(this.get('yAxisFormatter')(max), 5, '&nbsp;', 3);
+
+
+        series.name = string_utils.pad(series.name.length > 36 ? series.name.substr(0, 36) + '...' : series.name, 40, '&nbsp;', 2) + '|&nbsp;' +
+        string_utils.pad('min', 5, '&nbsp;', 3) +
+        string_utils.pad(self.get('yAxisFormatter')(min), 12, '&nbsp;', 3) +
+        string_utils.pad('avg', 5, '&nbsp;', 3) +
+        string_utils.pad(self.get('yAxisFormatter')(avg / series.data.compact().length), 12, '&nbsp;', 3) +
+        string_utils.pad('max', 12, '&nbsp;', 3) +
+        string_utils.pad(self.get('yAxisFormatter')(max), 5, '&nbsp;', 3);
       }
       if (series.data.length < series_min_length) {
         series_min_length = series.data.length;
       }
-    }.bind(this));
+    });
 
     // All series should have equal length
-    data.forEach(function(series, index) {
+    data.forEach(function(series) {
       if (series.data.length > series_min_length) {
         series.data.length = series_min_length;
       }
@@ -561,6 +589,7 @@ App.ChartLinearTimeView = Ember.View.extend({
 
     new Rickshaw.Graph.Axis.Y({
       tickFormat: this.yAxisFormatter,
+      pixelsPerTick: (isPopup ? 75 : 40),
       element: yaxisElement,
       orientation: (isPopup ? 'left' : 'right'),
       graph: _graph
@@ -568,7 +597,8 @@ App.ChartLinearTimeView = Ember.View.extend({
 
     var legend = new Rickshaw.Graph.Legend({
       graph: _graph,
-      element: legendElement
+      element: legendElement,
+      description: self.get('description')
     });
 
     new Rickshaw.Graph.Behavior.Series.Toggle({
@@ -673,7 +703,7 @@ App.ChartLinearTimeView = Ember.View.extend({
   },
 
   showGraphInPopup: function() {
-    if(!this.get('hasData')) {
+    if(!this.get('hasData') || this.get('isPreview')) {
       return;
     }
 
@@ -775,7 +805,6 @@ App.ChartLinearTimeView = Ember.View.extend({
       reloadGraphByTime: function(index) {
         this.set('currentTimeIndex', index);
         self.set('currentTimeIndex', index);
-        self.loadData();
       },
       currentTimeIndex: self.get('currentTimeIndex'),
       currentTimeState: function() {
@@ -787,6 +816,9 @@ App.ChartLinearTimeView = Ember.View.extend({
       self.set('isPopupReady', false);
     });
   },
+  reloadGraphByTime: function () {
+    this.loadData();
+  }.observes('timeUnitSeconds'),
   timeStates: [
     {name: Em.I18n.t('graphs.timeRange.hour'), seconds: 3600},
     {name: Em.I18n.t('graphs.timeRange.twoHours'), seconds: 7200},
@@ -845,6 +877,20 @@ App.ChartLinearTimeView.PercentageFormatter = function (percentage) {
     value = '0 %';
   } else {
     value = value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '') + '%';
+  }
+  return value;
+};
+
+/**
+ * A formatter which will turn a number into percentage display like '42%'
+ *
+ * @type {Function}
+ */
+App.ChartLinearTimeView.DisplayUnitFormatter = function (value, displayUnit) {
+  if (!value || value.length === 0) {
+    value = '0 ' + displayUnit;
+  } else {
+    value = value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '') + " " + displayUnit;
   }
   return value;
 };
@@ -991,3 +1037,139 @@ Rickshaw.Graph.Renderer.Stack.prototype.seriesPathFactory = function() {
     .defined(function(d) { return d.y!=null; })
     .interpolate(this.graph.interpolation).tension(this.tension);
 };
+
+
+/**
+ * aggregate requests to load metrics by component name
+ * requests can be added via add method
+ * input example:
+ * {
+ *   data: request,
+ *   context: this,
+ *   startCallName: this.getServiceComponentMetrics,
+ *   successCallback: this.getMetricsSuccessCallback,
+ *   completeCallback: function () {
+ *     requestCounter--;
+ *     if (requestCounter === 0) this.onMetricsLoaded();
+ *   }
+ * }
+ * @type {Em.Object}
+ */
+App.ChartLinearTimeView.LoadAggregator = Em.Object.create({
+  /**
+   * @type {Array}
+   */
+  requests: [],
+
+  /**
+   * @type {number|null}
+   */
+  timeoutId: null,
+
+  /**
+   * time interval within which calls get collected
+   * @type {number}
+   * @const
+   */
+  BULK_INTERVAL: 1000,
+
+  /**
+   * add request
+   * every {{BULK_INTERVAL}} requests get collected, aggregated and sent to server
+   *
+   * @param {object} context
+   * @param {object} requestData
+   */
+  add: function (context, requestData) {
+    var self = this;
+
+    requestData.context = context;
+    this.get('requests').push(requestData);
+    if (Em.isNone(this.get('timeoutId'))) {
+      this.set('timeoutId', window.setTimeout(function () {
+        self.runRequests(self.get('requests'));
+        self.get('requests').clear();
+        clearTimeout(self.get('timeoutId'));
+        self.set('timeoutId', null);
+      }, this.get('BULK_INTERVAL')));
+    }
+  },
+
+  /**
+   * return requests which grouped into bulks
+   * @param {Array} requests
+   * @returns {object} bulks
+   */
+  groupRequests: function (requests) {
+    var bulks = {};
+
+    requests.forEach(function (request) {
+      var id = request.name;
+
+      if (Em.isNone(bulks[id])) {
+        bulks[id] = {
+          name: request.name,
+          fields: request.fields,
+          context: request.context
+        };
+        bulks[id].subRequests = [{
+          context: request.context
+        }];
+      } else {
+        bulks[id].fields.pushObjects(request.fields);
+        bulks[id].subRequests.push({
+          context: request.context
+        });
+      }
+    }, this);
+    return bulks;
+  },
+
+  /**
+   * run aggregated requests
+   * @param {Array} requests
+   */
+  runRequests: function (requests) {
+    var bulks = this.groupRequests(requests);
+    var self = this;
+
+    for (var id in bulks) {
+      (function (_request) {
+        var fields = self.formatRequestData(_request);
+        var hostName = (_request.context.get('content')) ? _request.context.get('content.hostName') : "";
+
+        App.ajax.send({
+          name: _request.name,
+          sender: _request.context,
+          data: {
+            fields: fields,
+            hostName: hostName
+          }
+        }).done(function (response) {
+          _request.subRequests.forEach(function (subRequest) {
+            subRequest.context._refreshGraph.call(subRequest.context, response);
+          }, this);
+        }).fail(function (jqXHR, textStatus, errorThrown) {
+          _request.subRequests.forEach(function (subRequest) {
+            subRequest.context.loadDataErrorCallback.call(subRequest.context, jqXHR, textStatus, errorThrown );
+          }, this);
+        });
+      })(bulks[id]);
+    }
+  },
+
+  /**
+   *
+   * @param {object} request
+   * @returns {number[]}
+   */
+  formatRequestData: function (request) {
+    var toSeconds = Math.round(App.dateTime() / 1000);
+    var timeUnit = request.context.get('timeUnitSeconds');
+    var fields = request.fields.uniq().map(function (field) {
+      return field + "[" + (toSeconds - timeUnit) + "," + toSeconds + "," + 15 + "]";
+    });
+
+    return fields.join(",");
+  }
+});

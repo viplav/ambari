@@ -29,6 +29,7 @@
       {{#if serviceVersion.isCurrent}}
         <div class="current-label">
           <span class="label label-success label-current icon-ok" data-toggle="tooltip" {{translateAttr title="common.current"}}>
+            <i {{bindAttr class=":icon-refresh :restart-required-service serviceVersion.isRestartRequired::hidden"}}></i>
           </span>
         </div>
       {{/if}}
@@ -39,7 +40,7 @@
         <span class="label label-info">{{serviceVersion.versionText}}</span> <span class="pull-right"><strong>{{serviceVersion.configGroupName}}</strong></span>
         <span class="stack">{{serviceVersion.stackVersion}}</span>
         <div class="date"><strong>{{serviceVersion.author}}</strong>&nbsp;{{t dashboard.configHistory.info-bar.authoredOn}}&nbsp;<strong>{{serviceVersion.createdDate}}</strong></div>
-        <div class="notes">{{{serviceVersion.fullNotes}}}</div>
+        <div class="notes">{{serviceVersion.fullNotes}}</div>
       </div>
       <div class="version-operations-buttons">
         <button {{bindAttr disabled="serviceVersion.disabledActionAttr.view" class=":btn serviceVersion.isDisplayed:not-allowed-cursor" title="serviceVersion.disabledActionMessages.view"}} {{action doAction serviceVersion view.actionTypes.SWITCH target="view.parentView"}}><i class="icon-search"></i>&nbsp;{{t common.view}}</button>

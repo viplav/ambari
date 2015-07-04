@@ -7,7 +7,7 @@
       "widgetLayoutInfo": [
         {
           "widget_name": "Reads and Writes",
-          "description": "This widget shows all the read requests and write requests on all regions for a RegionServer",
+          "description": "Count of read and write requests on all regions in the cluster.",
           "widget_type": "GRAPH",
           "is_visible": true,
           "metrics": [
@@ -59,14 +59,13 @@
             }
           ],
           "properties": {
-            "display_unit": "Requests",
             "graph_type": "LINE",
             "time_range": "1"
           }
         },
         {
           "widget_name": "Read Latency",
-          "description": "Widget shows 95% Read Latency",
+          "description": "maximum of 95% read latency.",
           "widget_type": "GRAPH",
           "is_visible": true,
           "metrics": [
@@ -101,7 +100,7 @@
         },
         {
           "widget_name": "Write Latency",
-          "description": "This widget shows 95th percentile of the write latency.",
+          "description": "maximum of 95% write latency.",
           "widget_type": "GRAPH",
           "is_visible": true,
           "metrics": [
@@ -156,7 +155,7 @@
         },
         {
           "widget_name": "Open Connections",
-          "description": "This widget shows number of current open connections",
+          "description": "Count of open connections across all RegionServer. This is indicative of RegionServer load in the cluster.",
           "widget_type": "GRAPH",
           "is_visible": true,
           "metrics": [
@@ -175,13 +174,13 @@
             }
           ],
           "properties": {
-            "display_unit": "Connections",
             "graph_type": "LINE",
             "time_range": "1"
           }
         },
         {
           "widget_name": "Request Handlers",
+          "description": "Count of Active handlers vs count of calls waiting in the general queue.",
           "widget_type": "GRAPH",
           "is_visible": true,
           "metrics": [
@@ -215,7 +214,7 @@
         },
         {
           "widget_name": "Files Local",
-          "description": "This widget shows weighted average for local files.",
+          "description": "Average percentage of local files to RegionServer in the cluster.",
           "widget_type": "NUMBER",
           "is_visible": true,
           "metrics": [
@@ -240,7 +239,7 @@
         },
         {
           "widget_name": "Blocked Updates",
-          "description": "Number of milliseconds updates have been blocked so the memstore can be flushed",
+          "description": "Number of milliseconds updates have been blocked so the memstore can be flushed.",
           "widget_type": "GRAPH",
           "is_visible": true,
           "metrics": [
@@ -265,7 +264,7 @@
         },
         {
           "widget_name": "Cluster CPU",
-          "description": "ReqionServer widget for CPU utilization",
+          "description": "Percentage of CPU utilized across all RegionServer hosts.",
           "widget_type": "GRAPH",
           "is_visible": true,
           "metrics": [
@@ -302,8 +301,8 @@
           ],
           "values": [
             {
-              "name": "ReqionServer widget for CPU utilization",
-              "value": "${(cpu_system._sum + cpu_user._sum + cpu_nice._sum)/(cpu_system._sum + cpu_user._sum + cpu_nice._sum + cpu_idle._sum + cpu_wio._sum)}"
+              "name": "CPU utilization",
+              "value": "${((cpu_system._sum + cpu_user._sum + cpu_nice._sum)/(cpu_system._sum + cpu_user._sum + cpu_nice._sum + cpu_idle._sum + cpu_wio._sum)) * 100}"
             }
           ],
           "properties": {
@@ -314,7 +313,7 @@
         },
         {
           "widget_name": "Cluster Network",
-          "description": "ReqionServer widget for network utilization",
+          "description": "Average of Network IO utilized across all RegionServer hosts.",
           "widget_type": "GRAPH",
           "is_visible": true,
           "metrics": [
@@ -348,30 +347,35 @@
         },
         {
           "widget_name": "Cluster Disk",
-          "description": "ReqionServer widget for Disk utilization",
+          "description": "Sum of disk throughput for all RegionServer hosts.",
           "widget_type": "GRAPH",
           "is_visible": true,
           "metrics": [
             {
-              "name": "disk_free._sum",
-              "metric_path": "metrics/disk/disk_free._sum",
+              "name": "read_bps._sum",
+              "metric_path": "metrics/disk/read_bps._sum",
               "service_name": "HBASE",
               "component_name": "HBASE_REGIONSERVER"
             },
             {
-              "name": "disk_total._sum",
-              "metric_path": "metrics/disk/disk_total._sum",
+              "name": "write_bps._sum",
+              "metric_path": "metrics/disk/write_bps._sum",
               "service_name": "HBASE",
               "component_name": "HBASE_REGIONSERVER"
             }
           ],
           "values": [
             {
-              "name": "Disk Utlization",
-              "value": "${(disk_total._sum - disk_free._sum)/disk_total._sum}"
+              "name": "Read throughput",
+              "value": "${read_bps._sum/1048576}"
+            },
+            {
+              "name": "Write throughput",
+              "value": "${write_bps._sum/1048576}"
             }
           ],
           "properties": {
+            "display_unit": "Mbps",
             "graph_type": "LINE",
             "time_range": "1"
           }

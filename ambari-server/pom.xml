@@ -36,9 +36,11 @@
     <ambari_commons.install.dir>/usr/lib/ambari-server/lib/ambari_commons</ambari_commons.install.dir>
     <resource_management.install.dir>/usr/lib/ambari-server/lib/resource_management</resource_management.install.dir>
     <jinja.install.dir>/usr/lib/ambari-server/lib/ambari_jinja2</jinja.install.dir>
+    <simplejson.install.dir>/usr/lib/ambari-server/lib/ambari_simplejson</simplejson.install.dir>
     <ambari-web-dir>${basedir}/../ambari-web/public</ambari-web-dir>
     <ambari-admin-dir>${basedir}/../ambari-admin</ambari-admin-dir>
     <contrib-views-dir>${basedir}/../contrib/views</contrib-views-dir>
+    <powermock.version>1.5</powermock.version>
   </properties>
   <build>
     <plugins>
@@ -280,6 +282,7 @@
           <defaultDirmode>755</defaultDirmode>
           <defaultUsername>root</defaultUsername>
           <defaultGroupname>root</defaultGroupname>
+          <needarch>x86_64</needarch>
           <mappings>
             <mapping>
               <directory>/usr/lib/ambari-server</directory>
@@ -339,7 +342,18 @@
                 </source>
               </sources>
             </mapping>
-              <mapping>
+            <mapping>
+              <directory>${simplejson.install.dir}</directory>
+              <filemode>755</filemode>
+              <username>root</username>
+              <groupname>root</groupname>
+              <sources>
+                <source>
+                  <location>${project.basedir}/../ambari-common/src/main/python/ambari_simplejson</location>
+                </source>
+              </sources>
+            </mapping>
+            <mapping>
               <directory>/usr/sbin</directory>
               <filemode>755</filemode>
               <username>root</username>
@@ -387,6 +401,7 @@
             </mapping>
             <mapping>
               <directory>/var/lib/ambari-server/</directory>
+              <configuration>true</configuration>
               <filemode>700</filemode>
               <username>root</username>
               <groupname>root</groupname>
@@ -1103,6 +1118,17 @@
                 <group>root</group>
               </mapper>
             </data>
+            <data>
+              <src>${project.basedir}/../ambari-common/src/main/python/ambari_simplejson</src>
+              <type>directory</type>
+              <mapper>
+                <type>perm</type>
+                <prefix>${simplejson.install.dir}</prefix>
+                <filemode>755</filemode>
+                <user>root</user>
+                <group>root</group>
+              </mapper>
+            </data>
           </dataSet>
         </configuration>
       </plugin>
@@ -1213,6 +1239,7 @@
                 <copy todir="${ambari-admin-dir}/target" flatten="true">
                   <fileset dir="${contrib-views-dir}">
                     <include name="*/target/*jar" />
+                    <exclude name="**/ambari-views-utils*jar" />
                   </fileset>
                 </copy>
               </target>
@@ -1439,6 +1466,11 @@
       <artifactId>commons-csv</artifactId>
     </dependency>
     <dependency>
+      <groupId>uk.com.robust-it</groupId>
+      <artifactId>cloning</artifactId>
+      <version>1.9.2</version>
+    </dependency>
+    <dependency>
       <groupId>com.google.inject.extensions</groupId>
       <artifactId>guice-assistedinject</artifactId>
     </dependency>
@@ -1458,6 +1490,12 @@
     <dependency>
       <groupId>org.apache.derby</groupId>
       <artifactId>derby</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.derby</groupId>
+      <artifactId>derbytools</artifactId>
+      <version>10.11.1.1</version>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.springframework.security</groupId>
@@ -1558,6 +1596,10 @@
     </dependency>
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
+      <artifactId>jetty-servlets</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.jetty</groupId>
       <artifactId>jetty-webapp</artifactId>
     </dependency>
     <!--jsp support for jetty -->
@@ -1605,7 +1647,7 @@
     </dependency>
     <dependency>
       <groupId>javax.servlet</groupId>
-      <artifactId>servlet-api</artifactId>
+      <artifactId>javax.servlet-api</artifactId>
     </dependency>
     <dependency>
       <groupId>com.sun.jersey</groupId>
@@ -1687,25 +1729,31 @@
     <dependency>
       <groupId>org.powermock</groupId>
       <artifactId>powermock-core</artifactId>
-      <version>1.5</version>
+      <version>${powermock.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.powermock</groupId>
       <artifactId>powermock-reflect</artifactId>
-      <version>1.5</version>
+      <version>${powermock.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.powermock</groupId>
       <artifactId>powermock-api-easymock</artifactId>
-      <version>1.5</version>
+      <version>${powermock.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.powermock</groupId>
       <artifactId>powermock-module-junit4</artifactId>
-      <version>1.5</version>
+      <version>${powermock.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.powermock</groupId>
+      <artifactId>powermock-api-mockito</artifactId>
+      <version>1.4.9</version>
       <scope>test</scope>
     </dependency>
     <dependency>

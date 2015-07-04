@@ -247,6 +247,7 @@
             </package>
             <package>
               <name>mysql-connector-java</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
           </packages>
         </osSpecific>
@@ -255,6 +256,7 @@
           <packages>
             <package>
               <name>mysql</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
           </packages>
         </osSpecific>
@@ -263,6 +265,20 @@
           <packages>
             <package>
               <name>mysql-server</name>
+              <skipUpgrade>true</skipUpgrade>
+            </package>
+          </packages>
+        </osSpecific>
+        <osSpecific>
+          <osFamily>redhat7</osFamily>
+          <packages>
+            <package>
+              <name>mysql-community-release</name>
+              <skipUpgrade>true</skipUpgrade>
+            </package>
+            <package>
+              <name>mysql-community-server</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
           </packages>
         </osSpecific>
@@ -271,6 +287,7 @@
           <packages>
             <package>
               <name>mysql-client</name>
+              <skipUpgrade>true</skipUpgrade>
             </package>
           </packages>
         </osSpecific>
@@ -279,7 +296,7 @@
       <commandScript>
         <script>scripts/service_check.py</script>
         <scriptType>PYTHON</scriptType>
-        <timeout>120</timeout>
+        <timeout>300</timeout>
       </commandScript>
 
       <requiredServices>
@@ -295,6 +312,9 @@
         <config-type>webhcat-site</config-type>
         <config-type>webhcat-env</config-type>
         <config-type>ranger-hive-plugin-properties</config-type>
+        <config-type>ranger-hive-audit</config-type>
+        <config-type>ranger-hive-policymgr-ssl</config-type>
+        <config-type>ranger-hive-security</config-type>
       </configuration-dependencies>
     </service>
   </services>

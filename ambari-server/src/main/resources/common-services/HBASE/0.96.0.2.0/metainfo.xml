@@ -32,6 +32,7 @@
           <category>MASTER</category>
           <cardinality>1+</cardinality>
           <versionAdvertised>true</versionAdvertised>
+          <timelineAppid>HBASE</timelineAppid>
           <dependencies>
             <dependency>
               <name>HDFS/HDFS_CLIENT</name>
@@ -72,6 +73,7 @@
           <category>SLAVE</category>
           <cardinality>1+</cardinality>
           <versionAdvertised>true</versionAdvertised>
+          <timelineAppid>HBASE</timelineAppid>
           <commandScript>
             <script>scripts/hbase_regionserver.py</script>
             <scriptType>PYTHON</scriptType>
@@ -136,11 +138,15 @@
       </requiredServices>
 
       <configuration-dependencies>
+        <config-type>core-site</config-type> <!-- hbase puts core-site in it's folder -->
         <config-type>hbase-policy</config-type>
         <config-type>hbase-site</config-type>
         <config-type>hbase-env</config-type>
         <config-type>hbase-log4j</config-type>
         <config-type>ranger-hbase-plugin-properties</config-type>
+        <config-type>ranger-hbase-audit</config-type>
+        <config-type>ranger-hbase-policymgr-ssl</config-type>
+        <config-type>ranger-hbase-security</config-type>
       </configuration-dependencies>
 
     </service>

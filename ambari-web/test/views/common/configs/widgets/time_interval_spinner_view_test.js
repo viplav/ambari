@@ -26,13 +26,14 @@ describe('App.TimeIntervalSpinnerView', function () {
       controller: Em.Object.create({
         removeCurrentFromDependentList: Em.K
       }),
-      initPopover: Em.K,
-      setProperties: Em.K
+      initPopover: Em.K
     });
+    sinon.stub(Em.run, 'once', Em.K);
   });
 
   afterEach(function () {
     view.destroy();
+    Em.run.once.restore();
   });
 
   describe('#generateWidgetValue', function () {
@@ -129,9 +130,10 @@ describe('App.TimeIntervalSpinnerView', function () {
 
   describe('#parseIncrement', function () {
 
-    var createProperty = function (widgetUnits, configPropertyUnits, incrementStep, value) {
+    var createProperty = function (widgetUnits, configPropertyUnits, incrementStep, value, min, max) {
       return Em.Object.create({
         value: value,
+        isValid: true,
         stackConfigProperty: Em.Object.create({
           widget: {
             units: [
@@ -140,8 +142,8 @@ describe('App.TimeIntervalSpinnerView', function () {
           },
           valueAttributes: {
             unit: configPropertyUnits,
-            minimum: 1,
-            maximum: 2,
+            minimum: min,
+            maximum: max,
             increment_step: incrementStep
           }
         })
@@ -151,7 +153,7 @@ describe('App.TimeIntervalSpinnerView', function () {
     Em.A([
         {
           input: "120000",
-          config: createProperty("minutes,seconds", "milliseconds", 10000, "120000"),
+          config: createProperty("minutes,seconds", "milliseconds", 10000, "120000", 0, 240000),
           e: [
             { label: 'Minutes', value: 2, incrementStep: 1, enabled: true},
             { label: 'Seconds', value: 0, incrementStep: 10, enabled: true}
@@ -159,7 +161,7 @@ describe('App.TimeIntervalSpinnerView', function () {
         },
         {
           input: "120000",
-          config: createProperty("minutes,seconds", "milliseconds", 60000, "120000"),
+          config: createProperty("minutes,seconds", "milliseconds", 60000, "120000", "0", "240000"),
           e: [
             { label: 'Minutes', value: 2, incrementStep: 1, enabled: true},
             { label: 'Seconds', value: 0, incrementStep: 60, enabled: false}
@@ -184,6 +186,7 @@ describe('App.TimeIntervalSpinnerView', function () {
         {
           config: Em.Object.create({
             value: "540",
+            isValid: true,
             stackConfigProperty: Em.Object.create({
               widget: {
                 units: [
@@ -201,6 +204,7 @@ describe('App.TimeIntervalSpinnerView', function () {
         {
           config: Em.Object.create({
             value: "86460",
+            isValid: true,
             stackConfigProperty: Em.Object.create({
               widget: {
                 units: [
@@ -248,10 +252,23 @@ describe('App.TimeIntervalSpinnerView', function () {
     var stackConfigProperty = null;
 
     beforeEach(function() {
-      view.set('config', {});
-      stackConfigProperty = App.StackConfigProperty.createRecord({name: 'p1', valueAttributes: {minimum: 1, maximum: 10, increment_step: 4, type: 'int'}});
+      view.set('config', Em.Object.create({}));
+      stackConfigProperty = App.StackConfigProperty.createRecord({
+        name: 'p1', valueAttributes: {
+          minimum: 1, maximum: 10, increment_step: 4, type: 'int', unit: 'seconds'
+        },
+        widget: {
+          units: [
+            {
+              'unit-name': 'hours,minutes'
+            }
+          ]
+        }
+      });
       view.set('config.stackConfigProperty', stackConfigProperty);
       view.set('config.isValid', true);
+      view.set('maxValue', [{"value":10,"type":"hours","minValue":0,"maxValue":10,"incrementStep":1,"enabled":true},{"value":0,"type":"minutes","minValue":0,"maxValue":59,"incrementStep":1,"enabled":true}]);
+      view.set('minValue', [{"value":0,"type":"hours","minValue":0,"maxValue":23,"incrementStep":1,"enabled":true},{"value":10,"type":"minutes","minValue":0,"maxValue":59,"incrementStep":1,"enabled":true}]);
     });
 
     it ('fail by config validation', function() {
@@ -272,11 +289,15 @@ describe('App.TimeIntervalSpinnerView', function () {
     it ('fail: to large', function() {
       view.set('config.value', 12);
       expect(view.isValueCompatibleWithWidget()).to.be.false;
+      expect(view.get('warnMessage')).to.have.property('length').that.is.least(1);
+      expect(view.get('issueMessage')).to.have.property('length').that.is.least(1);
     });
 
     it ('fail: to small', function() {
       view.set('config.value', 0);
       expect(view.isValueCompatibleWithWidget()).to.be.false;
+      expect(view.get('warnMessage')).to.have.property('length').that.is.least(1);
+      expect(view.get('issueMessage')).to.have.property('length').that.is.least(1);
     });
 
     it ('fail: wrong step', function() {
@@ -288,7 +309,102 @@ describe('App.TimeIntervalSpinnerView', function () {
     it ('ok', function() {
       view.set('config.value', 4);
       expect(view.isValueCompatibleWithWidget()).to.be.true;
+      expect(view.get('warnMessage')).to.equal('');
+      expect(view.get('issueMessage')).to.equal('');
     });
   });
 
+  describe('#showAsTextBox', function() {
+    Em.A([
+      {
+        config: App.ServiceConfigProperty.create({
+          value: "600",
+          isValid: true,
+          stackConfigProperty: Em.Object.create({
+            widget: {
+              units: [
+                { unit: "hours,minutes" }
+              ]
+            },
+            valueAttributes: {type: "int", maximum: "86400", minimum: "600", unit: "seconds"}
+          })
+        }),
+        m: 'original config with valid value should be shown as widget',
+        e: false
+      },
+      {
+        config: App.ServiceConfigProperty.create({
+          value: "test",
+          isValid: true,
+          stackConfigProperty: Em.Object.create({
+            widget: {
+              units: [
+                { unit: "hours,minutes" }
+              ]
+            },
+            valueAttributes: {type: "int", maximum: "86400", minimum: "600", unit: "seconds"}
+          })
+        }),
+        m: 'original config with invalid value should be shown as textbox',
+        e: true
+      },
+      {
+        config: App.ServiceConfigProperty.create({
+          value: "600",
+          isValid: true,
+          stackConfigProperty: Em.Object.create({
+            widget: {
+              units: [
+                { unit: "hours,minutes" }
+              ]
+            },
+            valueAttributes: {type: "int", maximum: "86400", minimum: "600", unit: "seconds"}
+          }),
+          parentSCP: Em.Object.create({ value: "600" })
+        }),
+        m: 'overriden config have same value as original and values of both configs are valid, widget should be shown',
+        e: false
+      },
+      {
+        config: App.ServiceConfigProperty.create({
+          value: "test",
+          isValid: true,
+          stackConfigProperty: Em.Object.create({
+            widget: {
+              units: [
+                { unit: "hours,minutes" }
+              ]
+            },
+            valueAttributes: {type: "int", maximum: "86400", minimum: "600", unit: "seconds"}
+          }),
+          parentSCP: Em.Object.create({ value: "test" })
+        }),
+        m: 'overriden config have same value as original and values of both configs are NOT valid, textbox should be shown',
+        e: true
+      },
+      {
+        config: App.ServiceConfigProperty.create({
+          value: "test",
+          isValid: true,
+          stackConfigProperty: Em.Object.create({
+            widget: {
+              units: [
+                { unit: "hours,minutes" }
+              ]
+            },
+            valueAttributes: {type: "int", maximum: "86400", minimum: "600", unit: "seconds"}
+          }),
+          parentSCP: Em.Object.create({ value: "500" })
+        }),
+        m: 'overriden config have different value as original and values of override NOT valid, textbox should be shown',
+        e: true
+      }
+    ]).forEach(function (test) {
+      it(test.m, function() {
+        view.set('config', test.config);
+        view.didInsertElement();
+        expect(view.get('config.showAsTextBox')).to.eql(test.e);
+      });
+    });
+  });
 });

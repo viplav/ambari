@@ -20,11 +20,21 @@ import Ember from 'ember';
 import constants from 'hive/utils/constants';
 
 export default Ember.Route.extend({
+  notifyService: Ember.inject.service(constants.namingConventions.notify),
+
   model: function () {
-    return this.store.find(constants.namingConventions.savedQuery);
+    var self = this;
+
+    return this.store.find(constants.namingConventions.savedQuery).catch(function (error) {
+      self.get('notifyService').error(error);
+    });
   },
 
   setupController: function (controller, model) {
+    if (!model) {
+      return;
+    }
+
     controller.set('queries', model);
   }
 });

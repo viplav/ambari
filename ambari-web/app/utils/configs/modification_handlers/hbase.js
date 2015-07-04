@@ -23,7 +23,8 @@ module.exports = App.ServiceConfigModificationHandler.create({
 
   updateConfigClasses : function(configClasses, authEnabled, affectedProperties, addOldValue) {
     if (configClasses != null) {
-      var xaAuthCoProcessorClass = "com.xasecure.authorization.hbase.XaSecureAuthorizationCoprocessor";
+      var xaAuthCoProcessorClass = App.get('isHadoop23Stack') ? "org.apache.ranger.authorization.hbase.RangerAuthorizationCoprocessor"
+        : "com.xasecure.authorization.hbase.XaSecureAuthorizationCoprocessor";
       var nonXAClass = 'org.apache.hadoop.hbase.security.access.AccessController';
       var currentClassesList = configClasses.get('value').trim().length > 0 ? configClasses.get('value').trim().split(',') : [];
       var newClassesList = null, xaClassIndex, nonXaClassIndex;
@@ -79,7 +80,6 @@ module.exports = App.ServiceConfigModificationHandler.create({
       var configAuthEnabled = this.getConfig(allConfigs, 'hbase.security.authorization', 'hbase-site.xml', 'HBASE');
       var configMasterClasses = this.getConfig(allConfigs, 'hbase.coprocessor.master.classes', 'hbase-site.xml', 'HBASE');
       var configRegionClasses = this.getConfig(allConfigs, 'hbase.coprocessor.region.classes', 'hbase-site.xml', 'HBASE');
-      var configRpcProtection = this.getConfig(allConfigs, 'hbase.rpc.protection', 'hbase-site.xml', 'HBASE');
 
       var authEnabled = newValue == "Yes";
       var newAuthEnabledValue = authEnabled ? "true" : "false";
@@ -88,19 +88,6 @@ module.exports = App.ServiceConfigModificationHandler.create({
       // Add HBase-Ranger configs
       this.updateConfigClasses(configMasterClasses, authEnabled, affectedProperties, configAuthEnabled.get('value') == 'true');
       this.updateConfigClasses(configRegionClasses, authEnabled, affectedProperties, configAuthEnabled.get('value') == 'true');
-      if (newRpcProtectionValue !== configRpcProtection.get('value')) {
-        affectedProperties.push({
-          serviceName : "HBASE",
-          sourceServiceName : "HBASE",
-          propertyName : 'hbase.rpc.protection',
-          propertyDisplayName : 'hbase.rpc.protection',
-          newValue : newRpcProtectionValue,
-          curValue : configRpcProtection.get('value'),
-          changedPropertyName : hbaseAuthEnabledPropertyName,
-          removed : false,
-          filename : 'hbase-site.xml'
-        });
-      }
       if (authEnabled && newAuthEnabledValue !== configAuthEnabled.get('value')) {
         affectedProperties.push({
           serviceName : "HBASE",

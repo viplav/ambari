@@ -1,5 +1,4 @@
-/**
- * Licensed to the Apache Software Foundation (ASF) under one
+/** * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
  * regarding copyright ownership.  The ASF licenses this file
@@ -21,262 +20,48 @@ import constants from 'hive/utils/constants';
 import utils from 'hive/utils/functions';
 
 export default Ember.Controller.extend({
-  needs: [ constants.namingConventions.openQueries,
-           constants.namingConventions.databases,
-           constants.namingConventions.udfs,
-           constants.namingConventions.jobLogs,
-           constants.namingConventions.jobResults,
-           constants.namingConventions.jobExplain,
-           constants.namingConventions.settings,
-           constants.namingConventions.visualExplain,
-           constants.namingConventions.tezUI,
-           constants.namingConventions.jobProgress,
+  jobService: Ember.inject.service(constants.namingConventions.job),
+  jobProgressService: Ember.inject.service(constants.namingConventions.jobProgress),
+  databaseService: Ember.inject.service(constants.namingConventions.database),
+  notifyService: Ember.inject.service(constants.namingConventions.notify),
+  session: Ember.inject.service(constants.namingConventions.session),
+  settingsService: Ember.inject.service(constants.namingConventions.settings),
+
+  openQueries   : Ember.inject.controller(constants.namingConventions.openQueries),
+  udfs          : Ember.inject.controller(constants.namingConventions.udfs),
+  logs          : Ember.inject.controller(constants.namingConventions.jobLogs),
+  results       : Ember.inject.controller(constants.namingConventions.jobResults),
+  explain       : Ember.inject.controller(constants.namingConventions.jobExplain),
+  settings      : Ember.inject.controller(constants.namingConventions.settings),
+  visualExplain : Ember.inject.controller(constants.namingConventions.visualExplain),
+  tezUI         : Ember.inject.controller(constants.namingConventions.tezUI),
+
+  selectedDatabase: Ember.computed.alias('databaseService.selectedDatabase'),
+  isDatabaseExplorerVisible: true,
+  canKillSession: Ember.computed.and('model.sessionTag', 'model.sessionActive'),
+
+  queryProcessTabs: [
+    Ember.Object.create({
+      name: Ember.I18n.t('menus.logs'),
+      path: constants.namingConventions.subroutes.jobLogs
+    }),
+    Ember.Object.create({
+      name: Ember.I18n.t('menus.results'),
+      path: constants.namingConventions.subroutes.jobResults
+    }),
+    Ember.Object.create({
+      name: Ember.I18n.t('menus.explain'),
+      path: constants.namingConventions.subroutes.jobExplain
+    })
   ],
 
-  openQueries: Ember.computed.alias('controllers.' + constants.namingConventions.openQueries),
-  databases: Ember.computed.alias('controllers.' + constants.namingConventions.databases),
-  udfs: Ember.computed.alias('controllers.' + constants.namingConventions.udfs + '.udfs'),
-  logs: Ember.computed.alias('controllers.' + constants.namingConventions.jobLogs),
-  results: Ember.computed.alias('controllers.' + constants.namingConventions.jobResults),
-  explain: Ember.computed.alias('controllers.' + constants.namingConventions.jobExplain),
-  settings: Ember.computed.alias('controllers.' + constants.namingConventions.settings),
-  visualExplain: Ember.computed.alias('controllers.' + constants.namingConventions.visualExplain),
-  tezUI: Ember.computed.alias('controllers.' + constants.namingConventions.tezUI),
-  jobProgress: Ember.computed.alias('controllers.' + constants.namingConventions.jobProgress),
-
-  canExecute: function () {
-    var isModelRunning = this.get('model.isRunning');
-    var hasParams = this.get('queryParams.length');
-
-    if (isModelRunning) {
-      return false;
-    }
-
-    if (hasParams) {
-      // all param have values?
-      return this.get('queryParams').every(function (param) { return param.value; });
-    }
-
-    return true;
-  }.property('model.isRunning', 'queryParams.@each.value'),
-
-  parseQueryParams: function () {
-    var query = this.get('openQueries.currentQuery.fileContent'),
-        param,
-        updatedParams = [],
-        currentParams = this.get('queryParams'),
-        paramRegExp = /\$\w+/ig,
-        paramNames = query.match(paramRegExp) || [];
-
-    paramNames = paramNames.uniq();
-
-    paramNames.forEach(function (name) {
-      param = currentParams.findBy('name', name);
-      if (param) {
-        updatedParams.push(param);
-      } else {
-        updatedParams.push({ name: name, value: "" });
-      }
-    });
-
-    currentParams.setObjects(updatedParams);
-  }.observes('openQueries.currentQuery.fileContent'),
-
-  _executeQuery: function (shouldExplain, shouldGetVisualExplain) {
-    var queryId,
-        query,
-        finalQuery,
-        job,
-        defer = Ember.RSVP.defer(),
-        originalModel = this.get('model');
-
-    job = this.store.createRecord(constants.namingConventions.job, {
-      title: originalModel.get('title'),
-      sessionTag: originalModel.get('sessionTag'),
-      dataBase: this.get('databases.selectedDatabase.name')
-    });
-
-    originalModel.set('isRunning', true);
-
-     //if it's a saved query / history entry set the queryId
-    if (!originalModel.get('isNew')) {
-      queryId = originalModel.get('constructor.typeKey') === constants.namingConventions.job ?
-                originalModel.get('queryId') :
-                originalModel.get('id');
-
-      job.set('queryId', queryId);
-    }
-
-    query = this.get('openQueries').getQueryForModel(originalModel);
-
-    query = this.buildQuery(query, shouldExplain, shouldGetVisualExplain);
-
-    // for now we won't support multiple queries
-    // buildQuery will return false it multiple queries
-    // are selected
-    if (!query) {
-      originalModel.set('isRunning', false);
-      defer.reject({
-        responseJSON: {
-          message: 'Running multiple queries is not supported.'
-        }
-      });
-
-      return defer.promise;
-    }
-
-    finalQuery = query;
-    finalQuery = this.bindQueryParams(finalQuery);
-    finalQuery = this.prependQuerySettings(finalQuery);
-
-    job.set('forcedContent', finalQuery);
-
-    if (shouldGetVisualExplain) {
-      return this.getVisualExplainJson(job, originalModel);
-    }
-
-    return this.saveQuery(job, originalModel);
-  },
-
-  getVisualExplainJson: function (job, originalModel) {
-    var self = this;
-    var defer = Ember.RSVP.defer();
-
-    job.save().then(function () {
-      self.get('results').getResultsJson(job).then(function (json) {
-        defer.resolve(json);
-        originalModel.set('isRunning', undefined);
-      }, function (err) {
-        defer.reject(err);
-        originalModel.set('isRunning', undefined);
-      });
-    }, function (err) {
-      defer.reject(err);
-        originalModel.set('isRunning', undefined);
-    });
-
-    return defer.promise;
-  },
-
-  saveQuery: function (job, originalModel) {
-    var defer = Ember.RSVP.defer(),
-        self = this,
-        openQueries = this.get('openQueries');
-
-    var handleError = function (err) {
-      originalModel.set('isRunning', undefined);
-      defer.reject(err);
-    };
-
-    job.save().then(function () {
-      //convert tab for current model since the execution will create a new job, and navigate to the new job route.
-      openQueries.convertTabToJob(originalModel, job).then(function () {
-        //reset flag on the original model
-        originalModel.set('isRunning', undefined);
-
-        defer.resolve(job);
-      }, function (err) {
-        handleError(err);
-      });
-
-      self.get('settings').updateSettingsId(originalModel.get('id'), job.get('id'));
-    }, function (err) {
-      handleError(err);
-    });
-
-    return defer.promise;
-  },
-
-  prependQuerySettings: function (query) {
-    var validSettings = this.get('settings').getCurrentValidSettings();
-    var regex = new RegExp(utils.regexes.setSetting);
-    var existingSettings = query.match(regex);
-
-    //clear previously added settings
-    if (existingSettings) {
-      existingSettings.forEach(function (setting) {
-        query = query.replace(setting, '');
-      });
-    }
-
-    query = query.trim();
-
-    //update with the current settings
-    if (validSettings) {
-      query = '\n' + query;
-
-      validSettings.forEach(function (setting) {
-        query = setting + '\n' + query;
-      });
-    }
-
-    return query;
-  },
-
-  buildQuery: function (query, shouldExplain, shouldGetVisualExplain) {
-    var selections = this.get('openQueries.highlightedText'),
-        isQuerySelected = selections && selections[0] !== "",
-        queryContent = query ? query.get('fileContent') : '',
-        queryComponents = this.extractComponents(queryContent),
-        finalQuery = '',
-        queries = null;
-
-    if (isQuerySelected) {
-      queryComponents.queryString = selections.join('');
-    }
-
-    queries = queryComponents.queryString.split(';');
-    queries = queries.map(function (s) {
-      return s.trim();
-    });
-    queries = queries.filter(Boolean);
-
-    // return false if multiple queries are selected
-    // @FIXME: Remove this to support multiple queries
-    // if (queries.length > 1) {
-    //   return false;
-    // }
-
-    queries = queries.map(function (query) {
-      if (shouldExplain) {
-        query = query.replace(/explain|formatted/gi, '').trim();
-
-        if (shouldGetVisualExplain) {
-          return constants.namingConventions.explainFormattedPrefix + query;
-        } else {
-          return constants.namingConventions.explainPrefix + query;
-        }
-      } else {
-        return query.replace(/explain|formatted/gi, '').trim();
-      }
-    });
-
-    if (queryComponents.files.length) {
-      finalQuery += queryComponents.files.join("\n") + "\n\n";
-    }
-
-    if (queryComponents.udfs.length) {
-      finalQuery += queryComponents.udfs.join("\n") + "\n\n";
-    }
-
-    finalQuery += queries.join(";");
-    finalQuery += ";";
-    return finalQuery;
-  },
-
-  bindQueryParams: function (query) {
-    var params = this.get('queryParams');
-
-    if (!params.get('length')) {
-      return query;
-    }
-
-    params.forEach(function (param) {
-      query = query.split(param.name).join(param.value);
-    });
-
-    return query;
-  },
+  queryPanelActions: [
+    Ember.Object.create({
+      icon: 'fa-expand',
+      action: 'toggleDatabaseExplorerVisibility',
+      tooltip: Ember.I18n.t('tooltips.expand')
+    })
+  ],
 
   init: function () {
     this._super();
@@ -298,22 +83,252 @@ export default Ember.Controller.extend({
         path: constants.namingConventions.subroutes.jobExplain
       })
     ])}));
+
+    this.set('queryPanelActions', Ember.ArrayProxy.create({ content: Ember.A([
+      Ember.Object.create({
+        icon: 'fa-expand',
+        action: 'toggleDatabaseExplorerVisibility',
+        tooltip: Ember.I18n.t('tooltips.expand')
+      })
+    ])}));
+  },
+
+  canExecute: function () {
+    var isModelRunning = this.get('model.isRunning');
+    var hasParams = this.get('queryParams.length');
+
+    if (isModelRunning) {
+      return false;
+    }
+
+    if (hasParams) {
+      // all param have values?
+      return this.get('queryParams').every(function (param) { return param.value; });
+    }
+
+    return true;
+  }.property('model.isRunning', 'queryParams.@each.value'),
+
+  currentQueryObserver: function () {
+    var query = this.get('openQueries.currentQuery.fileContent'),
+        param,
+        updatedParams = [],
+        currentParams = this.get('queryParams'),
+        paramRegExp = /\$\w+/ig,
+        paramNames = query.match(paramRegExp) || [];
+
+    paramNames = paramNames.uniq();
+
+    paramNames.forEach(function (name) {
+      param = currentParams.findBy('name', name);
+      if (param) {
+        updatedParams.push(param);
+      } else {
+        updatedParams.push({ name: name, value: "" });
+      }
+    });
+
+    currentParams.setObjects(updatedParams);
+
+    this.set('visualExplain.shouldChangeGraph', true);
+  }.observes('openQueries.currentQuery.fileContent'),
+
+  _executeQuery: function (referrer, shouldExplain, shouldGetVisualExplain) {
+    var queryId,
+        query,
+        finalQuery,
+        job,
+        defer = Ember.RSVP.defer(),
+        originalModel = this.get('model');
+
+    job = this.store.createRecord(constants.namingConventions.job, {
+      title: originalModel.get('title'),
+      sessionTag: originalModel.get('sessionTag'),
+      dataBase: this.get('selectedDatabase.name'),
+      referrer: referrer
+    });
+
+    if (!shouldGetVisualExplain) {
+      originalModel.set('isRunning', true);
+    }
+
+     //if it's a saved query / history entry set the queryId
+    if (!originalModel.get('isNew')) {
+      queryId = originalModel.get('constructor.typeKey') === constants.namingConventions.job ?
+                originalModel.get('queryId') :
+                originalModel.get('id');
+
+      job.set('queryId', queryId);
+    }
+
+    query = this.get('openQueries').getQueryForModel(originalModel);
+
+    query = this.buildQuery(query, shouldExplain, shouldGetVisualExplain);
+
+    // for now we won't support multiple queries
+    // buildQuery will return false it multiple queries
+    // are selected
+    if (!query) {
+      originalModel.set('isRunning', false);
+      defer.reject({
+        message: 'Running multiple queries is not supported.'
+      });
+
+      return defer.promise;
+    }
+
+    finalQuery = query;
+    finalQuery = this.bindQueryParams(finalQuery);
+    finalQuery = this.prependGlobalSettings(finalQuery, job);
+
+    job.set('forcedContent', finalQuery);
+
+    if (shouldGetVisualExplain) {
+      return this.getVisualExplainJson(job, originalModel);
+    }
+
+    return this.createJob(job, originalModel);
+  },
+
+  getVisualExplainJson: function (job, originalModel) {
+    var self = this;
+    var defer = Ember.RSVP.defer();
+
+    job.save().then(function () {
+      self.get('results').getResultsJson(job).then(function (json) {
+        defer.resolve(json);
+      }, function (err) {
+        defer.reject(err);
+      });
+    }, function (err) {
+      defer.reject(err);
+    });
+
+    return defer.promise;
+  },
+
+  createJob: function (job, originalModel) {
+    var defer = Ember.RSVP.defer(),
+        self = this,
+        openQueries = this.get('openQueries');
+
+    var handleError = function (err) {
+      self.set('jobSaveSucceeded');
+      originalModel.set('isRunning', undefined);
+      defer.reject(err);
+    };
+
+    job.save().then(function () {
+      //convert tab for current model since the execution will create a new job, and navigate to the new job route.
+      openQueries.convertTabToJob(originalModel, job).then(function () {
+        self.get('jobProgressService').setupProgress(job);
+        self.set('jobSaveSucceeded', true);
+
+        //reset flag on the original model
+        originalModel.set('isRunning', undefined);
+
+        defer.resolve(job);
+      }, function (err) {
+        handleError(err);
+      });
+    }, function (err) {
+      handleError(err);
+    });
+
+    return defer.promise;
+  },
+
+  prependGlobalSettings: function (query, job) {
+    var jobGlobalSettings = job.get('globalSettings');
+    var currentGlobalSettings = this.get('settingsService').getSettings();
+
+    // remove old globals
+    if (jobGlobalSettings) {
+      query.replace(jobGlobalSettings, '');
+    }
+
+    job.set('globalSettings', currentGlobalSettings);
+    query = currentGlobalSettings + query;
+
+    return query;
+  },
+
+  buildQuery: function (query, shouldExplain, shouldGetVisualExplain) {
+    var selections = this.get('openQueries.highlightedText'),
+        isQuerySelected = selections && selections[0] !== "",
+        queryContent = query ? query.get('fileContent') : '',
+        queryComponents = this.extractComponents(queryContent),
+        finalQuery = '',
+        queries = null;
+
+    if (isQuerySelected) {
+      queryComponents.queryString = selections.join('');
+    }
+
+    queries = queryComponents.queryString.split(';');
+    queries = queries.filter(Boolean);
+
+    queries = queries.map(function (query) {
+      if (shouldExplain) {
+        query = query.replace(/explain formatted|explain/gi, '');
+
+        if (shouldGetVisualExplain) {
+          return constants.namingConventions.explainFormattedPrefix + query;
+        } else {
+          return constants.namingConventions.explainPrefix + query;
+        }
+      } else {
+        return query.replace(/explain formatted|explain/gi, '');
+      }
+    });
+
+    if (queryComponents.files.length) {
+      finalQuery += queryComponents.files.join("\n") + "\n\n";
+    }
+
+    if (queryComponents.udfs.length) {
+      finalQuery += queryComponents.udfs.join("\n") + "\n\n";
+    }
+
+    finalQuery += queries.join(";");
+    finalQuery += ";";
+    return finalQuery.trim();
+  },
+
+  bindQueryParams: function (query) {
+    var params = this.get('queryParams');
+
+    if (!params.get('length')) {
+      return query;
+    }
+
+    params.forEach(function (param) {
+      query = query.split(param.name).join(param.value);
+    });
+
+    return query;
   },
 
   displayJobTabs: function () {
     return this.get('content.constructor.typeKey') === constants.namingConventions.job &&
-           utils.isInteger(this.get('content.id'));
-  }.property('content'),
+           utils.isInteger(this.get('content.id')) &&
+           this.get('jobSaveSucceeded');
+  }.property('content', 'jobSaveSucceeded'),
+
+  databasesOrModelChanged: function () {
+    this.get('databaseService').setDatabaseByName(this.get('content.dataBase'));
+  }.observes('databaseService.databases', 'content'),
+
+  selectedDatabaseChanged: function () {
+    this.set('content.dataBase', this.get('selectedDatabase.name'));
+  }.observes('selectedDatabase'),
 
   modelChanged: function () {
     var self = this;
     var content = this.get('content');
     var openQueries = this.get('openQueries');
-    var database = this.get('databases').findBy('name', this.get('content.dataBase'));
 
-    if (database) {
-      this.set('databases.selectedDatabase', database);
-    }
+    this.set('jobSaveSucceeded', true);
 
     //update open queries list when current query model changes
     openQueries.update(content).then(function (isExplainedQuery) {
@@ -339,10 +354,6 @@ export default Ember.Controller.extend({
       }
     });
   }.observes('content'),
-
-  selectedDatabaseChanged: function () {
-    this.set('content.dataBase', this.get('databases.selectedDatabase.name'));
-  }.observes('databases.selectedDatabase'),
 
   csvUrl: function () {
     if (this.get('content.constructor.typeKey') !== constants.namingConventions.job) {
@@ -397,7 +408,7 @@ export default Ember.Controller.extend({
     return components;
   },
 
-  saveToHDFS: function () {
+  saveToHDFS: function (path) {
     var job = this.get('content');
 
     if (!utils.insensitiveCompare(job.get('status'), constants.statuses.succeeded)) {
@@ -406,7 +417,7 @@ export default Ember.Controller.extend({
 
     var self = this;
 
-    var file = "/tmp/" + job.get('id') + ".csv";
+    var file = path + ".csv";
     var url = this.container.lookup('adapter:application').buildURL();
     url +=  "/jobs/" + job.get('id') + "/results/csv/saveToHDFS";
 
@@ -415,8 +426,8 @@ export default Ember.Controller.extend({
         file: file
     }).then(function (response) {
       self.pollSaveToHDFS(response);
-    }, function (response) {
-      self.notify.error(response.responseJSON.message, response.responseJSON.trace);
+    }, function (error) {
+      self.get('notifyService').error(error);
     });
   },
 
@@ -432,8 +443,8 @@ export default Ember.Controller.extend({
         } else {
           self.set('content.isRunning', false);
         }
-      }, function (response) {
-        self.notify.error(response.responseJSON.message, response.responseJSON.trace);
+      }, function (error) {
+        self.get('notifyService').error(error);
       });
     }, 2000);
   },
@@ -446,10 +457,33 @@ export default Ember.Controller.extend({
     tabs.findBy('path', constants.namingConventions.subroutes.jobResults).set('visible', !show);
   },
 
+  queryProcessTitle: function () {
+    return Ember.I18n.t('titles.query.process') + ' (' + Ember.I18n.t('titles.query.status') + this.get('content.status') + ')';
+  }.property('content.status'),
+
+  updateSessionStatus: function() {
+    this.get('session').updateSessionStatus(this.get('model'));
+  }.observes('model', 'model.status'),
+
   actions: {
+    stopCurrentJob: function () {
+      this.get('jobService').stopJob(this.get('model'));
+    },
+
     saveToHDFS: function () {
-      this.set('content.isRunning', true);
-      this.saveToHDFS();
+      var self = this,
+          defer = Ember.RSVP.defer();
+
+      this.send('openModal', 'modal-save', {
+        heading: "modals.download.hdfs",
+        text: this.get('content.title') + '_' + this.get('content.id'),
+        defer: defer
+      });
+
+      defer.promise.then(function (text) {
+        self.set('content.isRunning', true);
+        self.saveToHDFS(text);
+      });
     },
 
     downloadAsCSV: function () {
@@ -505,7 +539,7 @@ export default Ember.Controller.extend({
 
       return function (workSheetName) {
         var model = this.store.createRecord(constants.namingConventions.savedQuery, {
-          dataBase: this.get('databases.selectedDatabase.name'),
+          dataBase: this.get('selectedDatabase.name'),
           title: workSheetName ? workSheetName : Ember.I18n.t('titles.query.tab'),
           queryFile: '',
           id: 'fixture_' + idCounter
@@ -531,7 +565,7 @@ export default Ember.Controller.extend({
           defer = Ember.RSVP.defer(),
           currentQuery = this.get('openQueries.currentQuery');
 
-      this.set('model.dataBase', this.get('databases.selectedDatabase.name'));
+      this.set('model.dataBase', this.get('selectedDatabase.name'));
 
       this.send('openModal', 'modal-save-query', {
         heading: 'modals.save.heading',
@@ -542,12 +576,19 @@ export default Ember.Controller.extend({
       });
 
       defer.promise.then(function (result) {
-        currentQuery.set('fileContent', self.prependQuerySettings(currentQuery.get('fileContent')));
+        // we need to update the original model
+        // because when this is executed
+        // it sets the title from the original model
+        self.set('model.title', result.get('text'));
 
         if (result.get('overwrite')) {
-          self.get('openQueries').save(self.get('content'), null, true, result.get('text'));
+          self.get('openQueries').save(self.get('content'), null, true, result.get('text')).then(function () {
+            self.get('notifyService').success(Ember.I18n.t('alerts.success.query.update'));
+          });
         } else {
           self.get('openQueries').save(self.get('content'), null, false, result.get('text')).then(function (newId) {
+            self.get('notifyService').success(Ember.I18n.t('alerts.success.query.save'));
+
             if (self.get('model.constructor.typeKey') !== constants.namingConventions.job) {
               self.transitionToRoute(constants.namingConventions.subroutes.savedQuery, newId);
             }
@@ -556,11 +597,17 @@ export default Ember.Controller.extend({
       });
     },
 
-    executeQuery: function () {
+    executeQuery: function (referrer, query) {
       var self = this;
       var subroute;
 
-      this._executeQuery().then(function (job) {
+      if (query) {
+        this.set('openQueries.currentQuery.fileContent', query);
+      }
+
+      referrer = referrer || constants.jobReferrer.job;
+
+      this._executeQuery(referrer).then(function (job) {
         if (job.get('status') !== constants.statuses.succeeded) {
           subroute = constants.namingConventions.subroutes.jobLogs;
         } else {
@@ -568,24 +615,42 @@ export default Ember.Controller.extend({
         }
 
         self.get('openQueries').updateTabSubroute(job, subroute);
-
+        self.get('notifyService').success(Ember.I18n.t('alerts.success.query.execution'));
         self.transitionToRoute(constants.namingConventions.subroutes.historyQuery, job.get('id'));
-      }, function (err) {
-        var errorBody = err.responseJSON.trace ? err.responseJSON.trace : false;
-        self.notify.error(err.responseJSON.message, errorBody);
+      }, function (error) {
+        self.get('notifyService').error(error);
       });
     },
 
     explainQuery: function () {
       var self = this;
 
-      this._executeQuery(true).then(function (job) {
+      this._executeQuery(constants.jobReferrer.explain, true).then(function (job) {
         self.get('openQueries').updateTabSubroute(job, constants.namingConventions.subroutes.jobExplain);
 
         self.transitionToRoute(constants.namingConventions.subroutes.historyQuery, job.get('id'));
-      }, function (err) {
-        this.notify.error(err.responseJSON.message, err.responseJSON.trace);
+      }, function (error) {
+        self.get('notifyService').error(error);
       });
+    },
+
+    toggleDatabaseExplorerVisibility: function () {
+      this.toggleProperty('isDatabaseExplorerVisible');
+    },
+
+    killSession: function() {
+      var self = this;
+      var model = this.get('model');
+
+      this.get('session').killSession(model)
+        .catch(function (response) {
+          if ([200, 404].contains(response.status)) {
+            model.set('sessionActive', false);
+            self.notify.success(Ember.I18n.t('alerts.success.sessions.deleted'));
+          } else {
+            self.notify.error(response);
+          }
+        });
     }
   }
 });

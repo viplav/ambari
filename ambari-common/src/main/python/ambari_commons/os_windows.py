@@ -364,8 +364,10 @@ def run_powershell_script(script_content):
   os.remove(script_file.name)
   return result
 
-def os_change_owner(filePath, user):
+def os_change_owner(filePath, user, recursive):
   cmd = ['icacls', filePath, '/setowner', user]
+  if recursive:
+    cmd = ['icacls', filePath, '/t', '/setowner', user]
   retcode, outdata, errdata = os_run_os_command(cmd)
   return retcode
 
@@ -510,18 +512,21 @@ class WinServiceController:
   @staticmethod
   def Start(serviceName, waitSecs=30):
     err = 0
+    msg = ''
     try:
       win32serviceutil.StartService(serviceName)
       if waitSecs:
         win32serviceutil.WaitForServiceStatus(serviceName, win32service.SERVICE_RUNNING, waitSecs)
     except win32service.error, exc:
-      print "Error starting service: %s" % exc.strerror
-      err = exc.winerror
-    return err
+      if exc.winerror != 1056:
+        msg = "Error starting service: %s" % exc.strerror
+        err = exc.winerror
+    return err, msg
 
   @staticmethod
   def Stop(serviceName, waitSecs=30):
     err = 0
+    msg = ''
     try:
       if waitSecs:
         win32serviceutil.StopServiceWithDeps(serviceName, waitSecs=waitSecs)
@@ -530,9 +535,10 @@ class WinServiceController:
         if waitSecs:
           win32serviceutil.WaitForServiceStatus(serviceName, win32service.SERVICE_STOPPED, waitSecs)
     except win32service.error, exc:
-      print "Error stopping service: %s (%d)" % (exc.strerror, exc.winerror)
-      err = exc.winerror
-    return err
+      if exc.winerror != 1062:
+        msg = "Error stopping service: %s (%d)" % (exc.strerror, exc.winerror)
+        err = exc.winerror
+    return err, msg
 
   @staticmethod
   def QueryStatus(serviceName):
@@ -566,7 +572,8 @@ class WinServiceController:
         if waitSecs:
           win32serviceutil.WaitForServiceStatus(serviceName, win32service.SERVICE_RUNNING, waitSecs)
     except win32service.error, exc:
-      err = exc.winerror
+      if exc.winerror != 1056:
+        err = exc.winerror
     return err
 
 

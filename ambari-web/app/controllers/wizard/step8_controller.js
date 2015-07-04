@@ -69,6 +69,14 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
   configs: [],
 
   /**
+   * True if Kerberos is installed on the cluster and the kdc_type on the server is set to "none"
+   * @type {Boolean}
+   */
+  isManualKerberos: function () {
+    return App.get('router.mainAdminKerberosController.kdc_type') === 'none';
+  }.property('App.router.mainAdminKerberosController.kdc_type'),
+
+  /**
    * All configs
    * @type {Array}
    */
@@ -92,13 +100,6 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
    * @type {bool}
    */
   isBackBtnDisabled: false,
-
-  /**
-   * This flag when turned to true launches deploy progress bar
-   */
-  isDeployStarted: function() {
-    this.get('isSubmitDisabled');
-  }.property('isSubmitDisabled'),
 
   /**
    * Is error appears while <code>ajaxQueue</code> executes
@@ -380,48 +381,27 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
    */
   loadUiSideConfigs: function (configMapping) {
     var uiConfig = [];
-    var configs = configMapping.filterProperty('foreignKey', null);
-    this.addDynamicProperties(configs);
-    configs.forEach(function (_config) {
-      var valueWithOverrides = this.getGlobConfigValueWithOverrides(_config.templateName, _config.value, _config.name);
-      uiConfig.pushObject({
-        "id": "site property",
-        "name": _config.name,
-        "value": valueWithOverrides.value,
-        "filename": _config.filename,
-        "overrides": valueWithOverrides.overrides
-      });
-    }, this);
     var dependentConfig = $.extend(true, [], configMapping.filterProperty('foreignKey'));
     dependentConfig.forEach(function (_config) {
       App.config.setConfigValue(uiConfig, this.get('content.serviceConfigProperties'), _config);
-      if(!_config.noMatchSoSkipThisConfig)
+      // generated config name using template for example `hadoop.proxyuser.hive.hosts`
+      var configName = _config._name || _config.name;
+      // property from <code>content.serviceConfigProperties</code>. This property can be added in custom-site.xml
+      // with the same name as propety from defined config mapping. In this case property from config mapping
+      // object should be ignored.
+      var isPropertyDefined = this.get('content.serviceConfigProperties')
+            .filterProperty('filename', _config.filename).someProperty('name', configName);
+      // ignore config mapping property if no matches for template was found or property already added by user
+      if(!_config.noMatchSoSkipThisConfig && !isPropertyDefined) {
         uiConfig.pushObject({
           "id": "site property",
-          "name": _config._name || _config.name,
+          "name": configName,
           "value": _config.value,
           "filename": _config.filename
         });
+      }
     }, this);
     return uiConfig;
-  },
-
-  /**
-   * Add dynamic properties to configs
-   * @param {Array} configs
-   * @method addDynamicProperties
-   */
-  addDynamicProperties: function (configs) {
-    var templetonHiveProperty = this.get('content.serviceConfigProperties').someProperty('name', 'templeton.hive.properties');
-    if (!templetonHiveProperty) {
-      configs.pushObject({
-        "name": "templeton.hive.properties",
-        "templateName": ["hive.metastore.uris"],
-        "foreignKey": null,
-        "value": "hive.metastore.local=false,hive.metastore.uris=<templateName[0]>,hive.metastore.sasl.enabled=yes,hive.metastore.execute.setugi=true,hive.metastore.warehouse.dir=/apps/hive/warehouse",
-        "filename": "webhcat-site.xml"
-      });
-    }
   },
 
   /**
@@ -441,95 +421,6 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
       }
     }
     return hosts;
-  },
-
-  /**
-   * Set all site property that are derived from other puppet-variable
-   * @param {String} templateName
-   * @param {String} expression
-   * @param {String} name
-   * @return {Object}
-   * example: <code>{
-   *   value: '...',
-   *   overrides: [
-   *    {
-   *      value: 'v1',
-   *      hosts: ['h1', 'h2']
-   *    },
-   *    {
-   *      value: 'v2',
-   *      hosts: ['h2', 'h3']
-   *    },
-   *    ....
-   *   ]
-   * }</code>
-   * @method getGlobConfigValueWithOverrides
-   */
-  getGlobConfigValueWithOverrides: function (templateName, expression, name) {
-    var express = expression.match(/<(.*?)>/g);
-    var value = expression;
-    if (express == null) {
-      return { value: expression, overrides: []};      // if site property do not map any global property then return the value
-    }
-    var overrideHostToValue = {};
-    express.forEach(function (_express) {
-      //console.log("The value of template is: " + _express);
-      var index = parseInt(_express.match(/\[([\d]*)(?=\])/)[1]);
-      if (this.get('configs').someProperty('name', templateName[index])) {
-        //console.log("The name of the variable is: " + this.get('content.serviceConfigProperties').findProperty('name', templateName[index]).name);
-        var globalObj = this.get('configs').findProperty('name', templateName[index]);
-        var globValue = globalObj.value;
-        // Hack for templeton.zookeeper.hosts
-        var preReplaceValue = null;
-        if (value !== null) {   // if the property depends on more than one template name like <templateName[0]>/<templateName[1]> then don't proceed to the next if the prior is null or not found in the global configs
-          preReplaceValue = value;
-          value = App.config.replaceConfigValues(name, _express, value, globValue);
-        }
-        if (globalObj.overrides != null) {
-          globalObj.overrides.forEach(function (override) {
-            var ov = override.value;
-            var hostsArray = override.hosts;
-            hostsArray.forEach(function (host) {
-              if (!(host in overrideHostToValue)) {
-                overrideHostToValue[host] = App.config.replaceConfigValues(name, _express, preReplaceValue, ov);
-              } else {
-                overrideHostToValue[host] = App.config.replaceConfigValues(name, _express, overrideHostToValue[host], ov);
-              }
-            }, this);
-          }, this);
-        }
-      } else {
-        /*
-         console.log("ERROR: The variable name is: " + templateName[index]);
-         console.log("ERROR: mapped config from configMapping file has no corresponding variable in " +
-         "content.serviceConfigProperties. Two possible reasons for the error could be: 1) The service is not selected. " +
-         "and/OR 2) The service_config metadata file has no corresponding global var for the site property variable");
-         */
-        value = null;
-      }
-    }, this);
-
-    var valueWithOverrides = {
-      value: value,
-      overrides: []
-    };
-    var overrideValueToHostMap = {};
-    if (!jQuery.isEmptyObject(overrideHostToValue)) {
-      for (var host in overrideHostToValue) {
-        var hostVal = overrideHostToValue[host];
-        if (!(hostVal in overrideValueToHostMap)) {
-          overrideValueToHostMap[hostVal] = [];
-        }
-        overrideValueToHostMap[hostVal].push(host);
-      }
-    }
-    for (var val in overrideValueToHostMap) {
-      valueWithOverrides.overrides.push({
-        value: val,
-        hosts: overrideValueToHostMap[val]
-      });
-    }
-    return valueWithOverrides;
   },
 
   /**
@@ -596,13 +487,16 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
    * @method loadRepoInfo
    */
   loadRepoInfo: function () {
-    var nameVersionCombo = App.get('currentStackVersion').split('-');
+
+    var currentRepoVersion = App.StackVersion.find().findProperty('state', 'CURRENT').get('repositoryVersion.repositoryVersion');
+    var stackName = App.get('currentStackName');
+
     return App.ajax.send({
-      name: 'cluster.load_repositories',
+      name: 'cluster.load_repo_version',
       sender: this,
       data: {
-        stackName: nameVersionCombo[0],
-        stackVersion: nameVersionCombo[1]
+        stackName: stackName,
+        repositoryVersion: currentRepoVersion
       },
       success: 'loadRepoInfoSuccessCallback',
       error: 'loadRepoInfoErrorCallback'
@@ -616,7 +510,8 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
    */
   loadRepoInfoSuccessCallback: function (data) {
     var allRepos = [];
-    data.items.forEach(function (os) {
+    Em.assert('Current repo-version may be only one', data.items.length === 1);
+    data.items[0].repository_versions[0].operating_systems.forEach(function (os) {
       os.repositories.forEach(function (repository) {
         allRepos.push(Em.Object.create({
           base_url: repository.Repositories.base_url,
@@ -624,7 +519,7 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
           repo_id: repository.Repositories.repo_id
         }));
       });
-    }, this);
+    });
     allRepos.set('display_name', Em.I18n.t("installer.step8.repoInfo.displayName"));
     this.get('clusterInfo').set('repoInfo', allRepos);
   },
@@ -840,14 +735,28 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
    * @return {void}
    */
   submit: function () {
+    var self = this;
+    var wizardController;
     if (!this.get('isSubmitDisabled')) {
-      if (this.get('content.controllerName') != 'installerController' && this.get('securityEnabled')) {
-        App.get('router.mainAdminKerberosController').getKDCSessionState(this.submitProceed.bind(this));
+      wizardController = App.router.get(this.get('content.controllerName'));
+      this.set('isSubmitDisabled', true);
+      this.set('isBackBtnDisabled', true);
+      wizardController.setLowerStepsDisable(wizardController.get('currentStep'));
+      if (this.get('content.controllerName') != 'installerController' && this.get('securityEnabled') && !this.get('isManualKerberos')) {
+        App.get('router.mainAdminKerberosController').getKDCSessionState(this.submitProceed.bind(this), function () {
+          self.set('isSubmitDisabled', false);
+          self.set('isBackBtnDisabled', false);
+          wizardController.setStepsEnable();
+          if (self.get('content.controllerName') === 'addServiceController') {
+            wizardController.setSkipSlavesStep(wizardController.getDBProperty('selectedServiceNames'), 3);
+          }
+        });
       } else {
         this.submitProceed();
       }
     }
   },
+
   /**
    * Update configurations for installed services.
    * Do separated PUT-request for each siteName for each service
@@ -879,11 +788,7 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
    */
   submitProceed: function () {
     var self = this;
-    this.setProperties({
-      isSubmitDisabled: true,
-      isBackBtnDisabled: true,
-      clusterDeleteRequestsCompleted: 0
-    });
+    this.set('clusterDeleteRequestsCompleted', 0);
     this.get('clusterDeleteErrorViews').clear();
     if (this.get('content.controllerName') == 'addHostController') {
       App.router.get('addHostController').setLowerStepsDisable(4);
@@ -1057,9 +962,9 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
    * updates kerberosDescriptorConfigs
    * @method updateKerberosDescriptor
    */
-  updateKerberosDescriptor: function() {
+  updateKerberosDescriptor: function(instant) {
     var kerberosDescriptor = App.db.get('KerberosWizard', 'kerberosDescriptorConfigs');
-    this.addRequestToAjaxQueue({
+    var ajaxOpts = {
       name: 'admin.kerberos.cluster.artifact.update',
       data: {
         artifactName: 'kerberos_descriptor',
@@ -1067,7 +972,13 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
           artifact_data: kerberosDescriptor
         }
       }
-    });
+    };
+    if (instant) {
+      ajaxOpts.sender = this;
+      App.ajax.send(ajaxOpts);
+    } else {
+      this.addRequestToAjaxQueue(ajaxOpts);
+    }
   },
   /**
    * Start deploy process
@@ -1078,7 +989,8 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
     this.createSelectedServices();
     if (this.get('content.controllerName') !== 'addHostController') {
       if (this.get('content.controllerName') === 'addServiceController') {
-        if (this.get('securityEnabled')) {
+        // for manually enabled Kerberos descriptor was updated on transition to this step
+        if (this.get('securityEnabled') && !this.get('isManualKerberos')) {
           this.updateKerberosDescriptor();
         }
       }
@@ -1100,6 +1012,7 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
 
     this.set('ajaxQueueLength', this.get('ajaxRequestsQueue.queue.length'));
     this.get('ajaxRequestsQueue').start();
+    this.showLoadingIndicator();
   },
 
   /**
@@ -1173,14 +1086,42 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
 
       // Service must be specified in terms of a query for creating multiple components at the same time.
       // See AMBARI-1018.
-      this.addRequestToAjaxQueue({
-        name: 'wizard.step8.create_components',
-        data: {
-          data: JSON.stringify({"components": componentsData}),
-          serviceName: serviceName
-        }
-      });
+      this.addRequestToCreateComponent(componentsData, serviceName);
     }, this);
+
+    if (this.get('content.controllerName') === 'addHostController') {
+      this.get('content.slaveComponentHosts').forEach(function (component) {
+        if (component.componentName !== 'CLIENT' && !App.serviceComponents.contains(component.componentName)) {
+          this.addRequestToCreateComponent(
+              [{"ServiceComponentInfo": {"component_name": component.componentName}}],
+              App.StackServiceComponent.find().findProperty('componentName', component.componentName).get('serviceName')
+          );
+        }
+      }, this);
+      this.get('content.clients').forEach(function (component) {
+        if (!App.serviceComponents.contains(component.component_name)) {
+          this.addRequestToCreateComponent(
+              [{"ServiceComponentInfo": {"component_name": component.component_name}}],
+              App.StackServiceComponent.find().findProperty('componentName', component.component_name).get('serviceName')
+          );
+        }
+      }, this);
+    }
+  },
+
+  /**
+   * Add request to ajax queue to create service component
+   * @param componentsData
+   * @param serviceName
+   */
+  addRequestToCreateComponent: function (componentsData, serviceName) {
+    this.addRequestToAjaxQueue({
+      name: 'wizard.step8.create_components',
+      data: {
+        data: JSON.stringify({"components": componentsData}),
+        serviceName: serviceName
+      }
+    });
   },
 
   /**
@@ -1363,11 +1304,13 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
         }
         hostNames = hostNames.uniq();
         if (hostNames.length > 0) {
-          this.get('content.additionalClients').pushObject({hostNames: hostNames, componentName: _clientName});
           // If a dependency for being co-hosted is derived between existing client and selected new master but that
           // dependency is already satisfied in the cluster then disregard the derived dependency
           this.removeClientsFromList(_clientName, hostNames);
           this.registerHostsToComponent(hostNames, _clientName);
+          if(hostNames.length > 0) {
+            this.get('content.additionalClients').pushObject({hostNames: hostNames, componentName: _clientName});
+          }
         }
       }
     }, this);
@@ -1672,7 +1615,7 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
     });
 
     return sites.map(function (site) {
-      return this.createSiteObj(site.type, site.tag, site.properties);
+      return App.router.get('mainServiceInfoConfigsController').createSiteObj(site.type, site.tag, site.properties);
     }, this);
   },
 
@@ -1844,7 +1787,7 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
     var configs = this.get('configs').filterProperty('filename', 'storm-site.xml');
     var stormProperties = {};
     configs.forEach(function (_configProperty) {
-      if (_configProperty.name == "storm.zookeeper.servers") {
+      if (["nimbus.seeds", "storm.zookeeper.servers"].contains(_configProperty.name)) {
         stormProperties[_configProperty.name] = JSON.stringify(_configProperty.value).replace(/"/g, "'");
       } else {
         stormProperties[_configProperty.name] = _configProperty.value;
@@ -1905,6 +1848,62 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
         urlParams: 'overwrite_existing=true',
         data: apiObject
       }
+    });
+  },
+
+  /**
+   * Should ajax-queue progress bar be displayed
+   * @method showLoadingIndicator
+   */
+  showLoadingIndicator: function () {
+    return App.ModalPopup.show({
+
+      header: '',
+
+      showFooter: false,
+
+      showCloseButton: false,
+
+      bodyClass: Em.View.extend({
+
+        templateName: require('templates/wizard/step8/step8_log_popup'),
+
+        controllerBinding: 'App.router.wizardStep8Controller',
+
+        /**
+         * Css-property for progress-bar
+         * @type {string}
+         */
+        barWidth: '',
+
+        /**
+         * Popup-message
+         * @type {string}
+         */
+        message: '',
+
+        /**
+         * Set progress bar width and popup message when ajax-queue requests are proccessed
+         * @method ajaxQueueChangeObs
+         */
+        ajaxQueueChangeObs: function () {
+          var length = this.get('controller.ajaxQueueLength');
+          var left = this.get('controller.ajaxRequestsQueue.queue.length');
+          this.set('barWidth', 'width: ' + ((length - left) / length * 100) + '%;');
+          this.set('message', Em.I18n.t('installer.step8.deployPopup.message').format((length - left), length));
+        }.observes('controller.ajaxQueueLength', 'controller.ajaxRequestsQueue.queue.length'),
+
+        /**
+         * Hide popup when ajax-queue is finished
+         * @method autoHide
+         */
+        autoHide: function () {
+          if (this.get('controller.servicesInstalled')) {
+            this.get('parentView').hide();
+          }
+        }.observes('controller.servicesInstalled')
+      })
+
     });
   }
 });

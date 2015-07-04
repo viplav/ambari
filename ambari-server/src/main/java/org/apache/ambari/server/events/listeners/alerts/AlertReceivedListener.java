@@ -17,9 +17,11 @@
  */
 package org.apache.ambari.server.events.listeners.alerts;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.google.inject.persist.Transactional;
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.EagerSingleton;
 import org.apache.ambari.server.controller.RootServiceResponseFactory.Services;
@@ -28,6 +30,7 @@ import org.apache.ambari.server.events.AlertReceivedEvent;
 import org.apache.ambari.server.events.AlertStateChangeEvent;
 import org.apache.ambari.server.events.InitialAlertEvent;
 import org.apache.ambari.server.events.publishers.AlertEventPublisher;
+import org.apache.ambari.server.orm.RequiresSession;
 import org.apache.ambari.server.orm.dao.AlertDefinitionDAO;
 import org.apache.ambari.server.orm.dao.AlertsDAO;
 import org.apache.ambari.server.orm.entities.AlertCurrentEntity;
@@ -37,10 +40,7 @@ import org.apache.ambari.server.state.Alert;
 import org.apache.ambari.server.state.AlertState;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
-import org.apache.ambari.server.state.Host;
 import org.apache.ambari.server.state.MaintenanceState;
-import org.apache.ambari.server.state.Service;
-import org.apache.ambari.server.state.ServiceComponentHost;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,16 +65,16 @@ public class AlertReceivedListener {
   private static final Logger LOG = LoggerFactory.getLogger(AlertReceivedListener.class);
 
   @Inject
-  private AlertsDAO m_alertsDao;
+  AlertsDAO m_alertsDao;
 
   @Inject
-  private AlertDefinitionDAO m_definitionDao;
+  AlertDefinitionDAO m_definitionDao;
 
   /**
    * Used for looking up whether an alert has a valid service/component/host
    */
   @Inject
-  private Provider<Clusters> m_clusters;
+  Provider<Clusters> m_clusters;
 
   /**
    * Receives and publishes {@link AlertEvent} instances.
@@ -100,110 +100,186 @@ public class AlertReceivedListener {
    */
   @Subscribe
   @AllowConcurrentEvents
+  @RequiresSession
   public void onAlertEvent(AlertReceivedEvent event) {
     if (LOG.isDebugEnabled()) {
       LOG.debug(event.toString());
     }
 
-    Alert alert = event.getAlert();
-    long clusterId = event.getClusterId();
+    //play around too many commits
+    List<Alert> alerts = event.getAlerts();
 
-    AlertDefinitionEntity definition = m_definitionDao.findByName(clusterId,
+    Map<Alert, AlertCurrentEntity> toCreate = new HashMap<Alert, AlertCurrentEntity>();
+    Map<Alert, AlertCurrentEntity> toMerge = new HashMap<Alert, AlertCurrentEntity>();
+    Map<Alert, AlertCurrentEntity> toCreateHistoryAndMerge = new HashMap<Alert, AlertCurrentEntity>();
+    Map<Alert, AlertState> oldStates = new HashMap<Alert, AlertState>();
+
+    for (Alert alert : alerts) {
+      // jobs that were running when a service/component/host was changed
+      // which invalidate the alert should not be reported
+      if (!isValid(alert)) {
+        continue;
+      }
+
+      Long clusterId = getClusterIdByName(alert.getCluster());
+      if (clusterId == null) {
+        //check event
+        clusterId = event.getClusterId();
+      }
+
+      AlertDefinitionEntity definition = m_definitionDao.findByName(clusterId,
         alert.getName());
 
-    if (null == definition) {
-      LOG.warn(
+      if (null == definition) {
+        LOG.warn(
           "Received an alert for {} which is a definition that does not exist anymore",
           alert.getName());
 
-      return;
-    }
+        continue;
+      }
 
-    // it's possible that a definition which is disabled will still have a
-    // running alert returned; this will ensure we don't record it
-    if (!definition.getEnabled()) {
-      LOG.debug(
+      // it's possible that a definition which is disabled will still have a
+      // running alert returned; this will ensure we don't record it
+      if (!definition.getEnabled()) {
+        LOG.debug(
           "Received an alert for {} which is disabled. No more alerts should be received for this definition.",
           alert.getName());
 
-      return;
-    }
+        continue;
+      }
 
-    // jobs that were running when a service/component/host was changed
-    // which invalidate the alert should not be reported
-    if (!isValid(alert)) {
-      return;
-    }
+      AlertCurrentEntity current;
 
-    AlertCurrentEntity current = null;
-
-    if (StringUtils.isBlank(alert.getHostName()) || definition.isHostIgnored()) {
-      current = m_alertsDao.findCurrentByNameNoHost(clusterId, alert.getName());
-    } else {
-      current = m_alertsDao.findCurrentByHostAndName(clusterId, alert.getHostName(),
+      if (StringUtils.isBlank(alert.getHostName()) || definition.isHostIgnored()) {
+        current = m_alertsDao.findCurrentByNameNoHost(clusterId, alert.getName());
+      } else {
+        current = m_alertsDao.findCurrentByHostAndName(clusterId, alert.getHostName(),
           alert.getName());
-    }
+      }
 
-    if (null == current) {
-      AlertHistoryEntity history = createHistory(clusterId, definition, alert);
+      if (null == current) {
+        AlertHistoryEntity history = createHistory(clusterId, definition, alert);
 
-      current = new AlertCurrentEntity();
-      current.setMaintenanceState(MaintenanceState.OFF);
-      current.setAlertHistory(history);
-      current.setLatestTimestamp(alert.getTimestamp());
-      current.setOriginalTimestamp(Long.valueOf(alert.getTimestamp()));
-      m_alertsDao.create(current);
+        current = new AlertCurrentEntity();
+        current.setMaintenanceState(MaintenanceState.OFF);
+        current.setAlertHistory(history);
+        current.setLatestTimestamp(alert.getTimestamp());
+        current.setOriginalTimestamp(alert.getTimestamp());
 
-      // broadcast the initial alert being received
-      InitialAlertEvent initialAlertEvent = new InitialAlertEvent(
-          event.getClusterId(), event.getAlert(), current);
+        toCreate.put(alert, current);
 
-      m_alertEventPublisher.publish(initialAlertEvent);
-    } else if (alert.getState() == current.getAlertHistory().getAlertState()) {
-      current.setLatestTimestamp(alert.getTimestamp());
-      current.setLatestText(alert.getText());
-      current = m_alertsDao.merge(current);
-    } else {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug(
+      } else if (alert.getState() == current.getAlertHistory().getAlertState()) {
+        current.setLatestTimestamp(alert.getTimestamp());
+        current.setLatestText(alert.getText());
+        toMerge.put(alert, current);
+
+      } else {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(
             "Alert State Changed: CurrentId {}, CurrentTimestamp {}, HistoryId {}, HistoryState {}",
             current.getAlertId(), current.getLatestTimestamp(),
             current.getAlertHistory().getAlertId(),
             current.getAlertHistory().getAlertState());
-      }
+        }
 
-      AlertHistoryEntity oldHistory = current.getAlertHistory();
-      AlertState oldState = oldHistory.getAlertState();
+        AlertHistoryEntity oldHistory = current.getAlertHistory();
+        AlertState oldState = oldHistory.getAlertState();
 
-      // insert history, update current
-      AlertHistoryEntity history = createHistory(clusterId,
+        // insert history, update current
+        AlertHistoryEntity history = createHistory(clusterId,
           oldHistory.getAlertDefinition(), alert);
 
-      // manually create the new history entity since we are merging into
-      // an existing current entity
-      m_alertsDao.create(history);
+        current.setLatestTimestamp(alert.getTimestamp());
+        current.setOriginalTimestamp(alert.getTimestamp());
+        current.setLatestText(alert.getText());
 
-      current.setAlertHistory(history);
-      current.setLatestTimestamp(Long.valueOf(alert.getTimestamp()));
-      current.setOriginalTimestamp(Long.valueOf(alert.getTimestamp()));
-      current.setLatestText(alert.getText());
+        current.setAlertHistory(history);
 
-      current = m_alertsDao.merge(current);
+        toCreateHistoryAndMerge.put(alert, current);
+        oldStates.put(alert, oldState);
+
+      }
+    }
+
+    saveEntities(toCreate, toMerge, toCreateHistoryAndMerge);
+
+    //broadcast events
+    for (Map.Entry<Alert, AlertCurrentEntity> entry : toCreate.entrySet()) {
+      Alert alert = entry.getKey();
+      AlertCurrentEntity entity = entry.getValue();
+      Long clusterId = getClusterIdByName(alert.getCluster());
+      if (clusterId == null) {
+        //super rare case, cluster was removed after isValid() check
+        LOG.error("Unable to process alert {} for an invalid cluster named {}",
+          alert.getName(), alert.getCluster());
+        continue;
+      }
+
+      InitialAlertEvent initialAlertEvent = new InitialAlertEvent(
+        clusterId, alert, entity);
+
+      m_alertEventPublisher.publish(initialAlertEvent);
+
+    }
+
+    for (Map.Entry<Alert, AlertCurrentEntity> entry : toCreateHistoryAndMerge.entrySet()) {
+      Alert alert = entry.getKey();
+      AlertCurrentEntity entity = entry.getValue();
+      Long clusterId = getClusterIdByName(alert.getCluster());
+      if (clusterId == null) {
+        //super rare case, cluster was removed after isValid() check
+        LOG.error("Unable to process alert {} for an invalid cluster named {}",
+          alert.getName(), alert.getCluster());
+        continue;
+      }
+
+      AlertStateChangeEvent alertChangedEvent = new AlertStateChangeEvent(clusterId, alert, entity,
+        oldStates.get(alert));
+
+      m_alertEventPublisher.publish(alertChangedEvent);
+    }
+
+  }
+
+  Long getClusterIdByName(String clusterName) {
+    try {
+      return m_clusters.get().getCluster(clusterName).getClusterId();
+    } catch (AmbariException e) {
+      LOG.warn("Cluster lookup failed for clusterName={}", clusterName);
+      return null;
+    }
+  }
+
+  /**
+   * Saves alert and alert history entities in single transaction
+   * @param toCreate - new alerts, create alert and history
+   * @param toMerge - merge alert only
+   * @param toCreateHistoryAndMerge - create new history, merge alert
+   */
+  @Transactional
+  void saveEntities(Map<Alert, AlertCurrentEntity> toCreate, Map<Alert, AlertCurrentEntity> toMerge,
+                    Map<Alert, AlertCurrentEntity> toCreateHistoryAndMerge) {
+    for (Map.Entry<Alert, AlertCurrentEntity> entry : toCreate.entrySet()) {
+      AlertCurrentEntity entity = entry.getValue();
+      m_alertsDao.create(entity);
+    }
+
+    for (AlertCurrentEntity entity : toMerge.values()) {
+      m_alertsDao.merge(entity);
+    }
+
+    for (Map.Entry<Alert, AlertCurrentEntity> entry : toCreateHistoryAndMerge.entrySet()) {
+      AlertCurrentEntity entity = entry.getValue();
+      m_alertsDao.create(entity.getAlertHistory());
+      m_alertsDao.merge(entity);
 
       if (LOG.isDebugEnabled()) {
         LOG.debug(
             "Alert State Merged: CurrentId {}, CurrentTimestamp {}, HistoryId {}, HistoryState {}",
-            current.getAlertId(), current.getLatestTimestamp(),
-            current.getAlertHistory().getAlertId(),
-            current.getAlertHistory().getAlertState());
+            entity.getAlertId(), entity.getLatestTimestamp(),
+            entity.getAlertHistory().getAlertId(),
+            entity.getAlertHistory().getAlertState());
       }
-
-      // broadcast the alert changed event for other subscribers
-      AlertStateChangeEvent alertChangedEvent = new AlertStateChangeEvent(
-          event.getClusterId(), event.getAlert(), current,
-          oldState);
-
-      m_alertEventPublisher.publish(alertChangedEvent);
     }
   }
 
@@ -252,58 +328,26 @@ public class AlertReceivedListener {
       return false;
     }
 
-    Map<String, Service> services = cluster.getServices();
-    Service service = services.get(serviceName);
-    if (null == service) {
-      LOG.error("Unable to process alert {} for an invalid service named {}",
-          alert.getName(), serviceName);
-
-      return false;
-    }
-
     if (StringUtils.isNotBlank(hostName)) {
-      List<Host> hosts = m_clusters.get().getHosts();
-      if (null == hosts) {
+      // if valid hostname
+      if (!m_clusters.get().hostExists(hostName)) {
         LOG.error("Unable to process alert {} for an invalid host named {}",
             alert.getName(), hostName);
+        return false;
+      }
+      if (!cluster.getServices().containsKey(serviceName)) {
+        LOG.error("Unable to process alert {} for an invalid service named {}",
+            alert.getName(), serviceName);
 
         return false;
       }
-
-      boolean validHost = false;
-      for (Host host : hosts) {
-        if (hostName.equals(host.getHostName())) {
-          validHost = true;
-          break;
-        }
-      }
-
-      if (!validHost) {
-        LOG.error("Unable to process alert {} for an invalid host named {}",
-            alert.getName(), hostName);
-
-        return false;
-      }
-    }
-
-    // if the alert is for a host/component then verify that the component
-    // is actually installed on that host
-    if (StringUtils.isNotBlank(hostName) && null != componentName) {
-      boolean validServiceComponentHost = false;
-      List<ServiceComponentHost> serviceComponentHosts = cluster.getServiceComponentHosts(hostName);
-
-      for (ServiceComponentHost serviceComponentHost : serviceComponentHosts) {
-        if (componentName.equals(serviceComponentHost.getServiceComponentName())) {
-          validServiceComponentHost = true;
-          break;
-        }
-      }
-
-      if (!validServiceComponentHost) {
-        LOG.warn(
+      // if the alert is for a host/component then verify that the component
+      // is actually installed on that host
+      if (null != componentName &&
+          !cluster.getHosts(serviceName, componentName).contains(hostName)) {
+        LOG.error(
             "Unable to process alert {} for an invalid service {} and component {} on host {}",
             alert.getName(), serviceName, componentName, hostName);
-
         return false;
       }
     }

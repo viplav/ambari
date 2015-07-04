@@ -30,7 +30,21 @@
         <i class="icon-edit"></i>
       </a>
     {{/isAccessible}}
-    <div class="content"> {{view view.chartView}}</div>
+    <div class="content">
+      {{#if view.isUnavailable}}
+        {{#if view.isOverflowed}}
+          <div class="alert alert-warning overflow-warning">
+            {{t widget.create.wizard.step2.body.gauge.overflow.warning}}
+          </div>
+        {{else}}
+          <div class="grey unavailable">
+            {{t common.na}}
+          </div>
+        {{/if}}
+      {{else}}
+        {{view view.chartView}}
+      {{/if}}
+    </div>
     {{#if view.content.description}}
       <div class="hidden-description">
         {{view.content.description}}

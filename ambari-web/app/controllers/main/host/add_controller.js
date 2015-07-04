@@ -68,6 +68,12 @@ App.AddHostController = App.WizardController.extend({
       wizardControllerName: this.get('name'),
       localdb: App.db.data
     });
+    var self = this;
+    Em.run.next(function(){
+      if (self.isConfigGroupsEmpty()) {
+        self.disableStep(4);
+      }
+    });   
   },
 
   /**
@@ -89,6 +95,14 @@ App.AddHostController = App.WizardController.extend({
       delete dbHosts[host];
     });
     this.setDBProperty('hosts', dbHosts);
+  },
+
+  disableStep: function(step) {
+    this.get('isStepDisabled').findProperty('step', step).set('value', true);
+  },
+
+  isConfigGroupsEmpty: function() {
+    return !this.get('content.configGroups') || !this.get('content.configGroups').length; 
   },
 
   /**
@@ -122,7 +136,7 @@ App.AddHostController = App.WizardController.extend({
     this.set('content.services', App.StackService.find());
   },
 
-  /**
+ /**
    * Load slave component hosts data for using in required step controllers
    * TODO move to mixin
    */
@@ -264,15 +278,20 @@ App.AddHostController = App.WizardController.extend({
             var configGroups = this.get('content.configGroups').filterProperty('ConfigGroup.tag', serviceName);
             var configGroupsNames = configGroups.mapProperty('ConfigGroup.group_name');
             var defaultGroupName = service.get('displayName') + ' Default';
+            var selectedService = selectedServices.findProperty('serviceId', serviceName);
             configGroupsNames.unshift(defaultGroupName);
-            selectedServices.push({
-              serviceId: serviceName,
-              displayName: service.get('displayName'),
-              hosts: slave.hosts.mapProperty('hostName'),
-              configGroupsNames: configGroupsNames,
-              configGroups: configGroups,
-              selectedConfigGroup: defaultGroupName
-            });
+            if (selectedService) {
+              Em.set(selectedService, 'hosts', Em.getWithDefault(selectedService, 'hosts', []).concat(slave.hosts.mapProperty('hostName')).uniq());
+            } else {
+              selectedServices.push({
+                serviceId: serviceName,
+                displayName: service.get('displayName'),
+                hosts: slave.hosts.mapProperty('hostName'),
+                configGroupsNames: configGroupsNames,
+                configGroups: configGroups,
+                selectedConfigGroup: defaultGroupName
+              });
+            }
           }
         }
       }, this);

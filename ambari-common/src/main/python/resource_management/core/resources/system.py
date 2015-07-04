@@ -22,6 +22,7 @@ Ambari Agent
 
 __all__ = ["File", "Directory", "Link", "Execute", "ExecuteScript", "Mount"]
 
+import subprocess
 from resource_management.core.base import Resource, ForcedListArgument, ResourceArgument, BooleanArgument
 
 
@@ -57,6 +58,7 @@ class Directory(Resource):
   mode = ResourceArgument()
   owner = ResourceArgument()
   group = ResourceArgument()
+  follow = BooleanArgument(default=True) # follow links?
   recursive = BooleanArgument(default=False) # this work for 'create', 'delete' is anyway recursive
   recursive_permission = BooleanArgument(default=False) # sets given perms to all non-existent folders which are created recursively
   """
@@ -153,6 +155,15 @@ class Execute(Resource):
   command2 = as_sudo(["ls", "/root/example.txt") + " && " + as_sudo(["rm","-f","example.txt"])
   """
   sudo = BooleanArgument(default=False)
+  """
+  subprocess.PIPE - enable output gathering
+  None - disable output to gathering, and output to Python out straightly (even if logoutput is False)
+  subprocess.STDOUT - redirect to stdout (not valid as value for stdout agument)
+  {int fd} - redirect to file with descriptor.
+  {string filename} - redirects to a file with name.
+  """
+  stdout = ResourceArgument(default=subprocess.PIPE)
+  stderr = ResourceArgument(default=subprocess.STDOUT)
 
 class ExecuteScript(Resource):
   action = ForcedListArgument(default="run")

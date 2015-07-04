@@ -20,14 +20,16 @@ Ambari Agent
 """
 import os
 
+from resource_management.libraries.script.script import Script
+from resource_management.libraries.resources.hdfs_resource import HdfsResource
 from resource_management.libraries.functions import conf_select
-from resource_management import *
+from resource_management.libraries.functions import hdp_select
 from resource_management.libraries.functions import format
 from resource_management.libraries.functions import get_kinit_path
 from resource_management.libraries.functions.version import format_hdp_stack_version
 from resource_management.libraries.functions.default import default
-from resource_management.libraries.script.script import Script
 from resource_management.libraries import functions
+
 
 import status_params
 
@@ -56,15 +58,16 @@ stack_version_unformatted = str(config['hostLevelParams']['stack_version'])
 hdp_stack_version_major = format_hdp_stack_version(stack_version_unformatted)
 hdp_stack_version = functions.get_hdp_version('hadoop-yarn-resourcemanager')
 
-# New Cluster Stack Version that is defined during the RESTART of a Rolling Upgrade
+# New Cluster Stack Version that is defined during the RESTART of a Rolling Upgrade.
+# It cannot be used during the initial Cluser Install because the version is not yet known.
 version = default("/commandParams/version", None)
 
 hostname = config['hostname']
 
 # hadoop default parameters
-hadoop_libexec_dir = conf_select.get_hadoop_dir("libexec")
-hadoop_bin = conf_select.get_hadoop_dir("sbin")
-hadoop_bin_dir = conf_select.get_hadoop_dir("bin")
+hadoop_libexec_dir = hdp_select.get_hadoop_dir("libexec")
+hadoop_bin = hdp_select.get_hadoop_dir("sbin")
+hadoop_bin_dir = hdp_select.get_hadoop_dir("bin")
 hadoop_conf_dir = conf_select.get_hadoop_conf_dir()
 hadoop_yarn_home = '/usr/lib/hadoop-yarn'
 hadoop_mapred2_jar_location = "/usr/lib/hadoop-mapreduce"
@@ -91,16 +94,11 @@ if Script.is_hdp_stack_greater_or_equal("2.2"):
   hadoop_yarn_home = format("/usr/hdp/current/{yarn_role_root}")
   yarn_bin = format("/usr/hdp/current/{yarn_role_root}/sbin")
   yarn_container_bin = format("/usr/hdp/current/{yarn_role_root}/bin")
-  
-  mapreduce_tar_source = config['configurations']['cluster-env']['mapreduce_tar_source']
-  mapreduce_tar_destination = config['configurations']['cluster-env']['mapreduce_tar_destination_folder'] + "/" + os.path.basename(mapreduce_tar_source)
 
-  # the configuration direction for HDFS/YARN/MapR is the hadoop config
-  # directory, which is symlinked by hadoop-client only
-  hadoop_conf_dir = "/usr/hdp/current/hadoop-client/conf"
-  tez_tar_source = config['configurations']['cluster-env']['tez_tar_source']
-  tez_tar_destination = config['configurations']['cluster-env']['tez_tar_destination_folder'] + "/" + os.path.basename(tez_tar_source)
+  # Timeline Service property that was added in 2.2
+  ats_leveldb_state_store_dir = config['configurations']['yarn-site']['yarn.timeline-service.leveldb-state-store.path']
 
+hadoop_conf_secure_dir = os.path.join(hadoop_conf_dir, "secure")
 
 limits_conf_dir = "/etc/security/limits.d"
 execute_path = os.environ['PATH'] + os.pathsep + hadoop_bin_dir + os.pathsep + yarn_container_bin
@@ -116,6 +114,9 @@ smokeuser_principal = config['configurations']['cluster-env']['smokeuser_princip
 security_enabled = config['configurations']['cluster-env']['security_enabled']
 smoke_user_keytab = config['configurations']['cluster-env']['smokeuser_keytab']
 yarn_executor_container_group = config['configurations']['yarn-site']['yarn.nodemanager.linux-container-executor.group']
+yarn_nodemanager_container_executor_class =  config['configurations']['yarn-site']['yarn.nodemanager.container-executor.class']
+is_linux_container_executor = (yarn_nodemanager_container_executor_class == 'org.apache.hadoop.yarn.server.nodemanager.LinuxContainerExecutor')
+container_executor_mode = 06050 if is_linux_container_executor else 02050
 kinit_path_local = get_kinit_path(default('/configurations/kerberos-env/executable_search_paths', None))
 rm_hosts = config['clusterHostInfo']['rm_host']
 rm_host = rm_hosts[0]
@@ -177,7 +178,9 @@ ats_host = set(default("/clusterHostInfo/app_timeline_server_hosts", []))
 has_ats = not len(ats_host) == 0
 
 nm_hosts = default("/clusterHostInfo/nm_hosts", [])
-number_of_nm = len(nm_hosts)
+
+# don't using len(nm_hosts) here, because check can take too much time on large clusters
+number_of_nm = 1
 
 # default kinit commands
 rm_kinit_cmd = ""
@@ -226,6 +229,12 @@ tez_lib_uris = default("/configurations/tez-site/tez.lib.uris", None)
 #for create_hdfs_directory
 hdfs_user_keytab = config['configurations']['hadoop-env']['hdfs_user_keytab']
 hdfs_principal_name = config['configurations']['hadoop-env']['hdfs_principal_name']
+
+
+
+hdfs_site = config['configurations']['hdfs-site']
+default_fs = config['configurations']['core-site']['fs.defaultFS']
+
 import functools
 #create partial functions with common arguments for every HdfsResource call
 #to create/delete hdfs directory/file/copyfromlocal we need to call params.HdfsResource in code
@@ -236,7 +245,10 @@ HdfsResource = functools.partial(
   keytab = hdfs_user_keytab,
   kinit_path_local = kinit_path_local,
   hadoop_bin_dir = hadoop_bin_dir,
-  hadoop_conf_dir = hadoop_conf_dir
+  hadoop_conf_dir = hadoop_conf_dir,
+  principal_name = hdfs_principal_name,
+  hdfs_site = hdfs_site,
+  default_fs = default_fs
  )
 update_exclude_file_only = default("/commandParams/update_exclude_file_only",False)
 
@@ -258,6 +270,7 @@ cgroups_dir = "/cgroups_test/cpu"
 # ranger host
 ranger_admin_hosts = default("/clusterHostInfo/ranger_admin_hosts", [])
 has_ranger_admin = not len(ranger_admin_hosts) == 0
+xml_configurations_supported = config['configurations']['ranger-env']['xml_configurations_supported']
 ambari_server_hostname = config['clusterHostInfo']['ambari_server_host'][0]
 # hostname of the active HDFS HA Namenode (only used when HA is enabled)
 dfs_ha_namenode_active = default("/configurations/hadoop-env/dfs_ha_initial_namenode_active", None)
@@ -267,58 +280,78 @@ else:
   namenode_hostname = config['clusterHostInfo']['namenode_host'][0]
 
 ranger_admin_log_dir = default("/configurations/ranger-env/ranger_admin_log_dir","/var/log/ranger/admin")
-is_supported_yarn_ranger = config['configurations']['yarn-env']['is_supported_yarn_ranger']
 
 #ranger yarn properties
 if has_ranger_admin:
+  is_supported_yarn_ranger = config['configurations']['yarn-env']['is_supported_yarn_ranger']
 
-  enable_ranger_yarn = (config['configurations']['ranger-yarn-plugin-properties']['ranger-yarn-plugin-enabled'].lower() == 'yes')
-  policymgr_mgr_url = config['configurations']['admin-properties']['policymgr_external_url']
-  sql_connector_jar = config['configurations']['admin-properties']['SQL_CONNECTOR_JAR']
-  xa_audit_db_flavor = config['configurations']['admin-properties']['DB_FLAVOR']
-  xa_audit_db_name = config['configurations']['admin-properties']['audit_db_name']
-  xa_audit_db_user = config['configurations']['admin-properties']['audit_db_user']
-  xa_audit_db_password = config['configurations']['admin-properties']['audit_db_password']
-  xa_db_host = config['configurations']['admin-properties']['db_host']
-  repo_name = str(config['clusterName']) + '_yarn'
+  if is_supported_yarn_ranger:
+    enable_ranger_yarn = (config['configurations']['ranger-yarn-plugin-properties']['ranger-yarn-plugin-enabled'].lower() == 'yes')
+    policymgr_mgr_url = config['configurations']['admin-properties']['policymgr_external_url']
+    sql_connector_jar = config['configurations']['admin-properties']['SQL_CONNECTOR_JAR']
+    xa_audit_db_flavor = (config['configurations']['admin-properties']['DB_FLAVOR']).lower()
+    xa_audit_db_name = config['configurations']['admin-properties']['audit_db_name']
+    xa_audit_db_user = config['configurations']['admin-properties']['audit_db_user']
+    xa_audit_db_password = unicode(config['configurations']['admin-properties']['audit_db_password'])
+    xa_db_host = config['configurations']['admin-properties']['db_host']
+    repo_name = str(config['clusterName']) + '_yarn'
 
-  ranger_env = config['configurations']['ranger-env']
-  ranger_plugin_properties = config['configurations']['ranger-yarn-plugin-properties']
-  policy_user = config['configurations']['ranger-yarn-plugin-properties']['policy_user']
-  
-  ranger_plugin_config = {
-    'username' : config['configurations']['ranger-yarn-plugin-properties']['REPOSITORY_CONFIG_USERNAME'],
-    'password' : config['configurations']['ranger-yarn-plugin-properties']['REPOSITORY_CONFIG_PASSWORD'],
-    'yarn.url' : config['configurations']['yarn-site']['yarn.resourcemanager.webapp.address'],
-    'commonNameForCertificate' : config['configurations']['ranger-yarn-plugin-properties']['common.name.for.certificate']
-  }
+    ranger_env = config['configurations']['ranger-env']
+    ranger_plugin_properties = config['configurations']['ranger-yarn-plugin-properties']
+    policy_user = config['configurations']['ranger-yarn-plugin-properties']['policy_user']
+    yarn_rest_url = config['configurations']['yarn-site']['yarn.resourcemanager.webapp.address']
+    yarn_http_policy = config['configurations']['yarn-site']['yarn.http.policy']
+    scheme = 'http'
+    if yarn_http_policy.upper() == 'HTTPS_ONLY':
+      scheme = 'https'    
 
-  yarn_ranger_plugin_repo = {
-    'isEnabled': 'true',
-    'configs': ranger_plugin_config,
-    'description': 'yarn repo',
-    'name': repo_name,
-    'repositoryType': 'yarn',
-    'type': 'yarn',
-    'assetType': '1'
-  }
-  #For curl command in ranger plugin to get db connector
-  jdk_location = config['hostLevelParams']['jdk_location']
-  java_share_dir = '/usr/share/java'
-  if xa_audit_db_flavor and xa_audit_db_flavor.lower() == 'mysql':
-    jdbc_symlink_name = "mysql-jdbc-driver.jar"
-    jdbc_jar_name = "mysql-connector-java.jar"
-  elif xa_audit_db_flavor and xa_audit_db_flavor.lower() == 'oracle':
-    jdbc_jar_name = "ojdbc6.jar"
-    jdbc_symlink_name = "oracle-jdbc-driver.jar"
-  elif xa_audit_db_flavor and xa_audit_db_flavor.lower() == 'postgres':
-    jdbc_jar_name = "postgresql.jar"
-    jdbc_symlink_name = "postgres-jdbc-driver.jar"
-  elif xa_audit_db_flavor and xa_audit_db_flavor.lower() == 'sqlserver':
-    jdbc_jar_name = "sqljdbc4.jar"
-    jdbc_symlink_name = "mssql-jdbc-driver.jar"
+    ranger_plugin_config = {
+      'username' : config['configurations']['ranger-yarn-plugin-properties']['REPOSITORY_CONFIG_USERNAME'],
+      'password' : unicode(config['configurations']['ranger-yarn-plugin-properties']['REPOSITORY_CONFIG_PASSWORD']),
+      'yarn.url' : format('{scheme}://{yarn_rest_url}'),
+      'commonNameForCertificate' : config['configurations']['ranger-yarn-plugin-properties']['common.name.for.certificate']
+    }
 
-  downloaded_custom_connector = format("{tmp_dir}/{jdbc_jar_name}")
+    yarn_ranger_plugin_repo = {
+      'isEnabled': 'true',
+      'configs': ranger_plugin_config,
+      'description': 'yarn repo',
+      'name': repo_name,
+      'repositoryType': 'yarn',
+      'type': 'yarn',
+      'assetType': '1'
+    }
+    #For curl command in ranger plugin to get db connector
+    jdk_location = config['hostLevelParams']['jdk_location']
+    java_share_dir = '/usr/share/java'
+    if xa_audit_db_flavor and xa_audit_db_flavor == 'mysql':
+      jdbc_symlink_name = "mysql-jdbc-driver.jar"
+      jdbc_jar_name = "mysql-connector-java.jar"
+      audit_jdbc_url = format('jdbc:mysql://{xa_db_host}/{xa_audit_db_name}')
+      jdbc_driver = "com.mysql.jdbc.Driver"
+    elif xa_audit_db_flavor and xa_audit_db_flavor == 'oracle':
+      jdbc_jar_name = "ojdbc6.jar"
+      jdbc_symlink_name = "oracle-jdbc-driver.jar"
+      audit_jdbc_url = format('jdbc:oracle:thin:\@//{xa_db_host}')
+      jdbc_driver = "oracle.jdbc.OracleDriver"
+    elif xa_audit_db_flavor and xa_audit_db_flavor == 'postgres':
+      jdbc_jar_name = "postgresql.jar"
+      jdbc_symlink_name = "postgres-jdbc-driver.jar"
+      audit_jdbc_url = format('jdbc:postgresql://{xa_db_host}/{xa_audit_db_name}')
+      jdbc_driver = "org.postgresql.Driver"
+    elif xa_audit_db_flavor and xa_audit_db_flavor == 'mssql':
+      jdbc_jar_name = "sqljdbc4.jar"
+      jdbc_symlink_name = "mssql-jdbc-driver.jar"
+      audit_jdbc_url = format('jdbc:sqlserver://{xa_db_host};databaseName={xa_audit_db_name}')
+      jdbc_driver = "com.microsoft.sqlserver.jdbc.SQLServerDriver"
 
-  driver_curl_source = format("{jdk_location}/{jdbc_symlink_name}")
-  driver_curl_target = format("{java_share_dir}/{jdbc_jar_name}")
+    downloaded_custom_connector = format("{tmp_dir}/{jdbc_jar_name}")
+
+    driver_curl_source = format("{jdk_location}/{jdbc_symlink_name}")
+    driver_curl_target = format("{java_share_dir}/{jdbc_jar_name}")
+
+    ranger_audit_solr_urls = config['configurations']['ranger-admin-site']['ranger.audit.solr.urls']
+    xa_audit_db_is_enabled = config['configurations']['ranger-yarn-audit']['xasecure.audit.destination.db'] if xml_configurations_supported else None
+    ssl_keystore_password = unicode(config['configurations']['ranger-yarn-policymgr-ssl']['xasecure.policymgr.clientssl.keystore.password']) if xml_configurations_supported else None
+    ssl_truststore_password = unicode(config['configurations']['ranger-yarn-policymgr-ssl']['xasecure.policymgr.clientssl.truststore.password']) if xml_configurations_supported else None
+    credential_file = format('/etc/ranger/{repo_name}/cred.jceks') if xml_configurations_supported else None

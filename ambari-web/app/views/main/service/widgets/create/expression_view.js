@@ -17,6 +17,7 @@
  */
 
 var misc = require('utils/misc');
+var number_utils = require("utils/number_utils");
 
 App.WidgetWizardExpressionView = Em.View.extend({
   templateName: require('templates/main/service/widgets/create/expression'),
@@ -39,6 +40,18 @@ App.WidgetWizardExpressionView = Em.View.extend({
   OPERATORS: ["+", "-", "*", "/", "(", ")"],
 
   /**
+   * @type {Array}
+   * @const
+   */
+  AGGREGATE_FUNCTIONS: ['avg', 'sum', 'min', 'max'],
+
+  /**
+   * @type {RegExp}
+   * @const
+   */
+  VALID_EXPRESSION_REGEX: /^((\(\s)*[\d]+)[\(\)\+\-\*\/\.\d\s]*[\d\)]*$/,
+
+  /**
    * contains expression data before editing in order to restore previous state
    */
   dataBefore: [],
@@ -54,6 +67,19 @@ App.WidgetWizardExpressionView = Em.View.extend({
   isInvalid: false,
 
   /**
+   * contains value of number added to expression
+   * @type {string}
+   */
+  numberValue: "",
+
+  /**
+   * @type {boolean}
+   */
+  isNumberValueInvalid: function () {
+    return this.get('numberValue').trim() === "" || !number_utils.isPositiveNumber(this.get('numberValue').trim());
+  }.property('numberValue'),
+
+  /**
    * add operator to expression data
    * @param event
    */
@@ -66,6 +92,22 @@ App.WidgetWizardExpressionView = Em.View.extend({
       name: event.context,
       isOperator: true
     }));
+  },
+
+  /**
+   * add operator to expression data
+   * @param event
+   */
+  addNumber: function (event) {
+    var data = this.get('expression.data');
+    var lastId = (data.length > 0) ? Math.max.apply(this, data.mapProperty('id')) : 0;
+
+    data.pushObject(Em.Object.create({
+      id: ++lastId,
+      name: this.get('numberValue'),
+      isNumber: true
+    }));
+    this.set('numberValue', "");
   },
 
   /**
@@ -86,7 +128,7 @@ App.WidgetWizardExpressionView = Em.View.extend({
     this.propertyDidChange('expression');
     Em.run.next(function () {
       $(self.get('element')).find('.metric-field').sortable({
-        items: "> div",
+        items: "> .metric-instance",
         tolerance: "pointer",
         scroll: false,
         update: function () {
@@ -117,7 +159,7 @@ App.WidgetWizardExpressionView = Em.View.extend({
     }, this).join(" ");
 
     if (expression.length > 0) {
-      if (/^((\(\s)*[\d]+)[\(\)\+\-\*\/\d\s]*[\d\)]*$/.test(expression)) {
+      if (this.get('VALID_EXPRESSION_REGEX').test(expression)) {
         try {
           isInvalid = !isFinite(window.eval(expression));
         } catch (e) {
@@ -134,13 +176,23 @@ App.WidgetWizardExpressionView = Em.View.extend({
     if (!isInvalid) {
       this.get('controller').updateExpressions();
     }
-  }.observes('expression.data.length'),
+  }.observes('expression.data.length')
+});
+
+/**
+ * input used to add number to expression
+ * @type {Em.TextField}
+ * @class
+ */
+App.AddNumberExpressionView = Em.TextField.extend({
+  classNameBindings: ['isInvalid'],
 
   /**
-   * @type {Array}
-   * @const
+   * @type {boolean}
    */
-  AGGREGATE_FUNCTIONS: ['avg', 'sum', 'min', 'max']
+  isInvalid: function () {
+    return this.get('value').trim().length > 0 && !number_utils.isPositiveNumber(this.get('value').trim());
+  }.property('value')
 });
 
 
@@ -152,44 +204,54 @@ App.AddMetricExpressionView = Em.View.extend({
   controller: function () {
     return this.get('parentView.controller');
   }.property('parentView.controller'),
-  elementId: 'add-metric-menu',
+  elementId: function () {
+    var expressionId = "_" + this.get('parentView').get('expression.id');
+    return 'add-metric-menu' + expressionId;
+  }.property(),
   didInsertElement: function () {
     //prevent dropdown closing on click select
     $('html').on('click.dropdown', '.dropdown-menu li', function (e) {
       $(this).hasClass('keep-open') && e.stopPropagation();
     });
-    $('html').on('click.dropdown', '.dropdown-menu chosen-drop', function (e) {
-      $(this).hasClass('keep-open') && e.stopPropagation();
-    });
-    var self = this;
-    Em.run.later(this, function () {
-      $(".metrics-select.chosen-select").chosen({
-        placeholder_text: Em.I18n.t('dashboard.widgets.wizard.step2.selectMetric'),
-        no_results_text: Em.I18n.t('widget.create.wizard.step2.noMetricFound')
-      }).change(function (event, obj) {
-          var filteredComponentMetrics = self.get('controller.filteredMetrics').filterProperty('component_name', self.get('currentSelectedComponent.componentName')).filterProperty('level',self.get('currentSelectedComponent.level'));
-          var filteredMetric = filteredComponentMetrics.findProperty('name', obj.selected);
-          var selectedMetric =  Em.Object.create({
-            name: obj.selected,
-            componentName: self.get('selectedComponent.componentName'),
-            serviceName: self.get('selectedComponent.serviceName'),
-            metricPath: filteredMetric.widget_id,
-            isMetric: true
-          });
-          if (self.get('currentSelectedComponent.hostComponentCriteria')) {
-            selectedMetric.hostComponentCriteria = self.get('currentSelectedComponent.hostComponentCriteria');
-          }
-          self.set('currentSelectedComponent.selectedMetric', selectedMetric);
-      });
-
-      $(".aggregate-function-select.chosen-select").chosen({
-        placeholder_text: Em.I18n.t('dashboard.widgets.wizard.step2.aggregateFunction.scanOps')
-      }).change(function (event, obj) {
-          self.set('currentSelectedComponent.selectedAggregation', obj.selected);
-      });
-    }, 1000);
-
   },
+
+  metricsSelectionObj: function () {
+    var self = this;
+    return Em.Object.create({
+      placeholder_text: Em.I18n.t('dashboard.widgets.wizard.step2.selectMetric'),
+      no_results_text: Em.I18n.t('widget.create.wizard.step2.noMetricFound'),
+      onChangeCallback: function (event, obj) {
+        var filteredComponentMetrics = self.get('controller.filteredMetrics').filterProperty('component_name', self.get('currentSelectedComponent.componentName')).filterProperty('level', self.get('currentSelectedComponent.level'));
+        var filteredMetric = filteredComponentMetrics.findProperty('name', obj.selected);
+        var selectedMetric = Em.Object.create({
+          name: obj.selected,
+          componentName: self.get('currentSelectedComponent.componentName'),
+          serviceName: self.get('currentSelectedComponent.serviceName'),
+          metricPath: filteredMetric.widget_id,
+          isMetric: true
+        });
+        if (self.get('currentSelectedComponent.hostComponentCriteria')) {
+          selectedMetric.hostComponentCriteria = self.get('currentSelectedComponent.hostComponentCriteria');
+        }
+        self.set('currentSelectedComponent.selectedMetric', selectedMetric);
+        if (self.get('currentSelectedComponent.selectedAggregation') == Em.I18n.t('dashboard.widgets.wizard.step2.aggregateFunction.scanOps')) {
+          var defaultAggregator = self.get('parentView.AGGREGATE_FUNCTIONS')[0];
+          self.set('currentSelectedComponent.selectedAggregation', defaultAggregator);
+        }
+      }
+    })
+  }.property(),
+
+  aggregateFnSelectionObj: function () {
+    var self = this;
+    return Em.Object.create({
+      placeholder_text: Em.I18n.t('dashboard.widgets.wizard.step2.aggregateFunction.scanOps'),
+      no_results_text: Em.I18n.t('dashboard.widgets.wizard.step2.aggregateFunction.notFound'),
+      onChangeCallback: function (event, obj) {
+        self.set('currentSelectedComponent.selectedAggregation', obj.selected);
+      }
+    })
+  }.property(),
 
   /**
    * @type {Ember.Object}
@@ -213,14 +275,14 @@ App.AddMetricExpressionView = Em.View.extend({
    */
   addMetric: function (event) {
     var selectedMetric = event.context.get('selectedMetric'),
-      aggregateFunction = event.context.get('selectedAggregation');
-    var isAddEnabled = event.context.get('isAddEnabled');
-    var result =  jQuery.extend(true, {}, selectedMetric);
-    if (isAddEnabled) {
+        aggregateFunction = event.context.get('selectedAggregation'),
+        result = Em.Object.create(selectedMetric);
+
+    if (event.context.get('isAddEnabled')) {
       var data = this.get('parentView').get('expression.data'),
         id = (data.length > 0) ? Math.max.apply(this.get('parentView'), data.mapProperty('id')) + 1 : 1;
       result.set('id', id);
-      if (event.context.get('showAggregateSelect') && aggregateFunction !== 'avg') {
+      if (event.context.get('showAggregateSelect')) {
         result.set('metricPath', result.get('metricPath') + '._' + aggregateFunction);
         result.set('name', result.get('name') + '._' + aggregateFunction);
       }
@@ -234,6 +296,12 @@ App.AddMetricExpressionView = Em.View.extend({
    */
   cancel: function () {
     $(".service-level-dropdown").parent().removeClass('open');
+    var id =  "#" + this.get('currentSelectedComponent.id');
+    var aggregatorId = "#" + this.get('currentSelectedComponent.aggregatorId');
+    $(id).val('').trigger("chosen:updated");
+    $(aggregatorId).val('').trigger("chosen:updated");
+    this.set('currentSelectedComponent.selectedAggregation', Em.I18n.t('dashboard.widgets.wizard.step2.aggregateFunction.scanOps'));
+    this.set('currentSelectedComponent.selectedMetric', null);
   },
 
 
@@ -244,10 +312,9 @@ App.AddMetricExpressionView = Em.View.extend({
   componentMap: function () {
     var servicesMap = {};
     var result = [];
-    var components = [];
     var masterNames = App.StackServiceComponent.find().filterProperty('isMaster').mapProperty('componentName');
     var parentView = this.get('parentView');
-
+    var expressionId = "_" + parentView.get('expression.id');
     if (this.get('controller.filteredMetrics')) {
       this.get('controller.filteredMetrics').forEach(function (metric) {
         var service = servicesMap[metric.service_name];
@@ -276,13 +343,12 @@ App.AddMetricExpressionView = Em.View.extend({
     }
 
     for (var serviceName in servicesMap) {
-      components = [];
+      var components = [];
       for (var componentId in servicesMap[serviceName].components) {
-
-        //HBase service should not show "Active HBase master"
-        if (servicesMap[serviceName].components[componentId].component_name === 'HBASE_MASTER' &&
-          servicesMap[serviceName].components[componentId].level === 'HOSTCOMPONENT') continue;
-
+        // Hide the option if none of the hostComponent is created in the cluster yet
+        var componentName = servicesMap[serviceName].components[componentId].component_name;
+        var isHostComponentAbsent = !App.HostComponent.find().filterProperty('componentName',componentName).length;
+        if (isHostComponentAbsent) continue;
         var component = Em.Object.create({
           componentName: servicesMap[serviceName].components[componentId].component_name,
           level: servicesMap[serviceName].components[componentId].level,
@@ -298,7 +364,8 @@ App.AddMetricExpressionView = Em.View.extend({
           count: servicesMap[serviceName].components[componentId].count,
           metrics: servicesMap[serviceName].components[componentId].metrics.uniq().sort(),
           selected: false,
-          id: componentId,
+          id: componentId + expressionId,
+          aggregatorId: componentId + expressionId + '_aggregator',
           serviceName: serviceName,
           showAggregateSelect: function () {
             return this.get('level') === 'COMPONENT';
@@ -331,8 +398,20 @@ App.AddMetricExpressionView = Em.View.extend({
       }));
     }
 
-    return result;
-  }.property('controller.filteredMetrics')
+    return this.putContextServiceOnTop(result);
+  }.property('controller.filteredMetrics'),
+
+  /**
+   * returns the input array with the context service (service from which widget browser is launched) as the first element of the array
+   * @param serviceComponentMap {Array}
+   * @return {Array}
+   */
+  putContextServiceOnTop: function(serviceComponentMap) {
+    var contextService = this.get('controller.content.widgetService');
+    var serviceIndex = serviceComponentMap.indexOf(serviceComponentMap.findProperty('serviceName', contextService));
+    return serviceComponentMap.slice(serviceIndex, serviceComponentMap.length).concat(serviceComponentMap.slice(0, serviceIndex));
+  }
+
 });
 
 App.InputCursorTextfieldView = Ember.TextField.extend({
@@ -345,31 +424,45 @@ App.InputCursorTextfieldView = Ember.TextField.extend({
   },
 
   focusCursor: function () {
-    Em.run.next( function() { $('.add-item-input .ember-text-field').focus(); });
+    var self = this;
+    Em.run.next( function() {
+      if (self.$()) {
+        self.$().focus();
+      }
+    });
   }.observes('parentView.expression.data.length'),
+
+  focusOut: function(evt) {
+    this.saveNumber();
+  },
 
   validateInput: function () {
     var value = this.get('value');
     var parentView = this.get('parentView');
-    this.set('isInvalid', false);
-    if (value && parentView.get('OPERATORS').contains(value)) {
-      // add operator
-      var data = parentView.get('expression.data');
-      var lastId = (data.length > 0) ? Math.max.apply(parentView, data.mapProperty('id')) : 0;
-      data.pushObject(Em.Object.create({
-        id: ++lastId,
-        name: value,
-        isOperator: true
-      }));
-      this.set('value', '');
-    } else if (value && value == 'm') {
-      // open add metric menu
-      $('#add-metric-menu > div > a').click();
-      this.set('value', '');
-    } else if (value) {
-      // invalid operator
-      this.set('isInvalid', true);
+    var isInvalid = false;
+
+    if (!number_utils.isPositiveNumber(value))  {
+      if (value && parentView.get('OPERATORS').contains(value)) {
+        // add operator
+        var data = parentView.get('expression.data');
+        var lastId = (data.length > 0) ? Math.max.apply(parentView, data.mapProperty('id')) : 0;
+        data.pushObject(Em.Object.create({
+          id: ++lastId,
+          name: value,
+          isOperator: true
+        }));
+        this.set('value', '');
+      } else if (value && value == 'm') {
+        // open add metric menu
+        var expressionId = "_" + parentView.get('expression.id');
+        $('#add-metric-menu' + expressionId + '> div > a').click();
+        this.set('value', '');
+      } else if (value) {
+        // invalid operator
+        isInvalid = true;
+      }
     }
+    this.set('isInvalid', isInvalid);
   }.observes('value'),
 
   keyDown: function (event) {
@@ -378,6 +471,26 @@ App.InputCursorTextfieldView = Ember.TextField.extend({
       if (data.length >= 1) {
         data.removeObject(data[data.length - 1]);
       }
+    } else if (event.keyCode == 13) { //Enter
+      this.saveNumber();
+    }
+  },
+
+  saveNumber: function() {
+    var number_utils = require("utils/number_utils");
+    var value = this.get('value');
+    if (number_utils.isPositiveNumber(value))  {
+      var parentView = this.get('parentView');
+      var data = parentView.get('expression.data');
+      var lastId = (data.length > 0) ? Math.max.apply(this, data.mapProperty('id')) : 0;
+      data.pushObject(Em.Object.create({
+        id: ++lastId,
+        name: this.get('value'),
+        isNumber: true
+      }));
+      this.set('numberValue', "");
+      this.set('isInvalid', false);
+      this.set('value', '');
     }
   }
 });

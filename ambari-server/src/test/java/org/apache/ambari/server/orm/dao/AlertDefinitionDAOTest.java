@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.TimeZone;
 import java.util.UUID;
 
+import com.google.inject.persist.UnitOfWork;
 import org.apache.ambari.server.controller.RootServiceResponseFactory;
 import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
@@ -76,6 +77,7 @@ public class AlertDefinitionDAOTest {
   public void setup() throws Exception {
     injector = Guice.createInjector(new InMemoryDefaultTestModule());
     injector.getInstance(GuiceJpaInitializer.class);
+    injector.getInstance(UnitOfWork.class).begin();
 
     dispatchDao = injector.getInstance(AlertDispatchDAO.class);
     dao = injector.getInstance(AlertDefinitionDAO.class);
@@ -156,6 +158,8 @@ public class AlertDefinitionDAOTest {
 
   @After
   public void teardown() {
+    injector.getInstance(UnitOfWork.class).end();
+
     injector.getInstance(PersistService.class).stop();
     injector = null;
   }

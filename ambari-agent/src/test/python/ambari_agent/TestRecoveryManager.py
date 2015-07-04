@@ -62,7 +62,8 @@ class TestRecoveryManager(TestCase):
       "commandParams": {
         "service_package_folder": "common-services/YARN/2.1.0.2.0/package"
       }
-    }
+    },
+    "hostLevelParams": {}
   }
 
   exec_command2 = {
@@ -77,7 +78,8 @@ class TestRecoveryManager(TestCase):
       "commandParams": {
         "service_package_folder": "common-services/YARN/2.1.0.2.0/package"
       }
-    }
+    },
+    "hostLevelParams": {}
   }
 
   exec_command3 = {
@@ -92,6 +94,25 @@ class TestRecoveryManager(TestCase):
       "commandParams": {
         "service_package_folder": "common-services/YARN/2.1.0.2.0/package"
       }
+    },
+    "hostLevelParams": {}
+  }
+
+  exec_command4 = {
+    "commandType": "EXECUTION_COMMAND",
+    "roleCommand": "CUSTOM_COMMAND",
+    "role": "NODEMANAGER",
+    "configurations": {
+      "capacity-scheduler": {
+        "yarn.scheduler.capacity.default.minimum-user-limit-percent": "100"},
+      "capacity-calculator": {
+        "yarn.scheduler.capacity.default.minimum-user-limit-percent": "100"},
+      "commandParams": {
+        "service_package_folder": "common-services/YARN/2.1.0.2.0/package"
+      }
+    },
+    "hostLevelParams": {
+      "custom_command": "RESTART"
     }
   }
 
@@ -127,6 +148,9 @@ class TestRecoveryManager(TestCase):
 
     rm.process_execution_commands([self.exec_command1, self.command])
     mock_uds.assert_has_calls([call("NODEMANAGER", "INSTALLED")])
+
+    rm.process_execution_commands([self.exec_command4])
+    mock_uds.assert_has_calls([call("NODEMANAGER", "STARTED")])
     pass
 
   def test_defaults(self):
@@ -316,7 +340,8 @@ class TestRecoveryManager(TestCase):
        1200, 1201, 1203,
        4000, 4001, 4002, 4003,
        4100, 4101, 4102, 4103,
-       4200, 4201, 4202]
+       4200, 4201, 4202,
+       4300, 4301, 4302]
     rm = RecoveryManager(True)
     rm.update_config(15, 5, 1, 16, True, False)
 
@@ -326,6 +351,8 @@ class TestRecoveryManager(TestCase):
 
     rm.update_current_status("NODEMANAGER", "INSTALLED")
     rm.update_desired_status("NODEMANAGER", "STARTED")
+    self.assertEqual("INSTALLED", rm.get_current_status("NODEMANAGER"))
+    self.assertEqual("STARTED", rm.get_desired_status("NODEMANAGER"))
 
     commands = rm.get_recovery_commands()
     self.assertEqual(1, len(commands))
@@ -383,6 +410,12 @@ class TestRecoveryManager(TestCase):
     self.assertEqual(1, len(commands))
     self.assertEqual("CUSTOM_COMMAND", commands[0]["roleCommand"])
     self.assertEqual("RESTART", commands[0]["hostLevelParams"]["custom_command"])
+
+    rm.update_current_status("NODEMANAGER", "STARTED")
+    rm.update_desired_status("NODEMANAGER", "INSTALLED")
+    commands = rm.get_recovery_commands()
+    self.assertEqual(1, len(commands))
+    self.assertEqual("STOP", commands[0]["roleCommand"])
     pass
 
   @patch.object(RecoveryManager, "update_config")

@@ -21,6 +21,7 @@ import java.io.File;
 import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -65,6 +66,7 @@ import org.apache.ambari.server.orm.entities.KeyValueEntity;
 import org.apache.ambari.server.orm.entities.ServiceComponentDesiredStateEntity;
 import org.apache.ambari.server.orm.entities.ServiceComponentDesiredStateEntityPK;
 import org.apache.ambari.server.orm.entities.StackEntity;
+import org.apache.ambari.server.orm.entities.UserEntity;
 import org.apache.ambari.server.state.HostComponentAdminState;
 import org.apache.ambari.server.state.PropertyInfo;
 import org.apache.ambari.server.state.ServiceInfo;
@@ -345,16 +347,16 @@ public class UpgradeCatalog150 extends AbstractUpgradeCatalog {
       || databaseType == DatabaseType.DERBY) {
 
       //recreate old constraints to sync with oracle
-      dbAccessor.dropConstraint("clusterconfigmapping", "FK_clusterconfigmapping_cluster_id");
-      dbAccessor.dropConstraint("hostcomponentdesiredstate", "FK_hostcomponentdesiredstate_host_name");
-      dbAccessor.dropConstraint("hostcomponentdesiredstate", "FK_hostcomponentdesiredstate_component_name");
-      dbAccessor.dropConstraint("hostcomponentstate", "FK_hostcomponentstate_component_name");
-      dbAccessor.dropConstraint("hostcomponentstate", "FK_hostcomponentstate_host_name");
-      dbAccessor.dropConstraint("servicecomponentdesiredstate", "FK_servicecomponentdesiredstate_service_name");
-      dbAccessor.dropConstraint("servicedesiredstate", "FK_servicedesiredstate_service_name");
-      dbAccessor.dropConstraint("role_success_criteria", "FK_role_success_criteria_stage_id");
-      dbAccessor.dropConstraint("ClusterHostMapping", "FK_ClusterHostMapping_host_name");
-      dbAccessor.dropConstraint("ClusterHostMapping", "FK_ClusterHostMapping_cluster_id");
+      dbAccessor.dropFKConstraint("clusterconfigmapping", "FK_clusterconfigmapping_cluster_id");
+      dbAccessor.dropFKConstraint("hostcomponentdesiredstate", "FK_hostcomponentdesiredstate_host_name");
+      dbAccessor.dropFKConstraint("hostcomponentdesiredstate", "FK_hostcomponentdesiredstate_component_name");
+      dbAccessor.dropFKConstraint("hostcomponentstate", "FK_hostcomponentstate_component_name");
+      dbAccessor.dropFKConstraint("hostcomponentstate", "FK_hostcomponentstate_host_name");
+      dbAccessor.dropFKConstraint("servicecomponentdesiredstate", "FK_servicecomponentdesiredstate_service_name");
+      dbAccessor.dropFKConstraint("servicedesiredstate", "FK_servicedesiredstate_service_name");
+      dbAccessor.dropFKConstraint("role_success_criteria", "FK_role_success_criteria_stage_id");
+      dbAccessor.dropFKConstraint("ClusterHostMapping", "FK_ClusterHostMapping_host_name");
+      dbAccessor.dropFKConstraint("ClusterHostMapping", "FK_ClusterHostMapping_cluster_id");
 
       dbAccessor.addFKConstraint("clusterconfigmapping", "clusterconfigmappingcluster_id", "cluster_id", "clusters", "cluster_id", false);
       dbAccessor.addFKConstraint("hostcomponentdesiredstate", "hstcmponentdesiredstatehstname", "host_name", "hosts", "host_name", false);
@@ -379,10 +381,10 @@ public class UpgradeCatalog150 extends AbstractUpgradeCatalog {
 
 
       //drop new constraints with to sync with oracle
-      dbAccessor.dropConstraint("confgroupclusterconfigmapping", "FK_confgroupclusterconfigmapping_config_tag", true);
-      dbAccessor.dropConstraint("confgroupclusterconfigmapping", "FK_confgroupclusterconfigmapping_group_id", true);
-      dbAccessor.dropConstraint("configgrouphostmapping", "FK_configgrouphostmapping_configgroup_id", true);
-      dbAccessor.dropConstraint("configgrouphostmapping", "FK_configgrouphostmapping_host_name", true);
+      dbAccessor.dropFKConstraint("confgroupclusterconfigmapping", "FK_confgroupclusterconfigmapping_config_tag", true);
+      dbAccessor.dropFKConstraint("confgroupclusterconfigmapping", "FK_confgroupclusterconfigmapping_group_id", true);
+      dbAccessor.dropFKConstraint("configgrouphostmapping", "FK_configgrouphostmapping_configgroup_id", true);
+      dbAccessor.dropFKConstraint("configgrouphostmapping", "FK_configgrouphostmapping_host_name", true);
 
 
     }
@@ -454,20 +456,30 @@ public class UpgradeCatalog150 extends AbstractUpgradeCatalog {
     // Sequences
     if (dbAccessor.tableExists("ambari_sequences")) {
       if (databaseType == DatabaseType.POSTGRES) {
-
-        ResultSet resultSet = dbAccessor.executeSelect("select * from ambari_sequences where sequence_name in " +
-            "('cluster_id_seq','user_id_seq','host_role_command_id_seq')");
-
+        Statement statement = null;
+        ResultSet rs = null;
         try {
-          if (!resultSet.next()) {
-            dbAccessor.executeQuery(getPostgresSequenceUpgradeQuery(), true);
-            // Deletes
-            dbAccessor.dropSequence("host_role_command_task_id_seq");
-            dbAccessor.dropSequence("users_user_id_seq");
-            dbAccessor.dropSequence("clusters_cluster_id_seq");
+          statement = dbAccessor.getConnection().createStatement();
+          if (statement != null) {
+            rs = statement.executeQuery("select * from ambari_sequences where sequence_name in " +
+              "('cluster_id_seq','user_id_seq','host_role_command_id_seq')");
+            if (rs != null) {
+              if (!rs.next()) {
+                dbAccessor.executeQuery(getPostgresSequenceUpgradeQuery(), true);
+                // Deletes
+                dbAccessor.dropSequence("host_role_command_task_id_seq");
+                dbAccessor.dropSequence("users_user_id_seq");
+                dbAccessor.dropSequence("clusters_cluster_id_seq");
+              }
+            }
           }
         } finally {
-          resultSet.close();
+          if (rs != null) {
+            rs.close();
+          }
+          if (statement != null) {
+            statement.close();
+          }
         }
       }
     }

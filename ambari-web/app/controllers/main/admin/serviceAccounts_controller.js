@@ -24,6 +24,7 @@ require('controllers/main/service/info/configs');
 App.MainAdminServiceAccountsController = App.MainServiceInfoConfigsController.extend({
   name: 'mainAdminServiceAccountsController',
   users: null,
+  serviceConfigTags: [],
   content: Em.Object.create({
     serviceName: 'MISC'
   }),
@@ -69,6 +70,43 @@ App.MainAdminServiceAccountsController = App.MainServiceInfoConfigsController.ex
     });
   },
 
+
+  /**
+   * Changes format from Object to Array
+   *
+   * {
+   *  'core-site': 'version1',
+   *  'hdfs-site': 'version1',
+   *  ...
+   * }
+   *
+   * to
+   *
+   * [
+   *  {
+   *    siteName: 'core-site',
+   *    tagName: 'version1',
+   *    newTageName: null
+   *  },
+   *  ...
+   * ]
+   *
+   * set tagnames for configuration of the *-site.xml
+   * @private
+   * @method setServiceConfigTags
+   */
+  setServiceConfigTags: function (desiredConfigsSiteTags) {
+    var newServiceConfigTags = [];
+    for (var index in desiredConfigsSiteTags) {
+      newServiceConfigTags.pushObject({
+        siteName: index,
+        tagName: desiredConfigsSiteTags[index],
+        newTagName: null
+      }, this);
+    }
+    this.set('serviceConfigTags', newServiceConfigTags);
+  },
+
   /**
    * Generate configuration object that will be rendered
    *
@@ -81,6 +119,15 @@ App.MainAdminServiceAccountsController = App.MainServiceInfoConfigsController.ex
 
     miscConfigs = App.config.miscConfigVisibleProperty(miscConfigs, App.Service.find().mapProperty('serviceName').concat('MISC'));
 
+    // load specific users along the wizards which called <code>loadUsers</code> method
+    var wizardContentProperties = [
+      {key: 'group', configName: 'user_group'},
+      {key: 'smokeuser', configName: 'smokeuser'},
+      {key: 'hdfsUser', configName: 'hdfs_user'}
+    ];
+    wizardContentProperties.forEach(function(item) {
+      this.setContentProperty(item.key, item.configName, miscConfigs);
+    }, this);
     this.set('users', miscConfigs.filterProperty('isVisible'));
     this.set('dataIsLoaded', true);
   },

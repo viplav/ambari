@@ -17,22 +17,35 @@ limitations under the License.
 
 """
 
-from resource_management import *
+import os
+import tarfile
 
+from resource_management.libraries.script.script import Script
 from resource_management.libraries.functions import conf_select
 from resource_management.libraries.functions import hdp_select
+from resource_management.libraries.functions.check_process_status import check_process_status
+from resource_management.libraries.functions import format
+from resource_management.libraries.functions.version import compare_versions, format_hdp_stack_version
+from resource_management.libraries.functions import conf_select
+from resource_management.libraries.functions import hdp_select
+from resource_management.libraries.functions import Direction
 from resource_management.libraries.functions.security_commons import build_expectations, \
   cached_kinit_executor, validate_security_config_properties, get_params_from_filesystem, \
   FILE_TYPE_XML
-import sys
+from resource_management.core.resources.system import File, Execute, Directory
+from resource_management.core.resources.service import Service
+from resource_management.core.logger import Logger
+
+from ambari_commons import OSConst, OSCheck
+from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
+
+if OSCheck.is_windows_family():
+  from resource_management.libraries.functions.windows_service_utils import check_windows_service_status
+
 import upgrade
-import os
 from knox import knox
 from knox_ldap import ldap
 from setup_ranger_knox import setup_ranger_knox
-from ambari_commons import OSConst
-from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
-
 
 class KnoxGateway(Script):
   def install(self, env):
@@ -98,9 +111,36 @@ class KnoxGatewayDefault(KnoxGateway):
     import params
     env.set_params(params)
     if params.version and compare_versions(format_hdp_stack_version(params.version), '2.2.0.0') >= 0:
-      upgrade.backup_data()
+
+      absolute_backup_dir = None
+      if params.upgrade_direction and params.upgrade_direction == Direction.UPGRADE:
+        Logger.info("Backing up directories. Initial conf folder: %s" % os.path.realpath(params.knox_conf_dir))
+
+        # This will backup the contents of the conf directory into /tmp/knox-upgrade-backup/knox-conf-backup.tar
+        absolute_backup_dir = upgrade.backup_data()
+
+      # conf-select will change the symlink to the conf folder.
       conf_select.select(params.stack_name, "knox", params.version)
       hdp_select.select("knox-server", params.version)
+
+      # Extract the tar of the old conf folder into the new conf directory
+      if absolute_backup_dir is not None and params.upgrade_direction and params.upgrade_direction == Direction.UPGRADE:
+        conf_tar_source_path = os.path.join(absolute_backup_dir, upgrade.BACKUP_CONF_ARCHIVE)
+        if os.path.exists(conf_tar_source_path):
+          extract_dir = os.path.realpath(params.knox_conf_dir)
+          conf_tar_dest_path = os.path.join(extract_dir, upgrade.BACKUP_CONF_ARCHIVE)
+          Logger.info("Copying %s into %s file." % (upgrade.BACKUP_CONF_ARCHIVE, conf_tar_dest_path))
+          Execute(('cp', conf_tar_source_path, conf_tar_dest_path),
+                  sudo = True,
+          )
+
+          Execute(('tar','-xvf',conf_tar_source_path,'-C',extract_dir),
+                  sudo = True,
+          )
+          
+          File(conf_tar_dest_path,
+               action = "delete",
+          )
 
   def start(self, env, rolling_restart=False):
     import params
@@ -108,7 +148,7 @@ class KnoxGatewayDefault(KnoxGateway):
     self.configure(env)
     daemon_cmd = format('{knox_bin} start')
     no_op_test = format('ls {knox_pid_file} >/dev/null 2>&1 && ps -p `cat {knox_pid_file}` >/dev/null 2>&1')
-    setup_ranger_knox()
+    setup_ranger_knox(rolling_upgrade=rolling_restart)
     # Used to setup symlink, needed to update the knox managed symlink, in case of custom locations
     if os.path.islink(params.knox_managed_pid_symlink) and os.path.realpath(params.knox_managed_pid_symlink) != params.knox_pid_dir:
       os.unlink(params.knox_managed_pid_symlink)
@@ -123,13 +163,14 @@ class KnoxGatewayDefault(KnoxGateway):
   def stop(self, env, rolling_restart=False):
     import params
     env.set_params(params)
-    self.configure(env)
     daemon_cmd = format('{knox_bin} stop')
     Execute(daemon_cmd,
             environment={'JAVA_HOME': params.java_home},
             user=params.knox_user,
     )
-    Execute (format("rm -f {knox_pid_file}"))
+    File(params.knox_pid_file,
+         action="delete",
+    )
 
   def status(self, env):
     import status_params

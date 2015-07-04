@@ -49,23 +49,8 @@ App.WidgetWizardStep3Controller = Em.Controller.extend({
    * @type {string}
    */
   widgetScope: function () {
-    return this.get('isSharedChecked')? 'Cluster': 'User';
+    return this.get('isSharedChecked') ? 'Cluster' : 'User';
   }.property('isSharedChecked'),
-
-  showConfirmationOnSharing: function () {
-    var self = this;
-    if(this.get('isSharedChecked')) {
-      var bodyMessage = Em.Object.create({
-        confirmMsg: Em.I18n.t('dashboard.widgets.browser.action.share.confirmation'),
-        confirmButton: Em.I18n.t('dashboard.widgets.browser.action.share')
-      });
-      return App.showConfirmationFeedBackPopup(function (query) {
-        self.set('isSharedChecked', true);
-      }, bodyMessage, function (query) {
-        self.set('isSharedChecked', false);
-      });
-    }
-  },
 
   /**
    * @type {string}
@@ -89,6 +74,28 @@ App.WidgetWizardStep3Controller = Em.Controller.extend({
   widgetMetrics: [],
 
   /**
+   * @type {boolean}
+   */
+  isSubmitDisabled: function () {
+    var widgetNameEmpty = this.get('widgetName') ? !Boolean(this.get('widgetName').trim()) : true;
+    return widgetNameEmpty || this.get('isNameInvalid') || this.get('isDescriptionInvalid');
+  }.property('widgetName', 'isNameInvalid', 'isDescriptionInvalid'),
+
+  /**
+   * @type {boolean}
+   */
+  isNameInvalid: function () {
+    return this.get('widgetName') ? this.get('widgetName').length >= 129 : false;
+  }.property('widgetName'),
+
+  /**
+   * @type {boolean}
+   */
+  isDescriptionInvalid: function () {
+    return this.get('widgetDescription') ? this.get('widgetDescription').length >= 2049 : false;
+  }.property('widgetDescription'),
+
+  /**
    * restore widget data set on 2nd step
    */
   initPreviewData: function () {
@@ -99,16 +106,32 @@ App.WidgetWizardStep3Controller = Em.Controller.extend({
     this.set('widgetName', this.get('content.widgetName'));
     this.set('widgetDescription', this.get('content.widgetDescription'));
     this.set('isSharedChecked', this.get('content.widgetScope') == 'CLUSTER');
-    // on editing, dont allow changing from shared scope to unshare
-    this.set('isSharedCheckboxDisabled', this.get('content.widgetScope') == 'CLUSTER' &&
-      this.get('isEditController'));
-    this.addObserver('isSharedChecked', this, this.showConfirmationOnSharing);
+    // on editing, don't allow changing from shared scope to unshare
+    var isSharedCheckboxDisabled = ((this.get('content.widgetScope') == 'CLUSTER') && this.get('isEditController'));
+    this.set('isSharedCheckboxDisabled', isSharedCheckboxDisabled);
+    if (!isSharedCheckboxDisabled) {
+      this.addObserver('isSharedChecked', this, this.showConfirmationOnSharing);
+    }
   },
 
-  isSubmitDisabled: function () {
-    var widgetName = this.get('widgetName')? this.get('widgetName').trim(): null;
-    return !(widgetName);
-  }.property('widgetName'),
+  /**
+   * confirmation popup
+   * @returns {App.ModalPopup|undefined}
+   */
+  showConfirmationOnSharing: function () {
+    var self = this;
+    if (this.get('isSharedChecked')) {
+      var bodyMessage = Em.Object.create({
+        confirmMsg: Em.I18n.t('dashboard.widgets.browser.action.share.confirmation'),
+        confirmButton: Em.I18n.t('dashboard.widgets.browser.action.share')
+      });
+      return App.showConfirmationFeedBackPopup(function (query) {
+        self.set('isSharedChecked', true);
+      }, bodyMessage, function (query) {
+        self.set('isSharedChecked', false);
+      });
+    }
+  },
 
   /**
    * collect all needed data to create new widget
@@ -122,14 +145,9 @@ App.WidgetWizardStep3Controller = Em.Controller.extend({
         description: this.get('widgetDescription') || "",
         scope: this.get('widgetScope').toUpperCase(),
         author: this.get('widgetAuthor'),
-        "metrics": this.get('widgetMetrics').map(function (metric) {
-          return {
-            "name": metric.name,
-            "service_name": metric.serviceName,
-            "component_name": metric.componentName,
-            "metric_path": metric.metricPath,
-            "host_component_criteria": metric.hostComponentCriteria
-          }
+        metrics: this.get('widgetMetrics').map(function (metric) {
+          delete metric.data;
+          return metric;
         }),
         values: this.get('widgetValues').map(function (value) {
           delete value.computedValue;
@@ -141,8 +159,7 @@ App.WidgetWizardStep3Controller = Em.Controller.extend({
   },
 
   cancel: function () {
-    var controller = App.router.get(this.get('content.controllerName'));
-    controller.cancel();
+    App.router.get(this.get('content.controllerName')).cancel();
   },
 
   complete: function () {

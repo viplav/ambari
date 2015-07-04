@@ -169,8 +169,9 @@ describe('App.ConfigWidgetView', function () {
   describe('#restoreDependentConfigs', function() {
     beforeEach(function() {
       view = App.ConfigWidgetView.create({
-        controller: Em.Object.create({
-          updateDependentConfigs: function() {}
+        controller: Em.Object.extend(App.EnhancedConfigsMixin, {
+        }).create({
+          updateDependentConfigs: function() {},
         }),
         config: Em.Object.create({ name: 'config1'})
       });
@@ -217,6 +218,27 @@ describe('App.ConfigWidgetView', function () {
       expect(view.get('controller._dependentConfigValues.length')).to.be.eql(2);
     });
 
+    it('dependent config value should be set with inital or saved when it has one parent', function() {
+      var ctrl = view.get('controller');
+      ctrl.set('stepConfigs', [
+        Em.Object.create({
+          configs: Em.A([
+            Em.Object.create({ name: 'dependent3', savedValue: '1', value: 2, filename: 'some-file.xml' }),
+            Em.Object.create({ name: 'dependent2', savedValue: '4', value: '10', filename: 'some-file.xml' })
+          ])
+        })
+      ]);
+      view.set('controller._dependentConfigValues', [
+        {propertyName: 'dependent1', parentConfigs: ['config1', 'config2'], fileName: 'some-file' },
+        {propertyName: 'dependent2', parentConfigs: ['config2', 'config1'], fileName: 'some-file'},
+        {propertyName: 'dependent3', parentConfigs: ['config1'], fileName: 'some-file' }
+      ]);
+      view.restoreDependentConfigs(view.get('config'));
+      expect(view.get('controller').findConfigProperty('dependent3', 'some-file.xml').get('value')).to.be.eql('1');
+      // config with multi dependency should not be updated
+      expect(view.get('controller').findConfigProperty('dependent2', 'some-file.xml').get('value')).to.be.eql('10');
+    });
+
   });
 
   describe('#isValueCompatibleWithWidget()', function() {
@@ -230,4 +252,37 @@ describe('App.ConfigWidgetView', function () {
       expect(view.isValueCompatibleWithWidget()).to.be.false;
     });
   });
+
+  describe('#setRecommendedValue', function () {
+
+    beforeEach(function () {
+      sinon.stub(view, 'sendRequestRorDependentConfigs', function () {
+        return $.Deferred().resolve().promise();
+      });
+      sinon.stub(view, 'restoreDependentConfigs', Em.K);
+      view.set('config', Em.Object.create({
+        value: 1,
+        recommendedValue: 1,
+        savedValue: 1
+      }));
+    });
+
+    afterEach(function () {
+      view.sendRequestRorDependentConfigs.restore();
+      view.restoreDependentConfigs.restore();
+    });
+
+    it('should call restoreDependentConfigs if config.value is equal to config.savedValue', function () {
+      view.setRecommendedValue();
+      expect(view.restoreDependentConfigs.calledOnce).to.be.true;
+    });
+
+    it('should not call restoreDependentConfigs if config.value is not equal to config.savedValue', function () {
+      view.set('config.savedValue', 2);
+      view.setRecommendedValue();
+      expect(view.restoreDependentConfigs.called).to.be.false;
+    });
+
+  });
+
 });

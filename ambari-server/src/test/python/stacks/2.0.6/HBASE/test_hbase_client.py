@@ -27,6 +27,7 @@ from stacks.utils.RMFTestCase import *
 class TestHBaseClient(RMFTestCase):
   COMMON_SERVICES_PACKAGE_DIR = "HBASE/0.96.0.2.0/package"
   STACK_VERSION = "2.0.6"
+  TMP_PATH = '/hadoop'
 
   def test_configure_secured(self):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/hbase_client.py",
@@ -45,24 +46,13 @@ class TestHBaseClient(RMFTestCase):
       group = 'hadoop',
       recursive = True,
     )
-    self.assertResourceCalled('Directory', '/hadoop/hbase',
-      owner = 'hbase',
-      mode=0775,
-      recursive = True,
-      cd_access='a'
-    )
-    self.assertResourceCalled('Directory', '/hadoop/hbase/local',
-      owner = 'hbase',
-      group = 'hadoop',
-      mode=0775,
-      recursive = True,
-    )
-    self.assertResourceCalled('Directory', '/hadoop/hbase/local/jars',
-      owner = 'hbase',
-      group = 'hadoop',
-      mode=0775,
-      recursive = True,
-    )
+    self.assertResourceCalled('Directory', '/hadoop',
+                              recursive = True,
+                              cd_access = 'a',
+                              )
+    self.assertResourceCalled('Execute', ('chmod', '1777', u'/hadoop'),
+                              sudo = True,
+                              )
     self.assertResourceCalled('XmlConfig', 'hbase-site.xml',
       owner = 'hbase',
       group = 'hadoop',
@@ -136,24 +126,13 @@ class TestHBaseClient(RMFTestCase):
       group = 'hadoop',
       recursive = True,
     )
-    self.assertResourceCalled('Directory', '/hadoop/hbase',
-      owner = 'hbase',
-      mode=0775,
-      recursive = True,
-      cd_access='a'
-    )
-    self.assertResourceCalled('Directory', '/hadoop/hbase/local',
-      owner = 'hbase',
-      group = 'hadoop',
-      mode=0775,
-      recursive = True,
-    )
-    self.assertResourceCalled('Directory', '/hadoop/hbase/local/jars',
-      owner = 'hbase',
-      group = 'hadoop',
-      mode=0775,
-      recursive = True,
-    )
+    self.assertResourceCalled('Directory', '/hadoop',
+                              recursive = True,
+                              cd_access = 'a',
+                              )
+    self.assertResourceCalled('Execute', ('chmod', '1777', u'/hadoop'),
+                              sudo = True,
+                              )
     self.assertResourceCalled('XmlConfig', 'hbase-site.xml',
       owner = 'hbase',
       group = 'hadoop',
@@ -221,8 +200,8 @@ class TestHBaseClient(RMFTestCase):
                    target = RMFTestCase.TARGET_COMMON_SERVICES,
                    mocks_dict = mocks_dict)
 
-    self.assertResourceCalled("Execute", "hdp-select set hbase-client 2.2.1.0-2067")
-    self.assertResourceCalled("Execute", "hdp-select set hadoop-client 2.2.1.0-2067")
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'hbase-client', '2.2.1.0-2067'), sudo=True)
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'hadoop-client', '2.2.1.0-2067'), sudo=True)
     self.assertEquals(1, mocks_dict['call'].call_count)
 
 
@@ -246,8 +225,8 @@ class TestHBaseClient(RMFTestCase):
                        call_mocks = [(0, None), (0, None), (0, None), (0, None)],
                        mocks_dict = mocks_dict)
 
-    self.assertResourceCalled('Execute', 'hdp-select set hbase-client %s' % version)
-    self.assertResourceCalled('Execute', 'hdp-select set hadoop-client %s' % version)
+    self.assertResourceCalled('Execute', ('hdp-select', 'set', 'hbase-client', version), sudo=True)
+    self.assertResourceCalled('Execute', ('hdp-select', 'set', 'hadoop-client', version), sudo=True)
 
     self.assertEquals(5, mocks_dict['call'].call_count)
     self.assertEquals(

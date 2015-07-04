@@ -124,8 +124,8 @@ class HDP206StackAdvisor(DefaultStackAdvisor):
     putYarnProperty = self.putProperty(configurations, "yarn-site", services)
     putYarnEnvProperty = self.putProperty(configurations, "yarn-env", services)
     nodemanagerMinRam = 1048576 # 1TB in mb
-    for nodemanager in self.getHostsWithComponent("YARN", "NODEMANAGER", services, hosts):
-      nodemanagerMinRam = min(nodemanager["Hosts"]["total_mem"]/1024, nodemanagerMinRam)
+    if "referenceNodeManagerHost" in clusterData:
+      nodemanagerMinRam = min(clusterData["referenceNodeManagerHost"]["total_mem"]/1024, nodemanagerMinRam)
     putYarnProperty('yarn.nodemanager.resource.memory-mb', int(round(min(clusterData['containers'] * clusterData['ramPerContainer'], nodemanagerMinRam))))
     putYarnProperty('yarn.scheduler.minimum-allocation-mb', int(clusterData['ramPerContainer']))
     putYarnProperty('yarn.scheduler.maximum-allocation-mb', int(configurations["yarn-site"]["properties"]["yarn.nodemanager.resource.memory-mb"]))
@@ -251,11 +251,18 @@ class HDP206StackAdvisor(DefaultStackAdvisor):
     }
 
     if len(hosts["items"]) > 0:
-      nodeManagerHost = self.getHostWithComponent("YARN", "NODEMANAGER", services, hosts)
-      if nodeManagerHost is not None:
+      nodeManagerHosts = self.getHostsWithComponent("YARN", "NODEMANAGER", services, hosts)
+      # NodeManager host with least memory is generally used in calculations as it will work in larger hosts.
+      if nodeManagerHosts is not None and len(nodeManagerHosts) > 0:
+        nodeManagerHost = nodeManagerHosts[0];
+        for nmHost in nodeManagerHosts:
+          if nmHost["Hosts"]["total_mem"] < nodeManagerHost["Hosts"]["total_mem"]:
+            nodeManagerHost = nmHost
         host = nodeManagerHost["Hosts"]
+        cluster["referenceNodeManagerHost"] = host
       else:
         host = hosts["items"][0]["Hosts"]
+      cluster["referenceHost"] = host
       cluster["cpu"] = host["cpu_count"]
       cluster["disk"] = len(host["disk_info"])
       cluster["ram"] = int(host["total_mem"] / (1024 * 1024))
@@ -299,7 +306,7 @@ class HDP206StackAdvisor(DefaultStackAdvisor):
     totalAvailableRam = cluster["ram"] - cluster["reservedRam"]
     if cluster["hBaseInstalled"]:
       totalAvailableRam -= cluster["hbaseRam"]
-    cluster["totalAvailableRam"] = max(2048, totalAvailableRam * 1024)
+    cluster["totalAvailableRam"] = max(512, totalAvailableRam * 1024)
     '''containers = max(3, min (2*cores,min (1.8*DISKS,(Total available RAM) / MIN_CONTAINER_SIZE))))'''
     cluster["containers"] = round(max(3,
                                 min(2 * cluster["cpu"],
@@ -347,27 +354,6 @@ class HDP206StackAdvisor(DefaultStackAdvisor):
 
   def validateClusterConfigurations(self, configurations, services, hosts):
     validationItems = []
-    hostComponents = {}
-    failureMessage = ""
-
-    for service in services["services"]:
-      for component in service["components"]:
-        if component["StackServiceComponents"]["hostnames"] is not None:
-          for hostName in component["StackServiceComponents"]["hostnames"]:
-            if hostName not in hostComponents.keys():
-              hostComponents[hostName] = []
-            hostComponents[hostName].append(component["StackServiceComponents"]["component_name"])
-
-    for host in hosts["items"]:
-      # Not enough physical memory
-      requiredMemory = getMemorySizeRequired(hostComponents[host["Hosts"]["host_name"]], configurations)
-      if host["Hosts"]["total_mem"] * 1024 < requiredMemory:  # in bytes
-        failureMessage += "Not enough physical RAM on the host {0}. " \
-                          "At least {1} MB is recommended based on components assigned.\n" \
-          .format(host["Hosts"]["host_name"], requiredMemory/1048576)  # MB
-    if failureMessage:
-      notEnoughMemoryItem = self.getWarnItem(failureMessage)
-      validationItems.extend([{"config-name": "", "item": notEnoughMemoryItem}])
 
     return self.toConfigurationValidationProblems(validationItems, "")
 
@@ -607,7 +593,7 @@ class HDP206StackAdvisor(DefaultStackAdvisor):
     if value is None:
       return self.getErrorItem("Value can't be null or undefined")
     try:
-      valueInt = int(value.strip()[:-1])
+      valueInt = to_number(value)
       # TODO: generify for other use cases
       defaultValueInt = int(str(defaultValue).strip())
       if valueInt < defaultValueInt:
@@ -625,8 +611,12 @@ class HDP206StackAdvisor(DefaultStackAdvisor):
     defaultValue = recommendedDefaults[propertyName]
     if defaultValue is None:
       return self.getErrorItem("Config's default value can't be null or undefined")
-    if not checkXmxValueFormat(value):
+    if not checkXmxValueFormat(value) and checkXmxValueFormat(defaultValue):
+      # Xmx is in the default-value but not the value, should be an error
       return self.getErrorItem('Invalid value format')
+    if not checkXmxValueFormat(defaultValue):
+      # if default value does not contain Xmx, then there is no point in validating existing value
+      return None
     valueInt = formatXmxSizeToBytes(getXmxSize(value))
     defaultValueXmx = getXmxSize(defaultValue)
     defaultValueInt = formatXmxSizeToBytes(defaultValueXmx)
@@ -727,6 +717,11 @@ class HDP206StackAdvisor(DefaultStackAdvisor):
 
     return uid_min
 
+  def mergeValidators(self, parentValidators, childValidators):
+    for service, configsDict in childValidators.iteritems():
+      if service not in parentValidators:
+        parentValidators[service] = {}
+      parentValidators[service].update(configsDict)
 
 # Validation helper methods
 def getSiteProperties(configurations, siteName):

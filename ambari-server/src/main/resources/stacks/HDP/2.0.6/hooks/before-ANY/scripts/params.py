@@ -18,18 +18,25 @@ limitations under the License.
 """
 
 import collections
-import json
+import re
+
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
+
+from resource_management.libraries.script import Script
+from resource_management.libraries.functions import default
+from resource_management.libraries.functions import format
 from resource_management.libraries.functions import conf_select
-from resource_management.libraries.functions.version import format_hdp_stack_version, compare_versions
+from resource_management.libraries.functions import hdp_select
+from resource_management.libraries.functions import format_jvm_option
+from resource_management.libraries.functions.version import format_hdp_stack_version
+from resource_management.libraries.functions.version import compare_versions
 from ambari_commons.os_check import OSCheck
-from resource_management import *
+
 
 config = Script.get_config()
 tmp_dir = Script.get_tmp_dir()
 
 artifact_dir = format("{tmp_dir}/AMBARI-artifacts/")
-jce_policy_zip = default("/hostLevelParams/jce_name", None) # None when jdk is already installed by user
-jce_location = config['hostLevelParams']['jdk_location']
 jdk_name = default("/hostLevelParams/jdk_name", None)
 java_home = config['hostLevelParams']['java_home']
 java_version = int(config['hostLevelParams']['java_version'])
@@ -72,18 +79,22 @@ def is_secure_port(port):
 
 # hadoop default params
 mapreduce_libs_path = "/usr/lib/hadoop-mapreduce/*"
-hadoop_home = "/usr/lib/hadoop"
+
+# upgrades would cause these directories to have a version instead of "current"
+# which would cause a lot of problems when writing out hadoop-env.sh; instead
+# force the use of "current" in the hook
+hadoop_home = hdp_select.get_hadoop_dir("home", force_latest_on_upgrade=True)
+hadoop_conf_dir = conf_select.get_hadoop_conf_dir(force_latest_on_upgrade=True)
+hadoop_libexec_dir = hdp_select.get_hadoop_dir("libexec", force_latest_on_upgrade=True)
+
+hadoop_conf_empty_dir = "/etc/hadoop/conf.empty"
 hadoop_secure_dn_user = hdfs_user
 hadoop_dir = "/etc/hadoop"
 versioned_hdp_root = '/usr/hdp/current'
-hadoop_conf_dir = conf_select.get_hadoop_conf_dir()
-hadoop_libexec_dir = conf_select.get_hadoop_dir("libexec")
-hadoop_conf_empty_dir = "/etc/hadoop/conf.empty"
 
 # HDP 2.2+ params
 if Script.is_hdp_stack_greater_or_equal("2.2"):
   mapreduce_libs_path = "/usr/hdp/current/hadoop-mapreduce-client/*"
-  hadoop_home = "/usr/hdp/current/hadoop-client"
 
   # not supported in HDP 2.2+
   hadoop_conf_empty_dir = None
@@ -142,6 +153,8 @@ gmetad_user = config['configurations']['ganglia-env']["gmetad_user"]
 gmond_user = config['configurations']['ganglia-env']["gmond_user"]
 tez_user = config['configurations']['tez-env']["tez_user"]
 oozie_user = config['configurations']['oozie-env']["oozie_user"]
+falcon_user = config['configurations']['falcon-env']["falcon_user"]
+ranger_user = config['configurations']['ranger-env']["ranger_user"]
 
 user_group = config['configurations']['cluster-env']['user_group']
 
@@ -149,16 +162,21 @@ ganglia_server_hosts = default("/clusterHostInfo/ganglia_server_host", [])
 namenode_host = default("/clusterHostInfo/namenode_host", [])
 hbase_master_hosts = default("/clusterHostInfo/hbase_master_hosts", [])
 oozie_servers = default("/clusterHostInfo/oozie_server", [])
+falcon_server_hosts = default("/clusterHostInfo/falcon_server_hosts", [])
+ranger_admin_hosts = default("/clusterHostInfo/ranger_admin_hosts", [])
 
 has_namenode = not len(namenode_host) == 0
 has_ganglia_server = not len(ganglia_server_hosts) == 0
 has_tez = 'tez-site' in config['configurations']
 has_hbase_masters = not len(hbase_master_hosts) == 0
 has_oozie_server = not len(oozie_servers) == 0
+has_falcon_server_hosts = not len(falcon_server_hosts) == 0
+has_ranger_admin = not len(ranger_admin_hosts) == 0
 
-hbase_tmp_dir = config['configurations']['hbase-site']['hbase.tmp.dir']
+hbase_tmp_dir = "/tmp/hbase-hbase"
 
 proxyuser_group = default("/configurations/hadoop-env/proxyuser_group","users")
+ranger_group = config['configurations']['ranger-env']['ranger_group']
 dfs_cluster_administrators_group = config['configurations']['hdfs-site']["dfs.cluster.administrators"]
 
 ignore_groupsusers_create = default("/configurations/cluster-env/ignore_groupsusers_create", False)
@@ -179,6 +197,10 @@ if has_tez:
   user_to_groups_dict[tez_user] = [proxyuser_group]
 if has_oozie_server:
   user_to_groups_dict[oozie_user] = [proxyuser_group]
+if has_falcon_server_hosts:
+  user_to_groups_dict[falcon_user] = [proxyuser_group]
+if has_ranger_admin:
+  user_to_groups_dict[ranger_user] = [ranger_group]
 
 user_to_gid_dict = collections.defaultdict(lambda:user_group)
 
@@ -187,3 +209,4 @@ group_list = json.loads(config['hostLevelParams']['group_list'])
 host_sys_prepped = default("/hostLevelParams/host_sys_prepped", False)
 
 tez_am_view_acls = config['configurations']['tez-site']["tez.am.view-acls"]
+override_hbase_uid = config['configurations']['hbase-env']["override_hbase_uid"]

@@ -51,6 +51,9 @@ import org.apache.ambari.server.controller.internal.HostResourceProvider;
 import org.apache.ambari.server.controller.internal.RequestImpl;
 import org.apache.ambari.server.controller.internal.ServiceResourceProvider;
 import org.apache.ambari.server.controller.internal.Stack;
+import org.apache.ambari.server.controller.predicate.EqualsPredicate;
+import org.apache.ambari.server.controller.spi.ClusterController;
+import org.apache.ambari.server.controller.spi.Predicate;
 import org.apache.ambari.server.controller.spi.Resource;
 import org.apache.ambari.server.controller.utilities.ClusterControllerHelper;
 import org.apache.ambari.server.state.Cluster;
@@ -74,6 +77,7 @@ public class AmbariContext {
 
   private static PersistedState persistedState = new PersistedStateImpl();
   private static AmbariManagementController controller;
+  private static ClusterController clusterController;
   //todo: task id's.  Use existing mechanism for getting next task id sequence
   private final static AtomicLong nextTaskId = new AtomicLong(10000);
 
@@ -81,7 +85,7 @@ public class AmbariContext {
   private static HostResourceProvider hostResourceProvider;
   private static ServiceResourceProvider serviceResourceProvider;
   private static ComponentResourceProvider componentResourceProvider;
-  private HostComponentResourceProvider hostComponentResourceProvider;
+  private static HostComponentResourceProvider hostComponentResourceProvider;
 
   private final static Logger LOG = LoggerFactory.getLogger(TopologyManager.class);
 
@@ -158,7 +162,6 @@ public class AmbariContext {
       Cluster cluster = getController().getClusters().getCluster(clusterName);
       services.removeAll(cluster.getServices().keySet());
     } catch (AmbariException e) {
-      e.printStackTrace();
       throw new RuntimeException("Failed to persist service and component resources: " + e, e);
     }
     Set<ServiceRequest> serviceRequests = new HashSet<ServiceRequest>();
@@ -173,8 +176,27 @@ public class AmbariContext {
       getServiceResourceProvider().createServices(serviceRequests);
       getComponentResourceProvider().createComponents(componentRequests);
     } catch (AmbariException e) {
-      e.printStackTrace();
       throw new RuntimeException("Failed to persist service and component resources: " + e, e);
+    }
+    // set all services state to INSTALLED->STARTED
+    // this is required so the user can start failed services at the service level
+    Map<String, Object> installProps = new HashMap<String, Object>();
+    installProps.put(ServiceResourceProvider.SERVICE_SERVICE_STATE_PROPERTY_ID, "INSTALLED");
+    installProps.put(ServiceResourceProvider.SERVICE_CLUSTER_NAME_PROPERTY_ID, clusterName);
+    Map<String, Object> startProps = new HashMap<String, Object>();
+    startProps.put(ServiceResourceProvider.SERVICE_SERVICE_STATE_PROPERTY_ID, "STARTED");
+    startProps.put(ServiceResourceProvider.SERVICE_CLUSTER_NAME_PROPERTY_ID, clusterName);
+    Predicate predicate = new EqualsPredicate<String>(
+        ServiceResourceProvider.SERVICE_CLUSTER_NAME_PROPERTY_ID, clusterName);
+    try {
+      getServiceResourceProvider().updateResources(
+          new RequestImpl(null, Collections.singleton(installProps), null, null), predicate);
+
+      getServiceResourceProvider().updateResources(
+          new RequestImpl(null, Collections.singleton(startProps), null, null), predicate);
+    } catch (Exception e) {
+      // just log as this won't prevent cluster from being provisioned correctly
+      LOG.error("Unable to update state of services during cluster provision: " + e, e);
     }
   }
 
@@ -240,11 +262,18 @@ public class AmbariContext {
     return getController().getActionManager().getNextRequestId();
   }
 
-  public synchronized AmbariManagementController getController() {
+  public synchronized static AmbariManagementController getController() {
     if (controller == null) {
       controller = AmbariServer.getController();
     }
     return controller;
+  }
+
+  public synchronized static ClusterController getClusterController() {
+    if (clusterController == null) {
+      clusterController = ClusterControllerHelper.getClusterController();
+    }
+    return clusterController;
   }
 
   public static void init(HostRoleCommandFactory factory) {
@@ -376,13 +405,17 @@ public class AmbariContext {
     for (ConfigGroup group : configGroups.values()) {
       if (group.getName().equals(qualifiedGroupName)) {
         try {
-          group.addHost(clusters.getHost(hostName));
-          group.persist();
+          Host host = clusters.getHost(hostName);
           addedHost = true;
+          if (! group.getHosts().containsKey(host.getHostId())) {
+            group.addHost(host);
+            group.persistHostMapping();
+          }
+
         } catch (AmbariException e) {
           // shouldn't occur, this host was just added to the cluster
           throw new RuntimeException(String.format(
-              "Unable to obtain newly created host '%s' from cluster '%s'", hostName, topology.getClusterName()));
+              "An error occurred while registering host '%s' with config group '%s' ", hostName, group.getName()), e);
         }
       }
     }
@@ -395,22 +428,23 @@ public class AmbariContext {
    * and the hosts associated with the host group are assigned to the config group.
    */
   private void createConfigGroupsAndRegisterHost(ClusterTopology topology, String groupName) {
-
-    //HostGroupEntity entity = hostGroup.getEntity();
     Map<String, Map<String, Config>> groupConfigs = new HashMap<String, Map<String, Config>>();
-
-    Stack stack = topology.getBlueprint().getHostGroup(groupName).getStack();
+    Stack stack = topology.getBlueprint().getStack();
 
     // get the host-group config with cluster creation template overrides
     Configuration topologyHostGroupConfig = topology.
         getHostGroupInfo().get(groupName).getConfiguration();
 
-    //handling backwards compatibility for group configs
-    //todo: doesn't belong here
-    convertGlobalProperties(topology, topologyHostGroupConfig.getProperties());
+    // only get user provided configuration for host group which includes only CCT/HG and BP/HG properties
+    Map<String, Map<String, String>> userProvidedGroupProperties =
+        topologyHostGroupConfig.getFullProperties(1);
 
-    // iterate over topo host group configs which were defined in CCT/HG and BP/HG only, no parent configs
-    for (Map.Entry<String, Map<String, String>> entry : topologyHostGroupConfig.getProperties().entrySet()) {
+    //todo: doesn't belong here.
+    //handling backwards compatibility for group configs
+    convertGlobalProperties(topology, userProvidedGroupProperties);
+
+    // iterate over topo host group configs which were defined in
+    for (Map.Entry<String, Map<String, String>> entry : userProvidedGroupProperties.entrySet()) {
       String type = entry.getKey();
       String service = stack.getServiceForConfigType(type);
       Config config = new ConfigImpl(type);
@@ -441,7 +475,7 @@ public class AmbariContext {
 
       // get the config group provider and create config group resource
       ConfigGroupResourceProvider configGroupProvider = (ConfigGroupResourceProvider)
-          ClusterControllerHelper.getClusterController().ensureResourceProvider(Resource.Type.ConfigGroup);
+          getClusterController().ensureResourceProvider(Resource.Type.ConfigGroup);
 
       try {
         configGroupProvider.createResources(Collections.singleton(request));

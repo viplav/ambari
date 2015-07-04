@@ -5,9 +5,6 @@
       "identities": [
         {
           "name": "/spnego"
-        },
-        {
-          "name": "/hdfs"
         }
       ],
       "components": [

@@ -62,12 +62,12 @@ class TestJournalnode(RMFTestCase):
                               recursive = True,
                               )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ulimit -c unlimited ;  /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf start journalnode'",
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec'},
-        not_if = 'ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1',
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1'",
     )
     self.assertNoMoreResources()
 
@@ -79,18 +79,10 @@ class TestJournalnode(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assertResourceCalled('Directory', '/var/run/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
-    self.assertResourceCalled('Directory', '/var/log/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ulimit -c unlimited ;  /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf stop journalnode'",
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec'},
         not_if = None,
@@ -134,12 +126,12 @@ class TestJournalnode(RMFTestCase):
                               recursive = True,
                               )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ulimit -c unlimited ;  /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf start journalnode'",
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec'},
-        not_if = 'ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1',
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1'",
     )
     self.assertNoMoreResources()
 
@@ -151,18 +143,10 @@ class TestJournalnode(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assertResourceCalled('Directory', '/var/run/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
-    self.assertResourceCalled('Directory', '/var/log/hadoop/hdfs',
-                              owner = 'hdfs',
-                              recursive = True,
-                              )
     self.assertResourceCalled('File', '/var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1',
-                              )
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-journalnode.pid` >/dev/null 2>&1'",
+    )
     self.assertResourceCalled('Execute', "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ulimit -c unlimited ;  /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf stop journalnode'",
         environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec'},
         not_if = None,
@@ -179,6 +163,18 @@ class TestJournalnode(RMFTestCase):
                               recursive = True,
                               cd_access='a'
                               )
+    self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-i386-32',
+        recursive = True,
+    )
+    self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-amd64-64',
+        recursive = True,
+    )
+    self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-i386-32/libsnappy.so',
+        to = '/usr/lib/hadoop/lib/libsnappy.so',
+    )
+    self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-amd64-64/libsnappy.so',
+        to = '/usr/lib/hadoop/lib64/libsnappy.so',
+    )
     self.assertResourceCalled('Directory', '/etc/security/limits.d',
                               owner = 'root',
                               group = 'root',
@@ -209,9 +205,7 @@ class TestJournalnode(RMFTestCase):
                               content = Template('slaves.j2'),
                               owner = 'hdfs',
                               )
-    self.assertResourceCalled('File', '/var/lib/ambari-agent/lib/fast-hdfs-resource.jar',
-        content = StaticFile('fast-hdfs-resource.jar'),
-    )
+
 
   def assert_configure_secured(self):
     self.assertResourceCalled('Directory', '/grid/0/hdfs/journal',
@@ -220,6 +214,18 @@ class TestJournalnode(RMFTestCase):
                               recursive = True,
                               cd_access='a'
                               )
+    self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-i386-32',
+        recursive = True,
+    )
+    self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-amd64-64',
+        recursive = True,
+    )
+    self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-i386-32/libsnappy.so',
+        to = '/usr/lib/hadoop/lib/libsnappy.so',
+    )
+    self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-amd64-64/libsnappy.so',
+        to = '/usr/lib/hadoop/lib64/libsnappy.so',
+    )
     self.assertResourceCalled('Directory', '/etc/security/limits.d',
                               owner = 'root',
                               group = 'root',
@@ -250,14 +256,13 @@ class TestJournalnode(RMFTestCase):
                               content = Template('slaves.j2'),
                               owner = 'root',
                               )
-    self.assertResourceCalled('File', '/var/lib/ambari-agent/lib/fast-hdfs-resource.jar',
-        content = StaticFile('fast-hdfs-resource.jar'),
-    )
+
 
 
   @patch('time.sleep')
   @patch("urllib2.urlopen")
-  def test_post_rolling_restart(self, urlopen_mock, time_mock):
+  @patch("utils.curl_krb_request")
+  def test_post_rolling_restart(self, curl_krb_request_mock, urlopen_mock, time_mock):
     # load the NN and JN JMX files so that the urllib2.urlopen mock has data
     # to return
     num_journalnodes = 3
@@ -279,7 +284,7 @@ class TestJournalnode(RMFTestCase):
     namenode_status_standby = open(namenode_status_standby_file, 'r').read()
 
     url_stream_mock = MagicMock()
-    url_stream_mock.read.side_effect = [namenode_status_active, namenode_status_standby] + (num_journalnodes * [namenode_jmx, journalnode_jmx])
+    url_stream_mock.read.side_effect = (num_journalnodes * [namenode_jmx, journalnode_jmx])
 
     urlopen_mock.return_value = url_stream_mock
 
@@ -287,6 +292,7 @@ class TestJournalnode(RMFTestCase):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/journalnode.py",
       classname = "JournalNode", command = "post_rolling_restart",
       config_file = "journalnode-upgrade.json",
+      checked_call_mocks = [(0, str(namenode_status_active)), (0, str(namenode_status_standby))],
       hdp_stack_version = self.UPGRADE_STACK_VERSION,
       target = RMFTestCase.TARGET_COMMON_SERVICES )
 
@@ -295,22 +301,21 @@ class TestJournalnode(RMFTestCase):
     urlopen_mock.assert_called_with("http://c6407.ambari.apache.org:8480/jmx")
 
     url_stream_mock.reset_mock()
-    url_stream_mock.read.side_effect = [namenode_status_active, namenode_status_standby] + (num_journalnodes * [namenode_jmx, journalnode_jmx])
-
-    urlopen_mock.return_value = url_stream_mock
+    curl_krb_request_mock.side_effect = (num_journalnodes * [(namenode_jmx, "", 1), (journalnode_jmx, "", 1)])
 
     # now try with HDFS on SSL
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/journalnode.py",
       classname = "JournalNode", command = "post_rolling_restart",
       config_file = "journalnode-upgrade-hdfs-secure.json",
+      checked_call_mocks = [(0, str(namenode_status_active)), (0, str(namenode_status_standby))],
       hdp_stack_version = self.UPGRADE_STACK_VERSION,
       target = RMFTestCase.TARGET_COMMON_SERVICES )
 
     # ensure that the mock was called with the http-style version of the URL
-    urlopen_mock.assert_called
-    urlopen_mock.assert_called_with("https://c6407.ambari.apache.org:8481/jmx")
-
-
+    curl_krb_request_mock.assert_called
+    curl_krb_request_mock.assert_called_with("/tmp", "/etc/security/keytabs/smokeuser.headless.keytab",
+                                             "ambari-qa@EXAMPLE.COM", "https://c6407.ambari.apache.org:8481/jmx",
+                                             "jn_upgrade", "/usr/bin/kinit", False, None, "ambari-qa")
 
   @patch('time.sleep')
   @patch("urllib2.urlopen")
@@ -458,7 +463,7 @@ class TestJournalnode(RMFTestCase):
                        config_dict = json_content,
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES)
-    self.assertResourceCalled('Execute', 'hdp-select set hadoop-hdfs-journalnode %s' % version,)
+    self.assertResourceCalled('Execute', ('hdp-select', 'set', 'hadoop-hdfs-journalnode', version), sudo=True,)
     self.assertNoMoreResources()
 
   @patch("resource_management.core.shell.call")
@@ -479,7 +484,7 @@ class TestJournalnode(RMFTestCase):
                        call_mocks = [(0, None), (0, None)],
                        mocks_dict = mocks_dict)
 
-    self.assertResourceCalled('Execute', 'hdp-select set hadoop-hdfs-journalnode %s' % version,)
+    self.assertResourceCalled('Execute', ('hdp-select', 'set', 'hadoop-hdfs-journalnode', version), sudo=True,)
     self.assertNoMoreResources()
 
     self.assertEquals(

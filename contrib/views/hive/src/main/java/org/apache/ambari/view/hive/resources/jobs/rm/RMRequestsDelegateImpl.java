@@ -20,6 +20,7 @@ package org.apache.ambari.view.hive.resources.jobs.rm;
 
 import org.apache.ambari.view.ViewContext;
 import org.apache.ambari.view.hive.utils.ServiceFormattedException;
+import org.apache.ambari.view.utils.ambari.AmbariApi;
 import org.apache.commons.io.IOUtils;
 import org.json.simple.JSONObject;
 import org.json.simple.JSONValue;
@@ -59,7 +60,7 @@ public class RMRequestsDelegateImpl implements RMRequestsDelegate {
     String response;
     try {
       InputStream responseInputStream = context.getURLStreamProvider().readFrom(url, "GET",
-          null, new HashMap<String, String>());
+          (String)null, new HashMap<String, String>());
       response = IOUtils.toString(responseInputStream);
     } catch (IOException e) {
       throw new ServiceFormattedException(
@@ -74,7 +75,7 @@ public class RMRequestsDelegateImpl implements RMRequestsDelegate {
     String response;
     try {
       InputStream responseInputStream = context.getURLStreamProvider().readFrom(url, "GET",
-          null, new HashMap<String, String>());
+          (String)null, new HashMap<String, String>());
       response = IOUtils.toString(responseInputStream);
     } catch (IOException e) {
       throw new ServiceFormattedException(
@@ -87,7 +88,7 @@ public class RMRequestsDelegateImpl implements RMRequestsDelegate {
     String response;
     try {
       InputStream responseInputStream = context.getURLStreamProvider().readFrom(url, "GET",
-          null, new HashMap<String, String>());
+          (String)null, new HashMap<String, String>());
       response = IOUtils.toString(responseInputStream);
     } catch (IOException e) {
       LOG.error("Error while reading from RM", e);

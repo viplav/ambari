@@ -17,24 +17,31 @@
  */
 package org.apache.ambari.server.state.stack.upgrade;
 
+import javax.xml.bind.annotation.XmlEnum;
+import javax.xml.bind.annotation.XmlEnumValue;
+
 /**
  * Operations valid for a property transfer.
  */
+@XmlEnum
 public enum TransferOperation {
   /**
    * The property should be removed.  Special case "*" to delete all
    * properties that have NOT been overridden by a user.
    */
+  @XmlEnumValue("delete")
   DELETE,
   /**
    * The property value is moved.  A property may only be moved within the
    * same config type.  To move across types, perform a {@link #COPY} to the target then
    * a {@link #DELETE} from the source config.
    */
+  @XmlEnumValue("move")
   MOVE,
   /**
    * The property value is copied from another property.  A property may be copied from
    * another config type.
    */
+  @XmlEnumValue("copy")
   COPY
 }

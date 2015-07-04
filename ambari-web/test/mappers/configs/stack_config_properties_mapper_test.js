@@ -52,6 +52,12 @@ describe('App.stackConfigPropertiesMapper', function () {
               "stack_name" : "HDP",
               "stack_version" : "2.2",
               "type" : "site1.xml",
+              "property_depends_on": [
+                {
+                  "name": "p5",
+                  "type": "site5"
+                }
+              ],
               "property_value_attributes": {
                 "type": "int",
                 "minimum": "512",
@@ -174,8 +180,8 @@ describe('App.stackConfigPropertiesMapper', function () {
       expect(App.StackConfigProperty.find('p1_site1').get('name')).to.eql('p1');
       expect(App.StackConfigProperty.find('p1_site1').get('displayName')).to.eql('P1');
       expect(App.StackConfigProperty.find('p1_site1').get('description')).to.eql('desc1');
-      expect(App.StackConfigProperty.find('p1_site1').get('defaultValue')).to.eql('v1');
-      expect(App.StackConfigProperty.find('p1_site1').get('defaultIsFinal')).to.be.false;
+      expect(App.StackConfigProperty.find('p1_site1').get('recommendedValue')).to.eql('v1');
+      expect(App.StackConfigProperty.find('p1_site1').get('recommendedIsFinal')).to.be.false;
       expect(App.StackConfigProperty.find('p1_site1').get('serviceName')).to.eql('s1');
       expect(App.StackConfigProperty.find('p1_site1').get('stackName')).to.eql('HDP');
       expect(App.StackConfigProperty.find('p1_site1').get('stackVersion')).to.eql('2.2');
@@ -185,6 +191,12 @@ describe('App.stackConfigPropertiesMapper', function () {
         {
           "type": "site4",
           "name": "p4"
+        }
+      ]);
+      expect(App.StackConfigProperty.find('p1_site1').get('propertyDependsOn')).to.eql([
+        {
+          "type": "site5",
+          "name": "p5"
         }
       ]);
       expect(App.StackConfigProperty.find('p1_site1').get('valueAttributes')).to.eql({
@@ -207,4 +219,3 @@ describe('App.stackConfigPropertiesMapper', function () {
   });
 
 });
-

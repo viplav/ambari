@@ -75,6 +75,12 @@ public class AlertUri {
   private int m_port = 0;
 
   /**
+   * An optional timeout value for connections.
+   */
+  @SerializedName("connection_timeout")
+  private float m_connectionTimeout = 5.0f;
+
+  /**
    * If present, then the component supports HA mode and the properties
    * contained within need to be checked to see if an HA URI is required to be
    * constructed instead of using {@link #m_httpProperty} and
@@ -91,6 +97,17 @@ public class AlertUri {
    */
   public String getHttpUri() {
     return m_httpUri;
+  }
+
+  /**
+   * Sets the plaintext (HTTP) URI that can be used to retrieve alert
+   * information.
+   *
+   * @param httpUri
+   *          the plaintext URI or {@code null} for none.
+   */
+  public void setHttpUri(String httpUri) {
+    m_httpUri = httpUri;
   }
 
   /**

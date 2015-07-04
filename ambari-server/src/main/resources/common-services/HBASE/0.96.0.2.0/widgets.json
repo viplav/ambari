@@ -7,7 +7,7 @@
       "widgetLayoutInfo": [
         {
           "widget_name": "Reads and Writes",
-          "description": "This widget shows all the read requests and write requests on all regions for a RegionServer",
+          "description": "Count of read and write requests on all regions in the cluster.",
           "default_section_name": "HBASE_SUMMARY",
           "widget_type": "GRAPH",
           "is_visible": true,
@@ -54,14 +54,13 @@
             }
           ],
           "properties": {
-            "display_unit": "Requests",
             "graph_type": "LINE",
             "time_range": "1"
           }
         },
         {
           "widget_name": "Read Latency",
-          "description": "Widget shows 95% Read Latency",
+          "description": "maximum of 95% read latency.",
           "default_section_name": "HBASE_SUMMARY",
           "widget_type": "GRAPH",
           "is_visible": true,
@@ -87,7 +86,7 @@
         },
         {
           "widget_name": "Write Latency",
-          "description": "This widget shows 95th percentile of the write latency.",
+          "description": "maximum of 95% write latency.",
           "default_section_name": "HBASE_SUMMARY",
           "widget_type": "GRAPH",
           "is_visible": true,
@@ -143,7 +142,7 @@
         },
         {
           "widget_name": "Open Connections",
-          "description": "This widget shows number of current open connections",
+          "description": "Count of open connections across all RegionServer. This is indicative of RegionServer load in the cluster.",
           "default_section_name": "HBASE_SUMMARY",
           "widget_type": "GRAPH",
           "is_visible": true,
@@ -163,13 +162,13 @@
             }
           ],
           "properties": {
-            "display_unit": "Connections",
             "graph_type": "LINE",
             "time_range": "1"
           }
         },
         {
           "widget_name": "Request Handlers",
+          "description": "Count of Active handlers vs count of calls waiting in the general queue.",
           "widget_type": "GRAPH",
           "default_section_name": "HBASE_SUMMARY",
           "is_visible": true,
@@ -204,7 +203,7 @@
         },
         {
           "widget_name": "Files Local",
-          "description": "This widget shows weighted average for local files.",
+          "description": "Average percentage of local files to RegionServer in the cluster.",
           "default_section_name": "HBASE_SUMMARY",
           "widget_type": "NUMBER",
           "is_visible": true,
@@ -230,7 +229,7 @@
         },
         {
           "widget_name": "Blocked Updates",
-          "description": "Number of milliseconds updates have been blocked so the memstore can be flushed",
+          "description": "Number of milliseconds updates have been blocked so the memstore can be flushed.",
           "default_section_name": "HBASE_SUMMARY",
           "widget_type": "GRAPH",
           "is_visible": true,
@@ -256,7 +255,7 @@
         },
         {
           "widget_name": "Cluster CPU",
-          "description": "ReqionServer widget for CPU utilization",
+          "description": "Percentage of CPU utilized across all RegionServer hosts.",
           "default_section_name": "HBASE_SUMMARY",
           "widget_type": "GRAPH",
           "is_visible": true,
@@ -294,8 +293,8 @@
           ],
           "values": [
             {
-              "name": "ReqionServer widget for CPU utilization",
-              "value": "${(cpu_system._sum + cpu_user._sum + cpu_nice._sum)/(cpu_system._sum + cpu_user._sum + cpu_nice._sum + cpu_idle._sum + cpu_wio._sum)}"
+              "name": "CPU utilization",
+              "value": "${((cpu_system._sum + cpu_user._sum + cpu_nice._sum)/(cpu_system._sum + cpu_user._sum + cpu_nice._sum + cpu_idle._sum + cpu_wio._sum)) * 100}"
             }
           ],
           "properties": {
@@ -306,7 +305,7 @@
         },
         {
           "widget_name": "Cluster Network",
-          "description": "ReqionServer widget for network utilization",
+          "description": "Average of Network IO utilized across all RegionServer hosts.",
           "default_section_name": "HBASE_SUMMARY",
           "widget_type": "GRAPH",
           "is_visible": true,
@@ -341,31 +340,36 @@
         },
         {
           "widget_name": "Cluster Disk",
-          "description": "ReqionServer widget for Disk utilization",
+          "description": "Sum of disk throughput for all RegionServer hosts.",
           "default_section_name": "HBASE_SUMMARY",
           "widget_type": "GRAPH",
           "is_visible": true,
           "metrics": [
             {
-              "name": "disk_free._sum",
-              "metric_path": "metrics/disk/disk_free._sum",
+              "name": "read_bps._sum",
+              "metric_path": "metrics/disk/read_bps._sum",
               "service_name": "HBASE",
               "component_name": "HBASE_REGIONSERVER"
             },
             {
-              "name": "disk_total._sum",
-              "metric_path": "metrics/disk/disk_total._sum",
+              "name": "write_bps._sum",
+              "metric_path": "metrics/disk/write_bps._sum",
               "service_name": "HBASE",
               "component_name": "HBASE_REGIONSERVER"
             }
           ],
           "values": [
             {
-              "name": "Disk Utlization",
-              "value": "${(disk_total._sum - disk_free._sum)/disk_total._sum}"
+              "name": "Read throughput",
+              "value": "${read_bps._sum/1048576}"
+            },
+            {
+              "name": "Write throughput",
+              "value": "${write_bps._sum/1048576}"
             }
           ],
           "properties": {
+            "display_unit": "Mbps",
             "graph_type": "LINE",
             "time_range": "1"
           }
@@ -378,7 +382,7 @@
       "section_name": "HBASE_HEATMAPS",
       "widgetLayoutInfo": [
         {
-          "widget_name": "HBASE_COMPACTION_QUEUE_SIZE",
+          "widget_name": "HBase Compaction Queue Size",
           "description": "",
           "widget_type": "HEATMAP",
           "is_visible": true,
@@ -402,7 +406,7 @@
           }
         },
         {
-          "widget_name": "HBASE_MEMSTORE_SIZES",
+          "widget_name": "HBase Memstore Sizes",
           "description": "",
           "widget_type": "HEATMAP",
           "is_visible": false,
@@ -426,7 +430,7 @@
           }
         },
         {
-          "widget_name": "HBASE_READ_REQUEST",
+          "widget_name": "HBase Read Request Count",
           "description": "",
           "widget_type": "HEATMAP",
           "is_visible": false,
@@ -449,7 +453,7 @@
           }
         },
         {
-          "widget_name": "HBASE_WRITE_REQUEST",
+          "widget_name": "HBase Write Request Count",
           "description": "",
           "widget_type": "HEATMAP",
           "is_visible": false,
@@ -472,7 +476,7 @@
           }
         },
         {
-          "widget_name": "HBASE_REGIONS",
+          "widget_name": "HBase Regions",
           "description": "",
           "widget_type": "HEATMAP",
           "is_visible": false,

@@ -43,6 +43,7 @@ import org.apache.ambari.server.DuplicateResourceException;
 import org.apache.ambari.server.ObjectNotFoundException;
 import org.apache.ambari.server.ParentObjectNotFoundException;
 import org.apache.ambari.server.ServiceComponentHostNotFoundException;
+import org.apache.ambari.server.ServiceComponentNotFoundException;
 import org.apache.ambari.server.ServiceNotFoundException;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.configuration.Configuration;
@@ -50,9 +51,9 @@ import org.apache.ambari.server.controller.AmbariSessionManager;
 import org.apache.ambari.server.controller.ClusterResponse;
 import org.apache.ambari.server.controller.ConfigurationResponse;
 import org.apache.ambari.server.controller.MaintenanceStateHelper;
+import org.apache.ambari.server.controller.RootServiceResponseFactory.Services;
 import org.apache.ambari.server.controller.ServiceConfigVersionResponse;
 import org.apache.ambari.server.orm.RequiresSession;
-import org.apache.ambari.server.orm.cache.ConfigGroupHostMapping;
 import org.apache.ambari.server.orm.cache.HostConfigMapping;
 import org.apache.ambari.server.orm.dao.AlertDefinitionDAO;
 import org.apache.ambari.server.orm.dao.AlertDispatchDAO;
@@ -95,6 +96,7 @@ import org.apache.ambari.server.state.ConfigHelper;
 import org.apache.ambari.server.state.DesiredConfig;
 import org.apache.ambari.server.state.Host;
 import org.apache.ambari.server.state.HostHealthStatus;
+import org.apache.ambari.server.state.HostState;
 import org.apache.ambari.server.state.MaintenanceState;
 import org.apache.ambari.server.state.RepositoryVersionState;
 import org.apache.ambari.server.state.SecurityType;
@@ -163,12 +165,12 @@ public class ClusterImpl implements Cluster {
   /**
    * Map of existing config groups
    */
-  private Map<Long, ConfigGroup> clusterConfigGroups;
+  private volatile Map<Long, ConfigGroup> clusterConfigGroups;
 
   /**
    * Map of Request schedules for this cluster
    */
-  private Map<Long, RequestExecution> requestExecutions;
+  private volatile Map<Long, RequestExecution> requestExecutions;
 
   private final ReadWriteLock clusterGlobalLock = new ReentrantReadWriteLock();
 
@@ -395,7 +397,6 @@ public class ClusterImpl implements Cluster {
                     "Can not get service info: stackName=%s, stackVersion=%s, serviceName=%s",
                     stackId.getStackName(), stackId.getStackVersion(),
                     serviceEntity.getServiceName()));
-                e.printStackTrace();
               }
             }
           }
@@ -484,22 +485,18 @@ public class ClusterImpl implements Cluster {
   @Override
   public Map<Long, ConfigGroup> getConfigGroupsByHostname(String hostname)
     throws AmbariException {
+    loadConfigGroups();
     Map<Long, ConfigGroup> configGroups = new HashMap<Long, ConfigGroup>();
-    Map<Long, ConfigGroup> configGroupMap = getConfigGroups();
 
     clusterGlobalLock.readLock().lock();
     try {
-      HostEntity hostEntity = hostDAO.findByName(hostname);
-      if (hostEntity != null) {
-        Set<ConfigGroupHostMapping> hostMappingEntities = configGroupHostMappingDAO.findByHostId(hostEntity.getHostId());
-
-        if (hostMappingEntities != null && !hostMappingEntities.isEmpty()) {
-          for (ConfigGroupHostMapping entity : hostMappingEntities) {
-            ConfigGroup configGroup = configGroupMap.get(entity.getConfigGroupId());
-            if (configGroup != null
-                && !configGroups.containsKey(configGroup.getId())) {
-              configGroups.put(configGroup.getId(), configGroup);
-            }
+      for (Entry<Long, ConfigGroup> groupEntry : clusterConfigGroups.entrySet()) {
+        Long id = groupEntry.getKey();
+        ConfigGroup group = groupEntry.getValue();
+        for (Host host : group.getHosts().values()) {
+          if (StringUtils.equals(hostname, host.getHostName())) {
+            configGroups.put(id, group);
+            break;
           }
         }
       }
@@ -616,7 +613,7 @@ public class ClusterImpl implements Cluster {
       clusterEntity.setClusterName(clusterName);
 
       // RollbackException possibility if UNIQUE constraint violated
-      clusterDAO.merge(clusterEntity);
+      clusterEntity = clusterDAO.merge(clusterEntity);
       clusters.updateClusterName(oldName, clusterName);
     } finally {
       clusterGlobalLock.writeLock().unlock();
@@ -800,6 +797,30 @@ public class ClusterImpl implements Cluster {
   }
 
   @Override
+  public List<ServiceComponentHost> getServiceComponentHosts(String serviceName, String componentName) {
+    ArrayList<ServiceComponentHost> foundItems = new ArrayList<ServiceComponentHost>();
+
+    loadServiceHostComponents();
+    clusterGlobalLock.readLock().lock();
+    try {
+      Map<String, Map<String, ServiceComponentHost>> foundByService = serviceComponentHosts.get(serviceName);
+      if (foundByService != null) {
+        if (componentName == null) {
+          for(Map<String, ServiceComponentHost> foundByComponent :foundByService.values()) {
+            foundItems.addAll(foundByComponent.values());
+          }
+        } else if (foundByService.containsKey(componentName)) {
+          foundItems.addAll(foundByService.get(componentName).values());
+        }
+      }
+    } finally {
+      clusterGlobalLock.readLock().unlock();
+    }
+
+    return foundItems;
+  }
+
+  @Override
   public void addService(Service service)
     throws AmbariException {
     loadServices();
@@ -900,7 +921,7 @@ public class ClusterImpl implements Cluster {
           stackId.getStackVersion());
 
       clusterEntity.setDesiredStack(stackEntity);
-      clusterDAO.merge(clusterEntity);
+      clusterEntity = clusterDAO.merge(clusterEntity);
 
       if (cascade) {
         for (Service service : getServices().values()) {
@@ -960,7 +981,7 @@ public class ClusterImpl implements Cluster {
     clusterGlobalLock.writeLock().lock();
     try {
       clusterEntity.setProvisioningState(provisioningState);
-      clusterDAO.merge(clusterEntity);
+      clusterEntity = clusterDAO.merge(clusterEntity);
     } finally {
       clusterGlobalLock.writeLock().unlock();
     }
@@ -988,7 +1009,7 @@ public class ClusterImpl implements Cluster {
     clusterGlobalLock.writeLock().lock();
     try {
       clusterEntity.setSecurityType(securityType);
-      clusterDAO.merge(clusterEntity);
+      clusterEntity = clusterDAO.merge(clusterEntity);
     } finally {
       clusterGlobalLock.writeLock().unlock();
     }
@@ -1228,6 +1249,7 @@ public class ClusterImpl implements Cluster {
       ClusterVersionEntity clusterVersion = clusterVersionDAO.findByClusterAndStackAndVersion(
           getClusterName(), stackId, repositoryVersion);
 
+      boolean performingInitialBootstrap = false;
       if (clusterVersion == null) {
         if (clusterVersionDAO.findByCluster(getClusterName()).isEmpty()) {
           // During an Ambari Upgrade from 1.7.0 -> 2.0.0, the Cluster Version
@@ -1235,6 +1257,7 @@ public class ClusterImpl implements Cluster {
           // This can still fail if the Repository Version has not yet been created,
           // which can happen if the first HostComponentState to trigger this method
           // cannot advertise a version.
+          performingInitialBootstrap = true;
           createClusterVersionInternal(
               stackId,
               repositoryVersion,
@@ -1269,36 +1292,45 @@ public class ClusterImpl implements Cluster {
       }
 
       // Part 2, check for transitions.
-      Set<Host> hostsWithoutHostVersion = new HashSet<Host>();
+      Set<String> hostsWithoutHostVersion = new HashSet<String>();
       Map<RepositoryVersionState, Set<String>> stateToHosts = new HashMap<RepositoryVersionState, Set<String>>();
-      for (Host host : hosts.values()) {
-        String hostName = host.getHostName();
-        HostVersionEntity hostVersion = hostVersionDAO.findByClusterStackVersionAndHost(
-            getClusterName(), stackId, repositoryVersion, hostName);
 
-        if (hostVersion == null) {
-          // This host either has not had a chance to heartbeat yet with its
-          // installed component, or it has components
-          // that do not advertise a version.
-          hostsWithoutHostVersion.add(host);
-          continue;
-        }
+      //hack until better hostversion integration into in-memory cluster structure
 
-        RepositoryVersionState hostState = hostVersion.getState();
+      List<HostVersionEntity> hostVersionEntities =
+              hostVersionDAO.findByClusterStackAndVersion(getClusterName(), stackId, repositoryVersion);
+
+      Set<String> hostsWithState = new HashSet<String>();
+      for (HostVersionEntity hostVersionEntity : hostVersionEntities) {
+        String hostname = hostVersionEntity.getHostEntity().getHostName();
+        hostsWithState.add(hostname);
+        RepositoryVersionState hostState = hostVersionEntity.getState();
+
         if (stateToHosts.containsKey(hostState)) {
-          stateToHosts.get(hostState).add(hostName);
+          stateToHosts.get(hostState).add(hostname);
         } else {
           Set<String> hostsInState = new HashSet<String>();
-          hostsInState.add(hostName);
+          hostsInState.add(hostname);
           stateToHosts.put(hostState, hostsInState);
         }
       }
 
+      hostsWithoutHostVersion.addAll(hosts.keySet());
+      hostsWithoutHostVersion.removeAll(hostsWithState);
+
       // Ensure that all of the hosts without a Host Version only have
       // Components that do not advertise a version.
       // Otherwise, operations are still in progress.
-      for (Host host : hostsWithoutHostVersion) {
-        HostEntity hostEntity = hostDAO.findByName(host.getHostName());
+      for (String hostname : hostsWithoutHostVersion) {
+        HostEntity hostEntity = hostDAO.findByName(hostname);
+
+        // During initial bootstrap, unhealthy hosts are ignored
+        // so we boostrap the CURRENT version anyway
+        if (performingInitialBootstrap &&
+                hostEntity.getHostStateEntity().getCurrentState() != HostState.HEALTHY) {
+          continue;
+        }
+
         final Collection<HostComponentStateEntity> allHostComponents = hostEntity.getHostComponentStateEntities();
 
         for (HostComponentStateEntity hostComponentStateEntity : allHostComponents) {
@@ -1313,7 +1345,7 @@ public class ClusterImpl implements Cluster {
 
             if (compInfo.isVersionAdvertised()) {
               LOG.debug("Skipping transitioning the cluster version because host "
-                  + host.getHostName() + " does not have a version yet.");
+                  + hostname + " does not have a version yet.");
               return;
             }
           }
@@ -1357,7 +1389,12 @@ public class ClusterImpl implements Cluster {
     hostTransitionStateWriteLock.lock();
     try {
       // Create one if it doesn't already exist. It will be possible to make further transitions below.
+      boolean performingInitialBootstrap = false;
       if (hostVersionEntity == null) {
+        if (hostVersionDAO.findByClusterAndHost(getClusterName(), host.getHostName()).isEmpty()) {
+          // That is an initial bootstrap
+          performingInitialBootstrap = true;
+        }
         hostVersionEntity = new HostVersionEntity(host, repositoryVersion, RepositoryVersionState.UPGRADING);
         hostVersionDAO.create(hostVersionEntity);
       }
@@ -1368,7 +1405,8 @@ public class ClusterImpl implements Cluster {
 
       if (!isCurrentPresent) {
         // Transition from UPGRADING -> CURRENT. This is allowed because Host Version Entity is bootstrapped in an UPGRADING state.
-        if (hostSummary.isUpgradeFinished() && hostVersionEntity.getState().equals(RepositoryVersionState.UPGRADING)) {
+        // Alternatively, transition to CURRENT during initial bootstrap if at least one host component advertised a version
+        if (hostSummary.isUpgradeFinished() && hostVersionEntity.getState().equals(RepositoryVersionState.UPGRADING) || performingInitialBootstrap) {
           hostVersionEntity.setState(RepositoryVersionState.CURRENT);
           hostVersionDAO.merge(hostVersionEntity);
         }
@@ -2233,7 +2271,7 @@ public class ClusterImpl implements Cluster {
           entity.setSelected(0);
         }
       }
-      clusterDAO.merge(clusterEntity);
+      clusterEntity = clusterDAO.merge(clusterEntity);
 
       for (ClusterConfigEntity configEntity : serviceConfigEntity.getClusterConfigEntities()) {
         selectConfig(configEntity.getType(), configEntity.getTag(), user);
@@ -2309,8 +2347,7 @@ public class ClusterImpl implements Cluster {
     entity.setTag(tag);
     entities.add(entity);
 
-    clusterDAO.merge(clusterEntity);
-
+    clusterEntity = clusterDAO.merge(clusterEntity);
   }
 
   @Transactional
@@ -2442,33 +2479,62 @@ public class ClusterImpl implements Cluster {
 
   @Transactional
   @Override
-  public List<ServiceComponentHostEvent> processServiceComponentHostEvents(ListMultimap<String, ServiceComponentHostEvent> eventMap) {
-    List<ServiceComponentHostEvent> failedEvents = new ArrayList<ServiceComponentHostEvent>();
+  public Map<ServiceComponentHostEvent, String> processServiceComponentHostEvents(ListMultimap<String, ServiceComponentHostEvent> eventMap) {
+    Map<ServiceComponentHostEvent, String> failedEvents = new HashMap<ServiceComponentHostEvent, String>();
 
     clusterGlobalLock.readLock().lock();
     try {
       for (Entry<String, ServiceComponentHostEvent> entry : eventMap.entries()) {
         String serviceName = entry.getKey();
         ServiceComponentHostEvent event = entry.getValue();
+        String serviceComponentName = event.getServiceComponentName();
+
+        // server-side events either don't have a service name or are AMBARI;
+        // either way they are not handled by this method since it expects a
+        // real service and component
+        if (StringUtils.isBlank(serviceName) || Services.AMBARI.name().equals(serviceName)) {
+          continue;
+        }
+
+        if (StringUtils.isBlank(serviceComponentName)) {
+          continue;
+        }
+
         try {
           Service service = getService(serviceName);
-          ServiceComponent serviceComponent = service.getServiceComponent(event.getServiceComponentName());
+          ServiceComponent serviceComponent = service.getServiceComponent(serviceComponentName);
           ServiceComponentHost serviceComponentHost = serviceComponent.getServiceComponentHost(event.getHostName());
           serviceComponentHost.handleEvent(event);
+        } catch (ServiceNotFoundException e) {
+          String message = String.format("ServiceComponentHost lookup exception. Service not found for Service: %s. Error: %s",
+                  serviceName, e.getMessage());
+          LOG.error(message);
+          failedEvents.put(event, message);
+        } catch (ServiceComponentNotFoundException e) {
+          String message = String.format("ServiceComponentHost lookup exception. Service Component not found for Service: %s, Component: %s. Error: %s",
+              serviceName, serviceComponentName, e.getMessage());
+          LOG.error(message);
+          failedEvents.put(event, message);
+        } catch (ServiceComponentHostNotFoundException e) {
+          String message = String.format("ServiceComponentHost lookup exception. Service Component Host not found for Service: %s, Component: %s, Host: %s. Error: %s",
+              serviceName, serviceComponentName, event.getHostName(), e.getMessage());
+          LOG.error(message);
+          failedEvents.put(event, message);
         } catch (AmbariException e) {
-          LOG.error("ServiceComponentHost lookup exception ", e.getMessage());
-          failedEvents.add(event);
+          String message = String.format("ServiceComponentHost lookup exception %s", e.getMessage());
+          LOG.error(message);
+          failedEvents.put(event, message);
         } catch (InvalidStateTransitionException e) {
           LOG.error("Invalid transition ", e);
           if ((e.getEvent() == ServiceComponentHostEventType.HOST_SVCCOMP_START) &&
             (e.getCurrentState() == State.STARTED)) {
-            LOG.warn("Component request for component = " + event.getServiceComponentName() + " to start is invalid, since component is already started. Ignoring this request.");
+            LOG.warn("Component request for component = "
+                + serviceComponentName
+                + " to start is invalid, since component is already started. Ignoring this request.");
             // skip adding this as a failed event, to work around stack ordering issues with Hive
           } else {
-            failedEvents.add(event);
+            failedEvents.put(event, String.format("Invalid transition. %s", e.getMessage()));
           }
-
-
         }
       }
     } finally {
@@ -2718,7 +2784,7 @@ public class ClusterImpl implements Cluster {
         }
       }
 
-      clusterDAO.merge(clusterEntity);
+      clusterEntity = clusterDAO.merge(clusterEntity);
 
       cacheConfigurations();
     } finally {

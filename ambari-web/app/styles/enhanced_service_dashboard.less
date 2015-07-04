@@ -19,6 +19,7 @@
 @import 'common.less';
 
 @border-color: #ddd;
+@invalid-color: red;
 
 .service-metrics-block {
 
@@ -50,6 +51,15 @@
       border-bottom: 1px solid @border-color;
     }
   }
+
+  table.graphs {
+    .screensaver{
+      margin-bottom: 25px;
+    }
+    .chart-container .alert {
+      margin-bottom: 5px;
+    }
+  }
 }
 
 #widget_layout,
@@ -79,6 +89,10 @@
       height: 40px;
       overflow: hidden;
       text-overflow: ellipsis;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      display: block;
+      display: -webkit-box;
     }
     .content {
       text-align: center;
@@ -87,7 +101,20 @@
       font-size: 35px;
       width: 95%;
     }
-    .template-widget,
+    .template-widget {
+      .frame;
+      .content {
+        padding-top: 21px;
+        height: 75px;
+        line-height: 36px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        display: block;
+        display: -webkit-box;
+      }
+    }
     .number-widget {
       .frame;
       .content {
@@ -133,6 +160,14 @@
       .frame;
       .content {
         padding-top: 40px;
+        .unavailable {
+          padding-top: 30px;
+        }
+        .overflow-warning {
+          font-size: 14px;
+          margin-left: 10px;
+          padding: 10px 20px;
+        }
       }
     }
     .red {
@@ -157,8 +192,8 @@
       display: none;
     }
     .graph-widget {
-      .title {
-        height: 0;
+      .chart-container {
+        cursor: default;
       }
     }
   }
@@ -215,12 +250,32 @@
       padding: 8px 5px;
       width: 89%;
       height: 62%;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      overflow: scroll;
       white-space: pre-line;
       background: rgba(255,255,255, 0.7);
     }
   }
+  .thumbnail .chart-legend {
+    .description-line {
+      padding: 3px 3px 8px 8px;
+      line-height: 16px;
+      max-height: 43px;
+      font-weight: bold;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      overflow-y: scroll;
+    }
+  }
+}
+
+.chart-legend .description-line {
+  padding: 0px 3px 8px 8px;
+  line-height: 16px;
+  max-height: 45px;
+  font-weight: bold;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  overflow-y: scroll;
 }
 
 #edit-widget-wizard,
@@ -285,6 +340,14 @@
         }
       }
     }
+    .template.error {
+      .ember-text-area{
+        border: 1px solid #b94a48;
+        -webkit-box-shadow: none;
+        -moz-box-shadow: none;
+        box-shadow: none;
+      }
+    }
     .badge-container {
       width: 80px;
       .OK, .WARNING, .CRITICAL {
@@ -319,7 +382,7 @@
     .is-invalid.controls,
     .metric-container.is-invalid {
       .metric-field {
-        border-color: red;
+        border-color: @invalid-color;
       }
     }
     .metric-container {
@@ -337,6 +400,15 @@
         .add-operator {
           margin-left: 25px;
         }
+        .add-number {
+          margin-left: 40px;
+          .add-on {
+            height: inherit;
+          }
+        }
+        .is-invalid {
+          border-color: @invalid-color
+        }
       }
       .metric-field {
         height: 85%;
@@ -350,14 +422,18 @@
         background: white;
         display: inline-block;
         margin: 10px 0 10px 10px;
-        padding: 5px;
+        padding: 5px 16px 5px 12px;
         border: 1px solid @border-color;
+        position: relative;
         a {
-          margin-left: 5px;
+          position: absolute;
+          right: 3px;
+          top: 0px;
           text-decoration: none;
           display: none;
           .icon-remove {
             color: #A69B9B;
+            font-size: 12px;
           }
         }
       }
@@ -375,7 +451,7 @@
         border-top: none;
       }
       .controls.is-invalid {
-        border-color: red;
+        border-color: @invalid-color;
       }
       .add-item-input {
         display: inline-block!important;
@@ -400,7 +476,7 @@
           transition: none;
         }
         .ember-text-field.is-invalid {
-          border: 1px solid red;
+          border: 1px solid @invalid-color;
         }
       }
     }
@@ -411,10 +487,12 @@
       }
     }
     fieldset {
+      display: table-column;
       position: relative;
       border: 2px groove #ddd;
       padding: 0 1.4em 1.4em 1.4em;
       margin: 0 0 1.5em 0;
+      min-width: 95%;
     }
     legend {
       width: inherit;
@@ -445,6 +523,15 @@
           width: 320px;
           height: 75px;
         }
+        .span10.error {
+          .ember-text-field,
+          .ember-text-area{
+            border: 1px solid #b94a48;
+            -webkit-box-shadow: none;
+            -moz-box-shadow: none;
+            box-shadow: none;
+          }
+        }
       }
     }
     #add-widget-step3-save {
@@ -453,7 +540,7 @@
   }
 }
 
-#add-metric-menu{
+.add-metric-menu{
   .select-options-dropdown {
     width: 240px;
     max-height: 123px;
@@ -527,8 +614,8 @@
     .chosen-drop {
       margin-top: 2px;
       overflow: auto;
+      min-width: 300px;
       width: 300px;
-      max-height: 260px;
       border: 1px solid rgba(0, 0, 0, 0.2);
       -webkit-border-radius: 0px;
       -moz-border-radius: 0px;
@@ -543,9 +630,12 @@
 
 .sixty-percent-width-modal.widgets-browser-popup {
   .modal {
-    max-height: 703px;
+    max-height: 600px;
+    position: fixed;
     .modal-body {
-      min-height: 541px;
+      padding-top: 0px;
+      min-height: 290px;
+      max-height: 460px;
     }
   }
   
@@ -553,10 +643,14 @@
     min-width: 750px;
     max-width: 900px;
     #services-filter-bar {
-      padding: 0px 10px 0px 10px;
-      margin-bottom: 10px;
+      position: fixed;
+      padding: 10px 10px 5px 10px;
+      margin-bottom: 5px;
       border-bottom: transparent;
-      width: 80%;
+      background-color: white;
+      width: 56%;
+      z-index: 10;
+
       li > a {
         font-size: 14px;
         padding: 5px 5px;
@@ -566,7 +660,14 @@
         border-bottom: transparent;
       }
     }
+    #create-widget-button {
+      position: fixed;
+      padding-top: 10px;
+      right: 23%;
+      z-index: 11;
+    }
     #widgets-info {
+       padding-top: 40px;
       .widgets-info-container {
         .span6.widget-info-section {
           width: 44%;
@@ -612,8 +713,7 @@
             font-size: 12px;
             display: block;
             color: #808080;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            overflow: scroll;
             height: 40px;
             white-space: pre-line;
           }

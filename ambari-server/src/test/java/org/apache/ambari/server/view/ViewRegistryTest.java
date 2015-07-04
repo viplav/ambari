@@ -108,19 +108,19 @@ import org.springframework.security.core.GrantedAuthority;
  */
 public class ViewRegistryTest {
 
-  private static String view_xml1 = "<view>\n" +
+  private static final String VIEW_XML_1 = "<view>\n" +
       "    <name>MY_VIEW</name>\n" +
       "    <label>My View!</label>\n" +
       "    <version>1.0.0</version>\n" +
       "</view>";
 
-  private static String view_xml2 = "<view>\n" +
+  private static final String VIEW_XML_2 = "<view>\n" +
       "    <name>MY_VIEW</name>\n" +
       "    <label>My View!</label>\n" +
       "    <version>2.0.0</version>\n" +
       "</view>";
 
-  private static String xml_valid_instance = "<view>\n" +
+  private static final String XML_VALID_INSTANCE = "<view>\n" +
       "    <name>MY_VIEW</name>\n" +
       "    <label>My View!</label>\n" +
       "    <version>1.0.0</version>\n" +
@@ -149,7 +149,7 @@ public class ViewRegistryTest {
       "    </instance>\n" +
       "</view>";
 
-  private static String xml_invalid_instance = "<view>\n" +
+  private static final String XML_INVALID_INSTANCE = "<view>\n" +
       "    <name>MY_VIEW</name>\n" +
       "    <label>My View!</label>\n" +
       "    <version>1.0.0</version>\n" +
@@ -169,7 +169,7 @@ public class ViewRegistryTest {
       "    </instance>\n" +
       "</view>";
 
-  private static String AUTO_VIEW_XML = "<view>\n" +
+  private static final String AUTO_VIEW_XML = "<view>\n" +
       "    <name>MY_VIEW</name>\n" +
       "    <label>My View!</label>\n" +
       "    <version>1.0.0</version>\n" +
@@ -180,7 +180,7 @@ public class ViewRegistryTest {
       "    </auto-instance>\n" +
       "</view>";
 
-  private static String AUTO_VIEW_WILD_STACK_XML = "<view>\n" +
+  private static final String AUTO_VIEW_WILD_STACK_XML = "<view>\n" +
       "    <name>MY_VIEW</name>\n" +
       "    <label>My View!</label>\n" +
       "    <version>1.0.0</version>\n" +
@@ -191,7 +191,7 @@ public class ViewRegistryTest {
       "    </auto-instance>\n" +
       "</view>";
 
-  private static String AUTO_VIEW_BAD_STACK_XML = "<view>\n" +
+  private static final String AUTO_VIEW_BAD_STACK_XML = "<view>\n" +
       "    <name>MY_VIEW</name>\n" +
       "    <label>My View!</label>\n" +
       "    <version>1.0.0</version>\n" +
@@ -227,18 +227,22 @@ public class ViewRegistryTest {
         clusters);
   }
 
-
   @Test
   public void testReadViewArchives() throws Exception {
-    testReadViewArchives(false);
+    testReadViewArchives(false, false);
+  }
+
+  @Test
+  public void testReadViewArchives_removeUndeployed() throws Exception {
+    testReadViewArchives(false, true);
   }
 
   @Test
   public void testReadViewArchives_badArchive() throws Exception {
-    testReadViewArchives(true);
+    testReadViewArchives(true, false);
   }
 
-  private void testReadViewArchives(boolean badArchive) throws Exception {
+  private void testReadViewArchives(boolean badArchive, boolean removeUndeployed) throws Exception {
 
     File viewDir = createNiceMock(File.class);
     File extractedArchiveDir = createNiceMock(File.class);
@@ -380,7 +384,10 @@ public class ViewRegistryTest {
     expect(libDir.listFiles()).andReturn(new File[]{fileEntry}).anyTimes();
     expect(fileEntry.toURI()).andReturn(new URI("file:./")).anyTimes();
 
-    expect(viewDAO.findAll()).andReturn(Collections.<ViewEntity>emptyList());
+    expect(configuration.isViewRemoveUndeployedEnabled()).andReturn(removeUndeployed).anyTimes();
+    if (removeUndeployed) {
+      expect(viewDAO.findAll()).andReturn(Collections.<ViewEntity>emptyList());
+    }
 
     // replay mocks
     replay(configuration, viewDir, extractedArchiveDir, viewArchive, archiveDir, entryFile, classesDir,
@@ -493,26 +500,26 @@ public class ViewRegistryTest {
     jarFiles.put(viewArchive, viewJarFile);
 
     // set expectations
-    expect(configuration.getViewsDir()).andReturn(viewDir);
+    expect(configuration.getViewsDir()).andReturn(viewDir).anyTimes();
     if (System.getProperty("os.name").contains("Windows")) {
-      expect(viewDir.getAbsolutePath()).andReturn("\\var\\lib\\ambari-server\\resources\\views");
+      expect(viewDir.getAbsolutePath()).andReturn("\\var\\lib\\ambari-server\\resources\\views").anyTimes();
     }
     else {
-      expect(viewDir.getAbsolutePath()).andReturn("/var/lib/ambari-server/resources/views");
+      expect(viewDir.getAbsolutePath()).andReturn("/var/lib/ambari-server/resources/views").anyTimes();
     }
 
     expect(configuration.getViewExtractionThreadPoolCoreSize()).andReturn(2).anyTimes();
     expect(configuration.getViewExtractionThreadPoolMaxSize()).andReturn(3).anyTimes();
     expect(configuration.getViewExtractionThreadPoolTimeout()).andReturn(10000L).anyTimes();
 
-    expect(viewDir.listFiles()).andReturn(new File[]{viewArchive});
+    expect(viewDir.listFiles()).andReturn(new File[]{viewArchive}).anyTimes();
 
     expect(viewArchive.isDirectory()).andReturn(false);
     if (System.getProperty("os.name").contains("Windows")) {
-      expect(viewArchive.getAbsolutePath()).andReturn("\\var\\lib\\ambari-server\\resources\\views\\work\\MY_VIEW{1.0.0}");
+      expect(viewArchive.getAbsolutePath()).andReturn("\\var\\lib\\ambari-server\\resources\\views\\work\\MY_VIEW{1.0.0}").anyTimes();
     }
     else {
-      expect(viewArchive.getAbsolutePath()).andReturn("/var/lib/ambari-server/resources/views/work/MY_VIEW{1.0.0}");
+      expect(viewArchive.getAbsolutePath()).andReturn("/var/lib/ambari-server/resources/views/work/MY_VIEW{1.0.0}").anyTimes();
     }
 
     expect(archiveDir.exists()).andReturn(false);
@@ -553,7 +560,6 @@ public class ViewRegistryTest {
     expect(libDir.listFiles()).andReturn(new File[]{fileEntry});
     expect(fileEntry.toURI()).andReturn(new URI("file:./"));
 
-    expect(viewDAO.findAll()).andReturn(Collections.<ViewEntity>emptyList());
     expect(viewDAO.findByName("MY_VIEW{1.0.0}")).andThrow(new IllegalArgumentException("Expected exception."));
 
     // replay mocks
@@ -591,7 +597,7 @@ public class ViewRegistryTest {
     TestListener listener = new TestListener();
     registry.registerListener(listener, "MY_VIEW", "1.0.0");
 
-    EventImpl event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), view_xml1);
+    EventImpl event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), VIEW_XML_1);
 
     registry.fireEvent(event);
 
@@ -600,7 +606,7 @@ public class ViewRegistryTest {
     listener.clear();
 
     // fire an event for a different view
-    event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), view_xml2);
+    event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), VIEW_XML_2);
 
     registry.fireEvent(event);
 
@@ -609,7 +615,7 @@ public class ViewRegistryTest {
     // un-register the listener
     registry.unregisterListener(listener, "MY_VIEW", "1.0.0");
 
-    event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), view_xml1);
+    event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), VIEW_XML_1);
 
     registry.fireEvent(event);
 
@@ -623,7 +629,7 @@ public class ViewRegistryTest {
     TestListener listener = new TestListener();
     registry.registerListener(listener, "MY_VIEW", null); // all versions of MY_VIEW
 
-    EventImpl event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), view_xml1);
+    EventImpl event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), VIEW_XML_1);
 
     registry.fireEvent(event);
 
@@ -632,7 +638,7 @@ public class ViewRegistryTest {
     listener.clear();
 
     // fire an event for a different view
-    event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), view_xml2);
+    event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), VIEW_XML_2);
 
     registry.fireEvent(event);
 
@@ -643,13 +649,13 @@ public class ViewRegistryTest {
     // un-register the listener
     registry.unregisterListener(listener, "MY_VIEW", null); // all versions of MY_VIEW
 
-    event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), view_xml1);
+    event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), VIEW_XML_1);
 
     registry.fireEvent(event);
 
     Assert.assertNull(listener.getLastEvent());
 
-    event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), view_xml2);
+    event = EventImplTest.getEvent("MyEvent", Collections.<String, String>emptyMap(), VIEW_XML_2);
 
     registry.fireEvent(event);
 
@@ -806,16 +812,15 @@ public class ViewRegistryTest {
 
     Configuration ambariConfig = new Configuration(properties);
 
-    ViewConfig config = ViewConfigTest.getConfig(xml_valid_instance);
+    ViewConfig config = ViewConfigTest.getConfig(XML_VALID_INSTANCE);
     ViewEntity viewEntity = getViewEntity(config, ambariConfig, getClass().getClassLoader(), "");
     ViewInstanceEntity viewInstanceEntity = getViewInstanceEntity(viewEntity, config.getInstances().get(0));
 
-    expect(viewInstanceDAO.merge(viewInstanceEntity)).andReturn(null);
-    expect(viewInstanceDAO.findByName("MY_VIEW{1.0.0}", viewInstanceEntity.getInstanceName())).andReturn(viewInstanceEntity);
+    expect(viewInstanceDAO.merge(viewInstanceEntity)).andReturn(viewInstanceEntity);
 
     handlerList.addViewInstance(viewInstanceEntity);
 
-    replay(viewDAO, viewInstanceDAO, securityHelper, handlerList);
+    replay(viewDAO, viewInstanceDAO, resourceTypeDAO, securityHelper, handlerList);
 
     registry.addDefinition(viewEntity);
     registry.installViewInstance(viewInstanceEntity);
@@ -828,8 +833,9 @@ public class ViewRegistryTest {
     Assert.assertEquals("v2-1", instanceEntity.getProperty("p2").getValue() );
 
     Assert.assertEquals(viewInstanceEntity, viewInstanceDefinitions.iterator().next());
+    Assert.assertEquals("MY_VIEW{1.0.0}", viewInstanceEntity.getResource().getResourceType().getName());
 
-    verify(viewDAO, viewInstanceDAO, securityHelper, handlerList);
+    verify(viewDAO, viewInstanceDAO, resourceTypeDAO, securityHelper, handlerList);
   }
 
   @Test
@@ -842,7 +848,7 @@ public class ViewRegistryTest {
 
     Configuration ambariConfig = new Configuration(properties);
 
-    ViewConfig config = ViewConfigTest.getConfig(xml_invalid_instance);
+    ViewConfig config = ViewConfigTest.getConfig(XML_INVALID_INSTANCE);
     ViewEntity viewEntity = getViewEntity(config, ambariConfig, getClass().getClassLoader(), "");
     ViewInstanceEntity viewInstanceEntity = getViewInstanceEntity(viewEntity, config.getInstances().get(0));
 
@@ -870,14 +876,13 @@ public class ViewRegistryTest {
     Validator validator = createNiceMock(Validator.class);
     ValidationResult result = createNiceMock(ValidationResult.class);
 
-    ViewConfig config = ViewConfigTest.getConfig(xml_valid_instance);
+    ViewConfig config = ViewConfigTest.getConfig(XML_VALID_INSTANCE);
     ViewEntity viewEntity = getViewEntity(config, ambariConfig, getClass().getClassLoader(), "");
     viewEntity.setValidator(validator);
 
     ViewInstanceEntity viewInstanceEntity = getViewInstanceEntity(viewEntity, config.getInstances().get(0));
 
-    expect(viewInstanceDAO.merge(viewInstanceEntity)).andReturn(null);
-    expect(viewInstanceDAO.findByName("MY_VIEW{1.0.0}", viewInstanceEntity.getInstanceName())).andReturn(viewInstanceEntity);
+    expect(viewInstanceDAO.merge(viewInstanceEntity)).andReturn(viewInstanceEntity);
 
     handlerList.addViewInstance(viewInstanceEntity);
 
@@ -913,7 +918,7 @@ public class ViewRegistryTest {
     Validator validator = createNiceMock(Validator.class);
     ValidationResult result = createNiceMock(ValidationResult.class);
 
-    ViewConfig config = ViewConfigTest.getConfig(xml_valid_instance);
+    ViewConfig config = ViewConfigTest.getConfig(XML_VALID_INSTANCE);
     ViewEntity viewEntity = getViewEntity(config, ambariConfig, getClass().getClassLoader(), "");
     viewEntity.setValidator(validator);
 
@@ -950,7 +955,7 @@ public class ViewRegistryTest {
 
     Configuration ambariConfig = new Configuration(properties);
 
-    ViewConfig config = ViewConfigTest.getConfig(xml_valid_instance);
+    ViewConfig config = ViewConfigTest.getConfig(XML_VALID_INSTANCE);
     ViewEntity viewEntity = getViewEntity(config, ambariConfig, getClass().getClassLoader(), "");
     ViewInstanceEntity viewInstanceEntity = getViewInstanceEntity(viewEntity, config.getInstances().get(0));
     viewInstanceEntity.setViewName("BOGUS_VIEW");
@@ -977,7 +982,7 @@ public class ViewRegistryTest {
 
     Configuration ambariConfig = new Configuration(properties);
 
-    ViewConfig config = ViewConfigTest.getConfig(xml_valid_instance);
+    ViewConfig config = ViewConfigTest.getConfig(XML_VALID_INSTANCE);
     ViewEntity viewEntity = getViewEntity(config, ambariConfig, getClass().getClassLoader(), "");
     ViewInstanceEntity viewInstanceEntity = getViewInstanceEntity(viewEntity, config.getInstances().get(0));
     ViewInstanceEntity updateInstance = getViewInstanceEntity(viewEntity, config.getInstances().get(0));
@@ -1023,7 +1028,7 @@ public class ViewRegistryTest {
 
     Configuration ambariConfig = new Configuration(properties);
 
-    ViewConfig config = ViewConfigTest.getConfig(xml_valid_instance);
+    ViewConfig config = ViewConfigTest.getConfig(XML_VALID_INSTANCE);
     ViewEntity viewEntity = getViewEntity(config, ambariConfig, getClass().getClassLoader(), "");
     ViewInstanceEntity viewInstanceEntity = getViewInstanceEntity(viewEntity, config.getInstances().get(0));
 
@@ -1045,7 +1050,7 @@ public class ViewRegistryTest {
 
     Configuration ambariConfig = new Configuration(new Properties());
 
-    ViewConfig config = ViewConfigTest.getConfig(xml_valid_instance);
+    ViewConfig config = ViewConfigTest.getConfig(XML_VALID_INSTANCE);
     ViewEntity viewEntity = getViewEntity(config, ambariConfig, getClass().getClassLoader(), "");
     ViewInstanceEntity viewInstanceEntity = getViewInstanceEntity(viewEntity, config.getInstances().get(0));
     ResourceEntity resource = new ResourceEntity();
@@ -1093,14 +1098,13 @@ public class ViewRegistryTest {
 
     Configuration ambariConfig = new Configuration(properties);
 
-    ViewConfig config = ViewConfigTest.getConfig(xml_valid_instance);
-    ViewConfig invalidConfig = ViewConfigTest.getConfig(xml_invalid_instance);
+    ViewConfig config = ViewConfigTest.getConfig(XML_VALID_INSTANCE);
+    ViewConfig invalidConfig = ViewConfigTest.getConfig(XML_INVALID_INSTANCE);
     ViewEntity viewEntity = getViewEntity(config, ambariConfig, getClass().getClassLoader(), "");
     ViewInstanceEntity viewInstanceEntity = getViewInstanceEntity(viewEntity, config.getInstances().get(0));
     ViewInstanceEntity updateInstance = getViewInstanceEntity(viewEntity, invalidConfig.getInstances().get(0));
 
-    expect(viewInstanceDAO.merge(viewInstanceEntity)).andReturn(null);
-    expect(viewInstanceDAO.findByName("MY_VIEW{1.0.0}", viewInstanceEntity.getInstanceName())).andReturn(viewInstanceEntity).anyTimes();
+    expect(viewInstanceDAO.merge(viewInstanceEntity)).andReturn(viewInstanceEntity);
 
     replay(viewDAO, viewInstanceDAO, securityHelper);
 
@@ -1128,7 +1132,7 @@ public class ViewRegistryTest {
     Validator validator = createNiceMock(Validator.class);
     ValidationResult result = createNiceMock(ValidationResult.class);
 
-    ViewConfig config = ViewConfigTest.getConfig(xml_valid_instance);
+    ViewConfig config = ViewConfigTest.getConfig(XML_VALID_INSTANCE);
     ViewEntity viewEntity = getViewEntity(config, ambariConfig, getClass().getClassLoader(), "");
     viewEntity.setValidator(validator);
     ViewInstanceEntity viewInstanceEntity = getViewInstanceEntity(viewEntity, config.getInstances().get(0));
@@ -1171,7 +1175,7 @@ public class ViewRegistryTest {
     Validator validator = createNiceMock(Validator.class);
     ValidationResult result = createNiceMock(ValidationResult.class);
 
-    ViewConfig config = ViewConfigTest.getConfig(xml_valid_instance);
+    ViewConfig config = ViewConfigTest.getConfig(XML_VALID_INSTANCE);
     ViewEntity viewEntity = getViewEntity(config, ambariConfig, getClass().getClassLoader(), "");
     viewEntity.setValidator(validator);
     ViewInstanceEntity viewInstanceEntity = getViewInstanceEntity(viewEntity, config.getInstances().get(0));

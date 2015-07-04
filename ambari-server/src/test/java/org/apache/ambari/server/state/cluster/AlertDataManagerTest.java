@@ -29,6 +29,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
+import junit.framework.Assert;
+
 import org.apache.ambari.server.events.AlertEvent;
 import org.apache.ambari.server.events.AlertReceivedEvent;
 import org.apache.ambari.server.events.AlertStateChangeEvent;
@@ -75,6 +77,7 @@ import com.google.gson.Gson;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.persist.PersistService;
+import com.google.inject.persist.UnitOfWork;
 
 
 /**
@@ -84,7 +87,7 @@ public class AlertDataManagerTest {
 
   private static final String ALERT_DEFINITION = "Alert Definition 1";
   private static final String SERVICE = "HDFS";
-  private static final String COMPONENT = "component1";
+  private static final String COMPONENT = "DATANODE";
   private static final String HOST1 = "h1";
   private static final String HOST2 = "h2";
   private static final String ALERT_LABEL = "My Label";
@@ -105,6 +108,8 @@ public class AlertDataManagerTest {
   public void setup() throws Exception {
     m_injector = Guice.createInjector(new InMemoryDefaultTestModule());
     m_injector.getInstance(GuiceJpaInitializer.class);
+    m_injector.getInstance(UnitOfWork.class).begin();
+
     m_helper = m_injector.getInstance(OrmTestHelper.class);
     m_dao = m_injector.getInstance(AlertsDAO.class);
     m_dispatchDao = m_injector.getInstance(AlertDispatchDAO.class);
@@ -120,6 +125,7 @@ public class AlertDataManagerTest {
         m_componentFactory, m_schFactory, HOST1);
 
     m_helper.addHost(m_clusters, m_cluster, HOST2);
+    m_helper.addHostComponent(m_cluster, HOST2, SERVICE, COMPONENT);
 
     // create 5 definitions
     for (int i = 0; i < 5; i++) {
@@ -140,6 +146,7 @@ public class AlertDataManagerTest {
 
   @After
   public void teardown() {
+    m_injector.getInstance(UnitOfWork.class).end();
     m_injector.getInstance(PersistService.class).stop();
     m_injector = null;
   }
@@ -151,11 +158,14 @@ public class AlertDataManagerTest {
     alert1.setLabel(ALERT_LABEL);
     alert1.setText("Component component1 is OK");
     alert1.setTimestamp(1L);
+    alert1.setCluster(m_cluster.getClusterName());
 
     Alert alert2 = new Alert(ALERT_DEFINITION, null, SERVICE, COMPONENT, HOST2,
         AlertState.CRITICAL);
     alert2.setLabel(ALERT_LABEL);
     alert2.setText("Component component2 is not OK");
+    alert2.setCluster(m_cluster.getClusterName());
+
 
     AlertReceivedListener listener = m_injector.getInstance(AlertReceivedListener.class);
 
@@ -197,6 +207,7 @@ public class AlertDataManagerTest {
     alert3.setLabel(ALERT_LABEL);
     alert3.setText("Component component1 is OK");
     alert3.setTimestamp(2L);
+    alert3.setCluster(m_cluster.getClusterName());
 
     AlertReceivedEvent event3 = new AlertReceivedEvent(
         m_cluster.getClusterId(),
@@ -229,6 +240,8 @@ public class AlertDataManagerTest {
     alert4.setLabel(ALERT_LABEL);
     alert4.setText("Component component1 is about to go down");
     alert4.setTimestamp(3L);
+    alert4.setCluster(m_cluster.getClusterName());
+
 
     AlertReceivedEvent event4 = new AlertReceivedEvent(
         m_cluster.getClusterId(),
@@ -411,11 +424,20 @@ public class AlertDataManagerTest {
 
     AlertAggregateListener listener = m_injector.getInstance(AlertAggregateListener.class);
     AlertDefinitionFactory factory = new AlertDefinitionFactory();
+
+    // get the aggregate cache and test it a little bit
     AggregateDefinitionMapping aggregateMapping = m_injector.getInstance(AggregateDefinitionMapping.class);
 
     AlertDefinition aggregateDefinition = factory.coerce(aggDef);
     aggregateMapping.registerAggregate(m_cluster.getClusterId(),
         aggregateDefinition );
+
+    // make sure the aggregate has the correct associations
+    Assert.assertEquals(aggregateDefinition,
+        aggregateMapping.getAggregateDefinitions(m_cluster.getClusterId()).get(0));
+
+    Assert.assertEquals(definition.getDefinitionName(),
+        aggregateMapping.getAlertsWithAggregates(m_cluster.getClusterId()).get(0));
 
     AggregateSource as = (AggregateSource) aggregateDefinition.getSource();
     AlertDefinition aggregatedDefinition = aggregateMapping.getAggregateDefinition(

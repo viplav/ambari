@@ -20,7 +20,6 @@ Ambari Agent
 """
 
 from resource_management import *
-import sys
 import os
 from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
 from ambari_commons import OSConst
@@ -29,6 +28,9 @@ from ambari_commons import OSConst
 def hdfs(name=None):
   import params
 
+  if params.create_lib_snappy_symlinks:
+    install_snappy()
+  
   # On some OS this folder could be not exists, so we will create it before pushing there files
   Directory(params.limits_conf_dir,
             recursive=True,
@@ -68,6 +70,21 @@ def hdfs(name=None):
               group=params.user_group
     )
 
+    Directory(params.hadoop_conf_secure_dir,
+              recursive=True,
+              owner='root',
+              group=params.user_group,
+              cd_access='a',
+              )
+
+    XmlConfig("ssl-client.xml",
+              conf_dir=params.hadoop_conf_secure_dir,
+              configurations=params.config['configurations']['ssl-client'],
+              configuration_attributes=params.config['configuration_attributes']['ssl-client'],
+              owner=params.hdfs_user,
+              group=params.user_group
+    )
+
   if "ssl-server" in params.config['configurations']:
     XmlConfig("ssl-server.xml",
               conf_dir=params.hadoop_conf_dir,
@@ -98,14 +115,21 @@ def hdfs(name=None):
        owner=tc_owner,
        content=Template("slaves.j2")
   )
-
-  # for source-code of jar goto contrib/fast-hdfs-resource
-  File(format("{ambari_libs_dir}/fast-hdfs-resource.jar"),
-       content=StaticFile("fast-hdfs-resource.jar")
-  )
   
   if params.lzo_enabled and len(params.lzo_packages) > 0:
       Package(params.lzo_packages)
+      
+def install_snappy():
+  import params
+  Directory([params.so_target_dir_x86, params.so_target_dir_x64],
+            recursive=True,
+  )    
+  Link(params.so_target_x86,
+       to=params.so_src_x86,
+  )
+  Link(params.so_target_x64,
+       to=params.so_src_x64,
+  )
 
 @OsFamilyFuncImpl(os_family=OSConst.WINSRV_FAMILY)
 def hdfs(component=None):

@@ -78,6 +78,24 @@ App.ConfigsSaverMixin = Em.Mixin.create({
   },
 
   /**
+   * get config group object for current service
+   * @param serviceName
+   * @returns {App.ConfigGroup}
+   */
+  getGroupFromModel: function(serviceName) {
+    if (this.get('selectedService.serviceName') === serviceName) {
+      return this.get('selectedConfigGroup');
+    } else {
+      var groups = App.ServiceConfigGroup.find().filterProperty('serviceName', serviceName);
+      if (this.get('selectedConfigGroup.isDefault')) {
+        return groups.length ? groups.findProperty('isDefault', true) : null;
+      } else {
+        return groups.length ? groups.findProperty('name', this.get('selectedConfigGroup.dependentConfigGroups')[serviceName]) : null;
+      }
+    }
+  },
+
+  /**
    * Save changed configs and config groups
    * @method saveConfigs
    */
@@ -106,22 +124,23 @@ App.ConfigsSaverMixin = Em.Mixin.create({
       this.get('stepConfigs').forEach(function(stepConfig) {
         var serviceName = stepConfig.get('serviceName');
         var configs = stepConfig.get('configs');
-        var configGroup = this.getGroupForService(serviceName);
+        var configGroup = this.getGroupFromModel(serviceName);
+        if (configGroup) {
+          if (configGroup.get('isDefault')) {
 
-        if (configGroup.get('isDefault')) {
+            var configsToSave = this.getServiceConfigToSave(serviceName, configs);
 
-          var configsToSave = this.getServiceConfigToSave(serviceName, configs);
+            if (configsToSave) {
+              this.putChangedConfigurations([configsToSave], false);
+            }
 
-          if (configsToSave) {
-            this.putChangedConfigurations([configsToSave], false);
-          }
+          } else {
 
-        } else {
+            var overridenConfigs = this.getConfigsForGroup(configs, configGroup.get('name'));
 
-          var overridenConfigs = this.getConfigsForGroup(configs, configGroup.get('name'));
-
-          if (Em.isArray(overridenConfigs)) {
-            this.saveGroup(overridenConfigs, configGroup, this.get('content.serviceName') === serviceName);
+            if (Em.isArray(overridenConfigs)) {
+              this.saveGroup(overridenConfigs, configGroup, this.get('content.serviceName') === serviceName);
+            }
           }
         }
       }, this);
@@ -156,7 +175,7 @@ App.ConfigsSaverMixin = Em.Mixin.create({
    * @method hasUnsavedChanges
    */
   hasUnsavedChanges: function () {
-    return this.get('hash') != this.getHash();
+    return !Em.isNone(this.get('hash')) && this.get('hash') != this.getHash();
   },
 
   /*********************************** 1. PRE SAVE CHECKS ************************************/
@@ -292,7 +311,7 @@ App.ConfigsSaverMixin = Em.Mixin.create({
 
     var fileNamesToSave = modifiedConfigs.mapProperty('filename').concat(this.get('modifiedFileNames')).uniq();
 
-    var configsToSave = this.generateDesiredConfigsJSON(modifiedConfigs, fileNamesToSave, this.get('serviceConfigNote'));
+    var configsToSave = this.generateDesiredConfigsJSON(modifiedConfigs, fileNamesToSave, this.get('serviceConfigVersionNote'));
 
     if (configsToSave.length > 0) {
       return JSON.stringify({
@@ -312,13 +331,10 @@ App.ConfigsSaverMixin = Em.Mixin.create({
    * @method saveSiteConfigs
    */
   saveSiteConfigs: function (configs) {
-    //storedConfigs contains custom configs as well
     configs = this.setHiveHostName(configs);
     configs = this.setOozieHostName(configs);
     this.formatConfigValues(configs);
-    var mappedConfigs = App.config.excludeUnsupportedConfigs(this.get('configMapping').all(), App.Service.find().mapProperty('serviceName'));
-    var allUiConfigs = this.loadUiSideConfigs(mappedConfigs);
-    return configs.concat(allUiConfigs);
+    return configs;
   },
 
   /**
@@ -437,119 +453,6 @@ App.ConfigsSaverMixin = Em.Mixin.create({
     return configs;
   },
 
-  /*********************************** 2.2 ADD DYNAMIC CONFIGS ********************************/
-  /**
-   * return configs from the UI side
-   * @param configMapping array with configs
-   * @return {Array}
-   * @private
-   * @method loadUiSideConfigs
-   */
-  loadUiSideConfigs: function (configMapping) {
-    var uiConfig = [];
-    var configs = configMapping.filterProperty('foreignKey', null);
-    this.addDynamicProperties(configs);
-    configs.forEach(function (_config) {
-      var valueWithOverrides = this.getGlobConfigValueWithOverrides(_config.templateName, _config.value, _config.name);
-      if (valueWithOverrides !== null) {
-        uiConfig.pushObject({
-          "id": "site property",
-          "name": _config.name,
-          "value": valueWithOverrides.value,
-          "filename": _config.filename,
-          "overrides": valueWithOverrides.overrides
-        });
-      }
-    }, this);
-    return uiConfig;
-  },
-
-  /**
-   * @param configs
-   * @private
-   * @method addDynamicProperties
-   */
-  addDynamicProperties: function (configs) {
-    var allConfigs = this.get('stepConfigs').findProperty('serviceName', this.get('content.serviceName')).get('configs');
-    var templetonHiveProperty = allConfigs.someProperty('name', 'templeton.hive.properties');
-    if (!templetonHiveProperty && this.get('content.serviceName') === 'HIVE') {
-      configs.pushObject({
-        "name": "templeton.hive.properties",
-        "templateName": ["hive.metastore.uris"],
-        "foreignKey": null,
-        "value": "hive.metastore.local=false,hive.metastore.uris=<templateName[0]>,hive.metastore.sasl.enabled=yes,hive.metastore.execute.setugi=true,hive.metastore.warehouse.dir=/apps/hive/warehouse",
-        "filename": "webhcat-site.xml"
-      });
-    }
-  },
-
-  /**
-   * return config value
-   * @param templateName
-   * @param expression
-   * @param name
-   * @return {Object}
-   * example: <code>{
-   *   value: '...',
-   *   overrides: {
-   *    'value1': [h1, h2],
-   *    'value2': [h3]
-   *   }
-   * }</code>
-   * @private
-   * @method getGlobConfigValueWithOverrides
-   */
-  getGlobConfigValueWithOverrides: function (templateName, expression, name) {
-    var express = expression.match(/<(.*?)>/g);
-    var value = expression;
-    var overrideHostToValue = {};
-    if (express != null) {
-      express.forEach(function (_express) {
-        var index = parseInt(_express.match(/\[([\d]*)(?=\])/)[1]);
-        var globalObj = this.get('allConfigs').findProperty('name', templateName[index]);
-        if (globalObj) {
-          var globOverride = globalObj.overrides;
-          if (globOverride != null) {
-            for (var ov in globOverride) {
-              globOverride[ov].forEach(function (host) {
-                var replacedVal = (host in overrideHostToValue) ? overrideHostToValue[host] : expression;
-                overrideHostToValue[host] = App.config.replaceConfigValues(name, _express, replacedVal, ov);
-              }, this);
-            }
-          }
-          value = App.config.replaceConfigValues(name, _express, expression, globalObj.value);
-        } else {
-          value = null;
-        }
-      }, this);
-    }
-    return this.getValueWithOverrides(value, overrideHostToValue)
-  },
-
-  /**
-   * @param value
-   * @param overrideHostToValue
-   * @returns {{value: *, overrides: {}}}
-   * @private
-   * @method getValueWithOverrides
-   */
-  getValueWithOverrides: function (value, overrideHostToValue) {
-    var valueWithOverrides = {
-      value: value,
-      overrides: {}
-    };
-    if (!jQuery.isEmptyObject(overrideHostToValue)) {
-      for (var host in overrideHostToValue) {
-        var hostVal = overrideHostToValue[host];
-        if (!(hostVal in valueWithOverrides.overrides)) {
-          valueWithOverrides.overrides[hostVal] = [];
-        }
-        valueWithOverrides.overrides[hostVal].push(host);
-      }
-    }
-    return valueWithOverrides;
-  },
-
   /*********************************** 3. GENERATING JSON TO SAVE *****************************/
 
   /**
@@ -653,7 +556,8 @@ App.ConfigsSaverMixin = Em.Mixin.create({
     }
     switch (name) {
       case 'storm.zookeeper.servers':
-        if (Object.prototype.toString.call(value) === '[object Array]' ) {
+      case 'nimbus.seeds':
+        if (Em.isArray(value)) {
           return JSON.stringify(value).replace(/"/g, "'");
         } else {
           return value;
@@ -678,9 +582,11 @@ App.ConfigsSaverMixin = Em.Mixin.create({
     selectedConfigGroup.get('hosts').forEach(function (hostName) {
       groupHosts.push({"host_name": hostName});
     });
+    var id = selectedConfigGroup.get('configGroupId');
+    id = Em.isNone(id) ? selectedConfigGroup.get('id') : id;
     this.putConfigGroupChanges({
       ConfigGroup: {
-        "id": selectedConfigGroup.get('id'),
+        "id": id,
         "cluster_name": App.get('clusterName'),
         "group_name": selectedConfigGroup.get('name'),
         "tag": selectedConfigGroup.get('service.id'),
@@ -767,6 +673,7 @@ App.ConfigsSaverMixin = Em.Mixin.create({
 
   /**
    * On save configs handler. Open save configs popup with appropriate message
+   * and clear config dependencies list.
    * @private
    * @method onDoPUTClusterConfigurations
    */
@@ -808,6 +715,7 @@ App.ConfigsSaverMixin = Em.Mixin.create({
       App.QuickViewLinks.proto().loadTags();
     }
     this.showSaveConfigsPopup(header, flag, message, messageClass, value, status, urlParams);
+    this.clearDependentConfigs();
   },
 
   /**
@@ -1019,7 +927,10 @@ App.ConfigsSaverMixin = Em.Mixin.create({
         })
       }),
       footerClass: Ember.View.extend({
-        templateName: require('templates/main/service/info/save_popup_footer')
+        templateName: require('templates/main/service/info/save_popup_footer'),
+        isSaveDisabled: function() {
+          return self.get('isSubmitDisabled');
+        }.property()
       }),
       primary: Em.I18n.t('common.save'),
       secondary: Em.I18n.t('common.cancel'),
@@ -1052,7 +963,7 @@ App.ConfigsSaverMixin = Em.Mixin.create({
    */
 
   /**
-   * filter out unchanged configurations
+   * filter out unchanged configurationsisPropertiesChanged
    * @param {Array} configsToSave
    * @private
    * @method filterChangedConfiguration
@@ -1240,7 +1151,8 @@ App.ConfigsSaverMixin = Em.Mixin.create({
   setServerConfigValue: function (configName, value) {
     switch (configName) {
       case 'storm.zookeeper.servers':
-        if( Object.prototype.toString.call( value ) === '[object Array]' ) {
+      case 'nimbus.seeds':
+        if(Em.isArray(value)) {
           return JSON.stringify(value).replace(/"/g, "'");
         } else {
           return value;

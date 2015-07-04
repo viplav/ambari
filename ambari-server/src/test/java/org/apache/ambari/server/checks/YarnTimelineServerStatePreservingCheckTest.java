@@ -124,4 +124,67 @@ public class YarnTimelineServerStatePreservingCheckTest {
     m_check.perform(check, new PrereqCheckRequest("cluster"));
     Assert.assertEquals(PrereqCheckStatus.PASS, check.getStatus());
   }
+
+  @SuppressWarnings("serial")
+  @Test
+  public void testIsApplicableMinimumHDPStackVersion() throws Exception {
+    final Cluster cluster = Mockito.mock(Cluster.class);
+    Mockito.when(cluster.getClusterId()).thenReturn(1L);
+    Mockito.when(cluster.getServices()).thenReturn(new HashMap<String, Service>() {
+      {
+        put("YARN", null);
+      }
+    });
+    Mockito.when(cluster.getCurrentStackVersion()).thenReturn(new StackId("HDP-2.2"));
+    ClusterVersionEntity clusterVersionEntity = Mockito.mock(ClusterVersionEntity.class);
+    Mockito.when(cluster.getCurrentClusterVersion()).thenReturn(clusterVersionEntity);
+    RepositoryVersionEntity repositoryVersionEntity = Mockito.mock(RepositoryVersionEntity.class);
+    Mockito.when(clusterVersionEntity.getRepositoryVersion()).thenReturn(repositoryVersionEntity);
+    Mockito.when(m_clusters.getCluster("c1")).thenReturn(cluster);
+    PrereqCheckRequest request = new PrereqCheckRequest("c1");
+
+    // Check < 2.2.4.2
+    Mockito.when(repositoryVersionEntity.getVersion()).thenReturn("2.1.1.1");
+    boolean isApplicable = m_check.isApplicable(request);
+    Assert.assertFalse(isApplicable);
+    Mockito.when(repositoryVersionEntity.getVersion()).thenReturn("2.2.4.1");
+    isApplicable = m_check.isApplicable(request);
+    Assert.assertFalse(isApplicable);
+
+    // Check == 2.2.4.2
+    Mockito.when(repositoryVersionEntity.getVersion()).thenReturn("2.2.4.2");
+    isApplicable = m_check.isApplicable(request);
+    Assert.assertTrue(isApplicable);
+
+    // Check > 2.2.4.2
+    Mockito.when(repositoryVersionEntity.getVersion()).thenReturn("2.2.4.4");
+    isApplicable = m_check.isApplicable(request);
+    Assert.assertTrue(isApplicable);
+    Mockito.when(repositoryVersionEntity.getVersion()).thenReturn("2.3.1.1");
+    isApplicable = m_check.isApplicable(request);
+    Assert.assertTrue(isApplicable);
+  }
+
+  @SuppressWarnings("serial")
+  @Test
+  public void testIsApplicableMinimumStackVersion() throws Exception {
+    final Cluster cluster = Mockito.mock(Cluster.class);
+    Mockito.when(cluster.getClusterId()).thenReturn(1L);
+    Mockito.when(cluster.getServices()).thenReturn(new HashMap<String, Service>() {
+      {
+        put("YARN", null);
+      }
+    });
+    Mockito.when(cluster.getCurrentStackVersion()).thenReturn(new StackId("MYSTACK-12.2"));
+    ClusterVersionEntity clusterVersionEntity = Mockito.mock(ClusterVersionEntity.class);
+    Mockito.when(cluster.getCurrentClusterVersion()).thenReturn(clusterVersionEntity);
+    RepositoryVersionEntity repositoryVersionEntity = Mockito.mock(RepositoryVersionEntity.class);
+    Mockito.when(clusterVersionEntity.getRepositoryVersion()).thenReturn(repositoryVersionEntity);
+    Mockito.when(m_clusters.getCluster("c1")).thenReturn(cluster);
+    PrereqCheckRequest request = new PrereqCheckRequest("c1");
+
+    Mockito.when(repositoryVersionEntity.getVersion()).thenReturn("2.3.0.1");
+    boolean isApplicable = m_check.isApplicable(request);
+    Assert.assertTrue(isApplicable);
+  }
 }

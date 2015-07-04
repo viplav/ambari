@@ -29,16 +29,16 @@ class HbaseRegionServer(Script):
   def install(self, env):
     self.install_packages(env)
     
-  def configure(self, env):
+  def configure(self, env, action = None):
     import params
     env.set_params(params)
 
-    hbase(name='regionserver')
+    hbase('regionserver', action)
       
   def start(self, env):
     import params
     env.set_params(params)
-    self.configure(env) # for security
+    self.configure(env, action = 'start') # for security
 
     hbase_service( 'regionserver',
       action = 'start'

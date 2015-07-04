@@ -57,6 +57,7 @@
           </customCommands>
           <configuration-dependencies>
             <config-type>capacity-scheduler</config-type>
+            <config-type>hdfs-site</config-type>
           </configuration-dependencies>
         </component>
 
@@ -139,11 +140,13 @@
       
       <requiredServices>
         <service>HDFS</service>
+        <service>MAPREDUCE2</service>
       </requiredServices>
 
       <configuration-dependencies>
         <config-type>yarn-site</config-type>
         <config-type>yarn-env</config-type>
+        <config-type>hdfs-site</config-type>
         <config-type>core-site</config-type>
         <config-type>mapred-site</config-type>
         <config-type>yarn-log4j</config-type>
@@ -171,6 +174,13 @@
           <dependencies>
             <dependency>
               <name>HDFS/HDFS_CLIENT</name>
+              <scope>host</scope>
+              <auto-deploy>
+                <enabled>true</enabled>
+              </auto-deploy>
+            </dependency>
+            <dependency>
+              <name>TEZ/TEZ_CLIENT</name>
               <scope>host</scope>
               <auto-deploy>
                 <enabled>true</enabled>
@@ -239,11 +249,16 @@
       <configuration-dir>configuration-mapred</configuration-dir>
 
       <configuration-dependencies>
+        <config-type>hdfs-site</config-type>
         <config-type>core-site</config-type>
         <config-type>mapred-site</config-type>
         <config-type>mapred-env</config-type>
         <config-type>ssl-client</config-type>
         <config-type>ssl-server</config-type>
+        <config-type>ranger-yarn-plugin-properties</config-type>
+        <config-type>ranger-yarn-audit</config-type>
+        <config-type>ranger-yarn-policymgr-ssl</config-type>
+        <config-type>ranger-yarn-security</config-type>
       </configuration-dependencies>
       <restartRequiredAfterRackChange>true</restartRequiredAfterRackChange>
       <widgetsFileName>MAPREDUCE2_widgets.json</widgetsFileName>

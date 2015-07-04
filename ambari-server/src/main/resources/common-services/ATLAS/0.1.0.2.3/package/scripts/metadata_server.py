@@ -16,13 +16,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 """
-import os
-import shutil
-
 from metadata import metadata
-from resource_management import Execute, check_process_status, Script, Fail, \
-  Logger
+from resource_management import Execute, check_process_status, Script
 from resource_management.libraries.functions import format
+from resource_management.libraries.functions.security_commons import build_expectations, \
+  get_params_from_filesystem, validate_security_config_properties, \
+  FILE_TYPE_PROPERTIES
 
 class MetadataServer(Script):
 
@@ -31,7 +30,6 @@ class MetadataServer(Script):
 
   def install(self, env):
     self.install_packages(env)
-    self.configure(env)
 
   def configure(self, env):
     import params
@@ -46,15 +44,9 @@ class MetadataServer(Script):
   def start(self, env, rolling_restart=False):
     import params
     env.set_params(params)
+    self.configure(env)
 
-    metadata_war_file = format('{params.metadata_home}/server/webapp/metadata.war')
-    if not os.path.isfile(metadata_war_file):
-      raise Fail("Unable to copy {0} because it does not exist".format(metadata_war_file))
-
-    Logger.info("Copying {0} to {1}".format(metadata_war_file, params.expanded_war_dir))
-    shutil.copy2(metadata_war_file, params.expanded_war_dir)
-
-    daemon_cmd = format('source {params.conf_dir}/metadata-env.sh ; {params.metadata_start_script} --port {params.metadata_port}')
+    daemon_cmd = format('source {params.conf_dir}/atlas-env.sh ; {params.metadata_start_script} --port {params.metadata_port}')
     no_op_test = format('ls {params.pid_file} >/dev/null 2>&1 && ps -p `cat {params.pid_file}` >/dev/null 2>&1')
     Execute(daemon_cmd,
             user=params.metadata_user,
@@ -64,7 +56,7 @@ class MetadataServer(Script):
   def stop(self, env, rolling_restart=False):
     import params
     env.set_params(params)
-    daemon_cmd = format('source {params.conf_dir}/metadata-env.sh; {params.metadata_stop_script}')
+    daemon_cmd = format('source {params.conf_dir}/atlas-env.sh; {params.metadata_stop_script}')
     Execute(daemon_cmd,
             user=params.metadata_user,
     )
@@ -75,6 +67,61 @@ class MetadataServer(Script):
     import status_params
     env.set_params(status_params)
     check_process_status(status_params.pid_file)
+
+  def security_status(self, env):
+    import status_params
+
+    env.set_params(status_params)
+
+    props_value_check = {'atlas.authentication.method': 'kerberos',
+                         'atlas.http.authentication.enabled': 'true',
+                         'atlas.http.authentication.type': 'kerberos'}
+    props_empty_check = ['atlas.authentication.principal',
+                         'atlas.authentication.keytab',
+                         'atlas.http.authentication.kerberos.principal',
+                         'atlas.http.authentication.kerberos.keytab']
+    props_read_check = ['atlas.authentication.keytab',
+                        'atlas.http.authentication.kerberos.keytab']
+    atlas_site_expectations = build_expectations('application-properties',
+                                                    props_value_check,
+                                                    props_empty_check,
+                                                    props_read_check)
+
+    atlas_expectations = {}
+    atlas_expectations.update(atlas_site_expectations)
+
+    security_params = get_params_from_filesystem(status_params.conf_dir,
+                                                 {'application.properties': FILE_TYPE_PROPERTIES})
+    result_issues = validate_security_config_properties(security_params, atlas_expectations)
+    if not result_issues:  # If all validations passed successfully
+      try:
+        # Double check the dict before calling execute
+        if ( 'application-properties' not in security_params
+             or 'atlas.authentication.keytab' not in security_params['application-properties']
+             or 'atlas.authentication.principal' not in security_params['application-properties']):
+          self.put_structured_out({"securityState": "UNSECURED"})
+          self.put_structured_out(
+            {"securityIssuesFound": "Atlas service keytab file or principal are not set property."})
+          return
+
+        if ( 'application-properties' not in security_params
+             or 'atlas.http.authentication.kerberos.keytab' not in security_params['application-properties']
+             or 'atlas.http.authentication.kerberos.principal' not in security_params['application-properties']):
+          self.put_structured_out({"securityState": "UNSECURED"})
+          self.put_structured_out(
+            {"securityIssuesFound": "HTTP Authentication keytab file or principal are not set property."})
+          return
+
+        self.put_structured_out({"securityState": "SECURED_KERBEROS"})
+      except Exception as e:
+        self.put_structured_out({"securityState": "ERROR"})
+        self.put_structured_out({"securityStateErrorInfo": str(e)})
+    else:
+      issues = []
+      for cf in result_issues:
+        issues.append("Configuration file %s did not pass the validation. Reason: %s" % (cf, result_issues[cf]))
+      self.put_structured_out({"securityIssuesFound": ". ".join(issues)})
+      self.put_structured_out({"securityState": "UNSECURED"})
 
 if __name__ == "__main__":
   MetadataServer().execute()

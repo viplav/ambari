@@ -45,10 +45,10 @@
                     isNotOperator=isNotOperator
                   }}
                   <li >
-                    <a href="#" {{action 'saveModal' 'refresh' target="view"}} {{bind-attr class=":btn isNotOperator:disabled needRefresh::disabled"}}><i class="fa fa-fw fa-refresh"></i> Save and Refresh Queues</a>
+                    <a href="#" {{action 'saveModal' 'refresh' target="view"}} {{bind-attr class=":btn needRefresh::disabled"}}><i class="fa fa-fw fa-refresh"></i> Save and Refresh Queues</a>
                   </li>
                   <li>
-                    <a href="#" {{action 'saveModal' target="view"}} {{bind-attr class=":btn isNotOperator:disabled needSave::disabled"}}><i class="fa fa-fw fa-save"></i> Save Only</a>
+                    <a href="#" {{action 'saveModal' target="view"}} {{bind-attr class=":btn needSave::disabled"}}><i class="fa fa-fw fa-save"></i> Save Only</a>
                   </li>
                   {{dropdown-buttons action='downloadConfig' layoutName='components/dropdownDownload'}}
                 </ul>
@@ -57,6 +57,18 @@
         </div>
       {{/if}}
   </div>
+  {{!-- ALERT --}}
+  {{#if alertMessage}}
+  <div class="alert alert-danger">
+    <button {{action 'clearAlert'}}type="button" class="close" aria-hidden="true">&times;</button>
+    <strong> {{alertMessage.status}} </strong> {{alertMessage.simpleMessage}}
+    <div>
+      <small>{{alertMessage.message}}</small>
+    </div>
+    <br>
+    {{#link-to 'trace' class="alert-link"}}Trace{{/link-to}}
+  </div>
+  {{/if}}
   {{!-- QUEUE LIST --}}
   <div class="list-group queue-list">
     {{recurce-queues depth=0}}
@@ -97,16 +109,6 @@
       </div>
     </div>
   </div>
-
-  {{!-- ALERT --}}
-  {{#if alertMessage}}
-  <div class="alert alert-danger">
-    <button {{action 'clearAlert'}}type="button" class="close" aria-hidden="true">&times;</button>
-    <strong> {{alertMessage.status}} </strong> {{alertMessage.message}}
-    <br>
-    {{#link-to 'trace' class="alert-link"}}Trace{{/link-to}}
-  </div>
-  {{/if}}
 </div>
 
 {{!-- QUEUE --}}

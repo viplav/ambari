@@ -24,8 +24,9 @@ import os
 import re
 from alerts.base_alert import BaseAlert
 from resource_management.core.environment import Environment
+from resource_management.core.logger import Logger
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 class ScriptAlert(BaseAlert):
   def __init__(self, alert_meta, alert_source_meta, config):
@@ -95,7 +96,7 @@ class ScriptAlert(BaseAlert):
 
       # try to get basedir for scripts
       # it's needed for server side scripts to properly use resource management
-      matchObj = re.match( r'((.*)services\/(.*)\/package\/)', self.path_to_script)
+      matchObj = re.match( r'((.*)services(.*)package)', self.path_to_script)
       if matchObj:
         basedir = matchObj.group(1)
         with Environment(basedir, tmp_dir=self.config.get('agent', 'tmp_dir')) as env:

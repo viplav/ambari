@@ -93,6 +93,20 @@
                 <p>{{t admin.stackUpgrade.finalize.message.upgrade}}</p>
               {{/if}}
 
+              {{#if areSkippedServiceChecksLoaded}}
+                {{#if skippedServiceChecks.length}}
+                  <div>{{t admin.stackUpgrade.finalize.message.skippedServiceChecks}}</div>
+                  <ul>
+                    {{#each serviceName in skippedServiceChecks}}
+                      <li>{{serviceName}}</li>
+                    {{/each}}
+                  </ul>
+                  <div>{{t admin.stackUpgrade.finalize.message.testServices}}</div>
+                {{/if}}
+              {{else}}
+                <div class="spinner"></div>
+              {{/if}}
+
               <label class="message">
                 {{view Em.Checkbox checkedBinding="view.isManualDone"}}
                 {{t admin.stackUpgrade.dialog.manualDone}}
@@ -120,7 +134,11 @@
                 {{#if view.isDowngradeAvailable}}
                   <button class="btn btn-danger" {{bindAttr disabled="controller.requestInProgress"}} {{action confirmDowngrade view.manualItem target="controller"}}>{{t common.downgrade}}</button>
                 {{/if}}
-                <button class="btn" {{action closeWizard target="view.parentView"}}>{{t admin.stackUpgrade.pauseUpgrade}}</button>
+                {{#if isDowngrade}}
+                  <button class="btn" {{action closeWizard target="view.parentView"}}>{{t admin.stackUpgrade.pauseDowngrade}}</button>
+                {{else}}
+                  <button class="btn" {{action closeWizard target="view.parentView"}}>{{t admin.stackUpgrade.pauseUpgrade}}</button>
+                {{/if}}
                 <button class="btn btn-success" {{bindAttr disabled="view.isManualProceedDisabled"}} {{action complete view.manualItem target="view"}}>
                   {{t common.proceed}}
                 </button>
@@ -134,6 +152,31 @@
               {{t admin.stackUpgrade.dialog.notActive}}
             </div>
           </div>
+        {{/if}}
+        {{#if App.upgradeAborted}}
+          {{#unless requestInProgress}}
+            <div class="box details-box">
+              <label class="message">
+                {{#if view.isDowngradeAvailable}}
+                  {{t admin.stackUpgrade.dialog.aborted}}
+                {{else}}
+                  {{t admin.stackUpgrade.dialog.downgrade.aborted}}
+                {{/if}}
+              </label>
+              <div class="button-row">
+                {{#if view.isDowngradeAvailable}}
+                  <button class="btn btn-danger" {{bindAttr disabled="controller.requestInProgress"}} {{action confirmDowngrade view.manualItem target="controller"}}>{{t common.downgrade}}</button>
+                {{/if}}
+                <button class="btn btn-success" {{action retryUpgrade target="controller"}}>
+                  {{#if view.isDowngradeAvailable}}
+                    {{t common.reUpgrade}}
+                  {{else}}
+                    {{t common.reDowngrade}}
+                  {{/if}}
+                </button>
+              </div>
+            </div>
+          {{/unless}}
         {{/if}}
       </div>
       {{#each group in view.upgradeGroups}}

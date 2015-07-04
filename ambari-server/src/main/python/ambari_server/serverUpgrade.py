@@ -18,12 +18,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 '''
 
-import json
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
 import os
 import sys
 import shutil
 import base64
 import urllib2
+import re
+import glob
 
 from ambari_commons.exceptions import FatalException
 from ambari_commons.logging_utils import print_info_msg, print_warning_msg, print_error_msg, get_verbose
@@ -35,8 +37,9 @@ from ambari_server.serverConfiguration import configDefaults, \
   get_java_exe_path, get_stack_location, parse_properties_file, read_ambari_user, update_ambari_properties, \
   update_database_name_property, get_admin_views_dir, \
   AMBARI_PROPERTIES_FILE, IS_LDAP_CONFIGURED, LDAP_PRIMARY_URL_PROPERTY, RESOURCES_DIR_PROPERTY, \
-  SETUP_OR_UPGRADE_MSG
-from ambari_server.setupSecurity import adjust_directory_permissions
+  SETUP_OR_UPGRADE_MSG, update_krb_jaas_login_properties, AMBARI_KRB_JAAS_LOGIN_FILE
+from ambari_server.setupSecurity import adjust_directory_permissions, \
+  generate_env, ensure_can_start_under_current_user
 from ambari_server.utils import compare_versions
 from ambari_server.serverUtils import is_server_runing, get_ambari_server_api_base
 from ambari_server.userInput import get_validated_string_input, get_prompt_default, read_password, get_YN_input
@@ -223,7 +226,12 @@ def run_schema_upgrade():
   print 'Upgrading database schema'
 
   command = SCHEMA_UPGRADE_HELPER_CMD.format(jdk_path, get_full_ambari_classpath())
-  (retcode, stdout, stderr) = run_os_command(command)
+
+  ambari_user = read_ambari_user()
+  current_user = ensure_can_start_under_current_user(ambari_user)
+  environ = generate_env(ambari_user, current_user)
+
+  (retcode, stdout, stderr) = run_os_command(command, env=environ)
   print_info_msg("Return code from schema upgrade command, retcode = " + str(retcode))
   if retcode > 0:
     print_error_msg("Error executing schema upgrade, please check the server logs.")
@@ -277,6 +285,16 @@ def upgrade(args):
     err = AMBARI_PROPERTIES_FILE + ' file can\'t be updated. Exiting'
     raise FatalException(retcode, err)
 
+  retcode = update_krb_jaas_login_properties()
+  if retcode == -2:
+    pass  # no changes done, let's be silent
+  elif retcode == 0:
+    print 'File ' + AMBARI_KRB_JAAS_LOGIN_FILE + ' updated.'
+  elif not retcode == 0:
+    err = AMBARI_KRB_JAAS_LOGIN_FILE + ' file can\'t be updated. Exiting'
+    raise FatalException(retcode, err)
+
+  restore_custom_services()
   try:
     update_database_name_property(upgrade=True)
   except FatalException:
@@ -392,6 +410,52 @@ def set_current(options):
 
   sys.stdout.write('\n')
   sys.stdout.flush()
+
+#
+# Search for folders with custom services and restore them from backup
+#
+def restore_custom_services():
+  properties = get_ambari_properties()
+  if properties == -1:
+    err = "Error getting ambari properties"
+    print_error_msg(err)
+    raise FatalException(-1, err)
+
+  try:
+    resources_dir = properties[RESOURCES_DIR_PROPERTY]
+  except (KeyError), e:
+    conf_file = properties.fileName
+    err = 'Property ' + str(e) + ' is not defined at ' + conf_file
+    print_error_msg(err)
+    raise FatalException(1, err)
+
+  services = glob.glob(os.path.join(resources_dir,"stacks","*","*","services","*"))
+  managed_services = []
+  for service in services:
+    if os.path.isdir(service) and not os.path.basename(service) in managed_services:
+      managed_services.append(os.path.basename(service))
+  # add deprecated managed services
+  managed_services.extend(["NAGIOS","GANGLIA","MAPREDUCE"])
+
+  stack_backup_dirs = glob.glob(os.path.join(resources_dir,"stacks_*.old"))
+  if stack_backup_dirs:
+    last_backup_dir = max(stack_backup_dirs, key=os.path.getctime)
+    backup_services = glob.glob(os.path.join(last_backup_dir,"*","*","services","*"))
+
+    regex = re.compile(r'/stacks.*old/')
+    for backup_service in backup_services:
+      backup_base_service_dir = os.path.dirname(backup_service)
+      current_base_service_dir = regex.sub('/stacks/', backup_base_service_dir)
+      # if services dir does not exists, we do not manage this stack
+      if not os.path.exists(current_base_service_dir):
+        continue
+
+      # process dirs only
+      if os.path.isdir(backup_service):
+        service_name = os.path.basename(backup_service)
+        if not service_name in managed_services:
+          shutil.copytree(backup_service, os.path.join(current_base_service_dir,service_name))
+
 
 
 class SetCurrentVersionOptions:

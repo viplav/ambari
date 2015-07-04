@@ -19,8 +19,6 @@
 package org.apache.ambari.server.controller;
 
 import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.CLIENTS_TO_UPDATE_CONFIGS;
-import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.COMMAND_RETRY_ENABLED;
-import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.COMMAND_RETRY_MAX_ATTEMPT_COUNT;
 import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.COMMAND_TIMEOUT;
 import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.COMPONENT_CATEGORY;
 import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.CUSTOM_COMMAND;
@@ -332,6 +330,10 @@ public class AmbariCustomCommandExecutionHelper {
         execCmd.setForceRefreshConfigTags(parseAndValidateComponentsMapping(actionExecutionContext.getParameters().get(KeyNames.REFRESH_ADITIONAL_COMPONENT_TAGS)));
       }
 
+      if(actionExecutionContext.getParameters() != null && actionExecutionContext.getParameters().containsKey(KeyNames.REFRESH_CONFIG_TAGS_BEFORE_EXECUTION)){
+        execCmd.setForceRefreshConfigTagsBeforeExecution(parseAndValidateComponentsMapping(actionExecutionContext.getParameters().get(KeyNames.REFRESH_CONFIG_TAGS_BEFORE_EXECUTION)));
+      }
+
       Map<String, String> hostLevelParams = new TreeMap<String, String>();
 
       hostLevelParams.put(CUSTOM_COMMAND, commandName);
@@ -370,8 +372,6 @@ public class AmbariCustomCommandExecutionHelper {
         if (script != null) {
           commandParams.put(SCRIPT, script.getScript());
           commandParams.put(SCRIPT_TYPE, script.getScriptType().toString());
-          commandParams.put(COMMAND_RETRY_MAX_ATTEMPT_COUNT, Integer.toString(configs.commandRetryCount()));
-          commandParams.put(COMMAND_RETRY_ENABLED, Boolean.toString(configs.isCommandRetryEnabled()));
           if (script.getTimeout() > 0) {
             commandTimeout = String.valueOf(script.getTimeout());
           }
@@ -553,6 +553,9 @@ public class AmbariCustomCommandExecutionHelper {
     execCmd.setConfigurations(configurations);
     execCmd.setConfigurationAttributes(configurationAttributes);
     execCmd.setConfigurationTags(configTags);
+    if(actionParameters != null && actionParameters.containsKey(KeyNames.REFRESH_CONFIG_TAGS_BEFORE_EXECUTION)){
+      execCmd.setForceRefreshConfigTagsBeforeExecution(parseAndValidateComponentsMapping(actionParameters.get(KeyNames.REFRESH_CONFIG_TAGS_BEFORE_EXECUTION)));
+    }
 
     // Generate cluster host info
     execCmd.setClusterHostInfo(
@@ -569,8 +572,6 @@ public class AmbariCustomCommandExecutionHelper {
       if (script != null) {
         commandParams.put(SCRIPT, script.getScript());
         commandParams.put(SCRIPT_TYPE, script.getScriptType().toString());
-        commandParams.put(COMMAND_RETRY_MAX_ATTEMPT_COUNT, Integer.toString(configs.commandRetryCount()));
-        commandParams.put(COMMAND_RETRY_ENABLED, Boolean.toString(configs.isCommandRetryEnabled()));
         if (script.getTimeout() > 0) {
           commandTimeout = String.valueOf(script.getTimeout());
         }
@@ -928,6 +929,10 @@ public class AmbariCustomCommandExecutionHelper {
 
         if(requestParams.containsKey(KeyNames.REFRESH_ADITIONAL_COMPONENT_TAGS)){
           actionExecutionContext.getParameters().put(KeyNames.REFRESH_ADITIONAL_COMPONENT_TAGS, requestParams.get(KeyNames.REFRESH_ADITIONAL_COMPONENT_TAGS));
+        }
+
+        if(requestParams.containsKey(KeyNames.REFRESH_CONFIG_TAGS_BEFORE_EXECUTION)){
+          actionExecutionContext.getParameters().put(KeyNames.REFRESH_CONFIG_TAGS_BEFORE_EXECUTION, requestParams.get(KeyNames.REFRESH_CONFIG_TAGS_BEFORE_EXECUTION));
         }
 
         RequestOperationLevel operationLevel = actionExecutionContext.getOperationLevel();

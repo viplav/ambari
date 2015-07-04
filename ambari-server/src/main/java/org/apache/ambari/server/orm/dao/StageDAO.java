@@ -105,6 +105,7 @@ public class StageDAO {
    *
    * @return the set of entities for the given ids
    */
+  @RequiresSession
   public List<StageEntity> findByStageIds(Long requestId, Set<Long> stageIds) {
     List<StageEntity> stageEntities = new LinkedList<StageEntity>();
 
@@ -186,7 +187,7 @@ public class StageDAO {
    * @param request
    * @return
    */
-  @Transactional
+  @RequiresSession
   public List<StageEntity> findAll(Request request, Predicate predicate) {
     EntityManager entityManager = entityManagerProvider.get();
 

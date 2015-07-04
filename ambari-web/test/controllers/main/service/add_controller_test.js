@@ -467,4 +467,46 @@ describe('App.AddServiceController', function() {
 
   });
 
+  describe('#loadServiceConfigGroups', function () {
+
+    var dbMock,
+      cases = [
+        {
+          serviceConfigGroups: null,
+          areInstalledConfigGroupsLoaded: false,
+          title: 'config groups not yet loaded'
+        },
+        {
+          serviceConfigGroups: [],
+          areInstalledConfigGroupsLoaded: true,
+          title: 'config groups already loaded'
+        }
+      ];
+
+    beforeEach(function () {
+      dbMock = sinon.stub(addServiceController, 'getDBProperty');
+    });
+
+    afterEach(function () {
+      dbMock.restore();
+    });
+
+    cases.forEach(function (item) {
+      it(item.title, function () {
+        dbMock.withArgs('hosts').returns({}).withArgs('serviceConfigGroups').returns(item.serviceConfigGroups);
+        addServiceController.loadServiceConfigGroups();
+        expect(addServiceController.get('areInstalledConfigGroupsLoaded')).to.equal(item.areInstalledConfigGroupsLoaded);
+      });
+    });
+
+  });
+
+  describe('#clearStorageData', function () {
+    it('areInstalledConfigGroupsLoaded should be false', function () {
+      addServiceController.set('areInstalledConfigGroupsLoaded', true);
+      addServiceController.clearStorageData();
+      expect(addServiceController.get('areInstalledConfigGroupsLoaded')).to.be.false;
+    });
+  });
+
 });

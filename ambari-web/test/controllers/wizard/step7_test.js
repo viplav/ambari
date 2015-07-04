@@ -643,37 +643,14 @@ describe('App.InstallerStep7Controller', function () {
     });
   });
 
-  describe('#addOverrideProperty', function () {
-    it('should add override property', function () {
-      var groupName = 'groupName',
-        selectedService = {configGroups: [Em.Object.create({name: groupName, properties: []})]},
-        selectedConfigGroup = {name: groupName},
-        serviceConfigProperty = Em.Object.create({overrides: []}),
-        expected = Em.Object.create({
-          value: '',
-          isOriginalSCP: false,
-          isEditable: true
-        });
-      installerStep7Controller.reopen({selectedService: selectedService, selectedConfigGroup: selectedConfigGroup});
-      var newSCP = installerStep7Controller.addOverrideProperty(serviceConfigProperty);
-      Em.keys(expected).forEach(function (k) {
-        expect(newSCP.get(k)).to.equal(expected.get(k));
-      });
-      var group = installerStep7Controller.get('selectedService.configGroups').findProperty('name', groupName);
-      expect(newSCP.get('group')).to.eql(group);
-      expect(newSCP.get('parentSCP')).to.eql(serviceConfigProperty);
-      expect(group.get('properties.length')).to.equal(1);
-    });
-  });
-
   describe('#resolveYarnConfigs', function () {
     it('should set property to true', function () {
       var allSelectedServiceNames = ['SLIDER', 'YARN'],
         configs = [
-          {name: 'hadoop.registry.rm.enabled', value: false, defaultValue: false}
+          {name: 'hadoop.registry.rm.enabled', value: false, recommendedValue: false}
         ],
         expected = [
-          {name: 'hadoop.registry.rm.enabled', value: true, defaultValue: true, forceUpdate: true}
+          {name: 'hadoop.registry.rm.enabled', value: true, recommendedValue: true}
         ];
       installerStep7Controller.reopen({allSelectedServiceNames: allSelectedServiceNames});
       installerStep7Controller.resolveYarnConfigs(configs);
@@ -683,10 +660,10 @@ describe('App.InstallerStep7Controller', function () {
     it('should set property to false', function () {
       var allSelectedServiceNames = ['YARN'],
         configs = [
-          {name: 'hadoop.registry.rm.enabled', value: true, defaultValue: true}
+          {name: 'hadoop.registry.rm.enabled', value: true, recommendedValue: true}
         ],
         expected = [
-          {name: 'hadoop.registry.rm.enabled', value: false, defaultValue: false, forceUpdate: true}
+          {name: 'hadoop.registry.rm.enabled', value: false, recommendedValue: false}
         ];
       installerStep7Controller.reopen({allSelectedServiceNames: allSelectedServiceNames});
       installerStep7Controller.resolveYarnConfigs(configs);
@@ -696,10 +673,10 @@ describe('App.InstallerStep7Controller', function () {
     it('should skip setting property', function () {
       var allSelectedServiceNames = ['YARN', 'SLIDER'],
         configs = [
-          {name: 'hadoop.registry.rm.enabled', value: true, defaultValue: true}
+          {name: 'hadoop.registry.rm.enabled', value: true, recommendedValue: true}
         ],
         expected = [
-          {name: 'hadoop.registry.rm.enabled', value: true, defaultValue: true}
+          {name: 'hadoop.registry.rm.enabled', value: true, recommendedValue: true}
         ];
       installerStep7Controller.reopen({allSelectedServiceNames: allSelectedServiceNames});
       installerStep7Controller.resolveYarnConfigs(configs);
@@ -727,14 +704,14 @@ describe('App.InstallerStep7Controller', function () {
     it('shouldn\'t do nothing if Ganglia and Storm are installed', function () {
       var installedServiceNames = ['GANGLIA', 'STORM'],
         configs = [
-          {name: 'nimbus.childopts', value: '.jar=host=host2', defaultValue: ''},
-          {name: 'supervisor.childopts', value: '.jar=host=host2', defaultValue: ''},
-          {name: 'worker.childopts', value: '.jar=host=host2', defaultValue: ''}
+          {name: 'nimbus.childopts', value: '.jar=host=host2', recommendedValue: ''},
+          {name: 'supervisor.childopts', value: '.jar=host=host2', recommendedValue: ''},
+          {name: 'worker.childopts', value: '.jar=host=host2', recommendedValue: ''}
         ],
         expected = [
-          {name: 'nimbus.childopts', value: '.jar=host=host2', defaultValue: ''},
-          {name: 'supervisor.childopts', value: '.jar=host=host2', defaultValue: ''},
-          {name: 'worker.childopts', value: '.jar=host=host2', defaultValue: ''}
+          {name: 'nimbus.childopts', value: '.jar=host=host2', recommendedValue: ''},
+          {name: 'supervisor.childopts', value: '.jar=host=host2', recommendedValue: ''},
+          {name: 'worker.childopts', value: '.jar=host=host2', recommendedValue: ''}
         ];
       installerStep7Controller.reopen({installedServiceNames: installedServiceNames});
       installerStep7Controller.resolveStormConfigs(configs);
@@ -744,14 +721,14 @@ describe('App.InstallerStep7Controller', function () {
     it('shouldn\'t do nothing if Ganglia is in allSelectedServiceNames', function () {
       var allSelectedServiceNames = ['GANGLIA'],
         configs = [
-          {name: 'nimbus.childopts', value: '.jar=host=host2', defaultValue: ''},
-          {name: 'supervisor.childopts', value: '.jar=host=host2', defaultValue: ''},
-          {name: 'worker.childopts', value: '.jar=host=host2', defaultValue: ''}
+          {name: 'nimbus.childopts', value: '.jar=host=host2', recommendedValue: ''},
+          {name: 'supervisor.childopts', value: '.jar=host=host2', recommendedValue: ''},
+          {name: 'worker.childopts', value: '.jar=host=host2', recommendedValue: ''}
         ],
         expected = [
-          {name: 'nimbus.childopts', value: '.jar=host=host1', defaultValue: '.jar=host=host1', forceUpdate: true},
-          {name: 'supervisor.childopts', value: '.jar=host=host1', defaultValue: '.jar=host=host1', forceUpdate: true},
-          {name: 'worker.childopts', value: '.jar=host=host1', defaultValue: '.jar=host=host1', forceUpdate: true}
+          {name: 'nimbus.childopts', value: '.jar=host=host1', recommendedValue: '.jar=host=host1'},
+          {name: 'supervisor.childopts', value: '.jar=host=host1', recommendedValue: '.jar=host=host1'},
+          {name: 'worker.childopts', value: '.jar=host=host1', recommendedValue: '.jar=host=host1'}
         ];
       installerStep7Controller.reopen({allSelectedServiceNames: allSelectedServiceNames});
       installerStep7Controller.resolveStormConfigs(configs);
@@ -763,14 +740,14 @@ describe('App.InstallerStep7Controller', function () {
     it('shouldn\'t do nothing if Ganglia is in installedServiceNames (2)', function () {
       var installedServiceNames = ['GANGLIA'],
         configs = [
-          {name: 'nimbus.childopts', value: '.jar=host=host2', defaultValue: ''},
-          {name: 'supervisor.childopts', value: '.jar=host=host2', defaultValue: ''},
-          {name: 'worker.childopts', value: '.jar=host=host2', defaultValue: ''}
+          {name: 'nimbus.childopts', value: '.jar=host=host2', recommendedValue: ''},
+          {name: 'supervisor.childopts', value: '.jar=host=host2', recommendedValue: ''},
+          {name: 'worker.childopts', value: '.jar=host=host2', recommendedValue: ''}
         ],
         expected = [
-          {name: 'nimbus.childopts', value: '.jar=host=host1', defaultValue: '.jar=host=host1', forceUpdate: true},
-          {name: 'supervisor.childopts', value: '.jar=host=host1', defaultValue: '.jar=host=host1', forceUpdate: true},
-          {name: 'worker.childopts', value: '.jar=host=host1', defaultValue: '.jar=host=host1', forceUpdate: true}
+          {name: 'nimbus.childopts', value: '.jar=host=host1', recommendedValue: '.jar=host=host1'},
+          {name: 'supervisor.childopts', value: '.jar=host=host1', recommendedValue: '.jar=host=host1'},
+          {name: 'worker.childopts', value: '.jar=host=host1', recommendedValue: '.jar=host=host1'}
         ];
       installerStep7Controller.reopen({installedServiceNames: installedServiceNames});
       installerStep7Controller.resolveStormConfigs(configs);
@@ -782,14 +759,14 @@ describe('App.InstallerStep7Controller', function () {
     it('should replace host name for *.childopts properties if Ganglia is in installedServiceNames for Add Service Wizard', function () {
       var installedServiceNames = ['GANGLIA'],
         configs = [
-          {name: 'nimbus.childopts', value: '.jar=host=host2', defaultValue: ''},
-          {name: 'supervisor.childopts', value: '.jar=host=host2', defaultValue: ''},
-          {name: 'worker.childopts', value: '.jar=host=host2', defaultValue: ''}
+          {name: 'nimbus.childopts', value: '.jar=host=host2', recommendedValue: ''},
+          {name: 'supervisor.childopts', value: '.jar=host=host2', recommendedValue: ''},
+          {name: 'worker.childopts', value: '.jar=host=host2', recommendedValue: ''}
         ],
         expected = [
-          {name: 'nimbus.childopts', value: '.jar=host=realhost1', defaultValue: '.jar=host=realhost1', forceUpdate: true},
-          {name: 'supervisor.childopts', value: '.jar=host=realhost1', defaultValue: '.jar=host=realhost1', forceUpdate: true},
-          {name: 'worker.childopts', value: '.jar=host=realhost1', defaultValue: '.jar=host=realhost1', forceUpdate: true}
+          {name: 'nimbus.childopts', value: '.jar=host=realhost1', recommendedValue: '.jar=host=realhost1'},
+          {name: 'supervisor.childopts', value: '.jar=host=realhost1', recommendedValue: '.jar=host=realhost1'},
+          {name: 'worker.childopts', value: '.jar=host=realhost1', recommendedValue: '.jar=host=realhost1'}
         ];
       installerStep7Controller.reopen({
         installedServiceNames: installedServiceNames,
@@ -1254,11 +1231,11 @@ describe('App.InstallerStep7Controller', function () {
         Em.Object.create({
           serviceName: 'HDFS',
           configs: [
-            {category: 'SECONDARY_NAMENODE'},
-            {category: 'SECONDARY_NAMENODE'},
-            {category: 'NameNode'},
-            {category: 'NameNode'},
-            {category: 'SECONDARY_NAMENODE'}
+            Em.Object.create({category: 'SECONDARY_NAMENODE'}),
+            Em.Object.create({category: 'SECONDARY_NAMENODE'}),
+            Em.Object.create({category: 'NameNode'}),
+            Em.Object.create({category: 'NameNode'}),
+            Em.Object.create({category: 'SECONDARY_NAMENODE'})
           ]
         }),
         Em.Object.create({serviceName: 's2'})]
@@ -1271,7 +1248,7 @@ describe('App.InstallerStep7Controller', function () {
       installerStep7Controller.setStepConfigs([], []);
       expect(installerStep7Controller.get('stepConfigs').everyProperty('showConfig', true)).to.equal(true);
       expect(installerStep7Controller.get('stepConfigs').findProperty('serviceName', 'HDFS').get('selected')).to.equal(true);
-      expect(installerStep7Controller.get('stepConfigs').findProperty('serviceName', 'HDFS').get('configs').length).to.equal(2);
+      expect(installerStep7Controller.get('stepConfigs').findProperty('serviceName', 'HDFS').get('configs').length).to.equal(5);
       App.get.restore();
     });
 
@@ -1357,10 +1334,20 @@ describe('App.InstallerStep7Controller', function () {
         },
         {
           installedServiceNames: ['s1', 's2', 's3'],
-          m: 'installedServiceNames isn\'t empty',
+          areInstalledConfigGroupsLoaded: false,
+          m: 'installedServiceNames isn\'t empty, config groups not yet loaded',
           e: {
             loadConfigGroups: true,
             loadInstalledServicesConfigGroups: true
+          }
+        },
+        {
+          installedServiceNames: ['s1', 's2', 's3'],
+          areInstalledConfigGroupsLoaded: true,
+          m: 'installedServiceNames isn\'t empty, config groups already loaded',
+          e: {
+            loadConfigGroups: true,
+            loadInstalledServicesConfigGroups: false
           }
         }
       ]).forEach(function (test) {
@@ -1369,7 +1356,12 @@ describe('App.InstallerStep7Controller', function () {
             if (k === 'supports.hostOverridesInstaller') return test.hostOverridesInstaller;
             return Em.get(App, k);
           });
-          installerStep7Controller.reopen({installedServiceNames: test.installedServiceNames});
+          installerStep7Controller.reopen({
+            installedServiceNames: test.installedServiceNames,
+            wizardController: {
+              areInstalledConfigGroupsLoaded: test.areInstalledConfigGroupsLoaded
+            }
+          });
           installerStep7Controller.checkHostOverrideInstaller();
           if (test.e.loadConfigGroups) {
             expect(installerStep7Controller.loadConfigGroups.calledOnce).to.equal(true);
@@ -1464,6 +1456,19 @@ describe('App.InstallerStep7Controller', function () {
       sinon.stub(installerStep7Controller, 'selectProperService', Em.K);
       sinon.stub(installerStep7Controller, 'setStepConfigs', Em.K);
       sinon.stub(App.router, 'send', Em.K);
+      sinon.stub(App.StackService, 'find', function () {
+        return {
+          findProperty: function () {
+            return Em.Object.create({
+              isInstalled: true,
+              isSelected: false
+            });
+          },
+          filterProperty: function () {
+            return [];
+          }
+        }
+      });
     });
     afterEach(function () {
       App.config.fileConfigsIntoTextarea.restore();
@@ -1474,6 +1479,7 @@ describe('App.InstallerStep7Controller', function () {
       installerStep7Controller.selectProperService.restore();
       installerStep7Controller.setStepConfigs.restore();
       App.router.send.restore();
+      App.StackService.find.restore();
     });
 
     it('should run some methods' , function () {
@@ -1691,9 +1697,9 @@ describe('App.InstallerStep7Controller', function () {
       var properties = configs.filterProperty('name', 'hbase.client.scanner.caching');
       expect(properties).to.have.length(2);
       expect(properties.findProperty('filename', 'hbase-site.xml').value).to.equal('1500');
-      expect(properties.findProperty('filename', 'hbase-site.xml').defaultValue).to.equal('1500');
+      expect(properties.findProperty('filename', 'hbase-site.xml').savedValue).to.equal('1500');
       expect(properties.findProperty('filename', 'ams-hbase-site.xml').value).to.equal('2500');
-      expect(properties.findProperty('filename', 'ams-hbase-site.xml').defaultValue).to.equal('2500');
+      expect(properties.findProperty('filename', 'ams-hbase-site.xml').savedValue).to.equal('2500');
     });
 
   });
@@ -2003,4 +2009,93 @@ describe('App.InstallerStep7Controller', function () {
 
   });
 
+  describe('#restoreRecommendedConfigs', function () {
+
+    var recommendationsConfigs = {
+      site: {
+        properties: {
+          a: 'recommendedA',
+          b: 'recommendedB'
+        }
+      }
+    };
+    var stepConfigs = [
+      Em.Object.create({
+        serviceName: 'srv',
+        configs: [
+          {name: 'a', value: '--', filename: 'site'},
+          {name: 'b', value: '--', filename: 'Custom site'}
+        ]
+      })
+    ];
+    var serviceConfigProperties = [
+      {name: 'a', value: 'valueA', filename: 'site'},
+      {name: 'b', value: 'valueB', filename: 'Custom site'}
+    ];
+
+    beforeEach(function() {
+      installerStep7Controller.reopen({
+        content: {
+          serviceConfigProperties: serviceConfigProperties
+        },
+        recommendationsConfigs: recommendationsConfigs,
+        stepConfigs: stepConfigs
+      });
+    });
+
+    it('should restore provided by user values', function () {
+      installerStep7Controller.restoreRecommendedConfigs();
+      var configs = installerStep7Controller.get('stepConfigs')[0].configs;
+      expect(Em.get(configs.findProperty('name', 'a'), 'value')).to.equal('valueA');
+      expect(Em.get(configs.findProperty('name', 'b'), 'value')).to.equal('valueB');
+    });
+
+  });
+
+  describe('#_reconfigureServicesOnNnHa', function () {
+
+    var dfsNameservices = 'some_cluster';
+
+    Em.A([
+      {
+        serviceName: 'HBASE',
+        configToUpdate: 'hbase.rootdir',
+        oldValue: 'hdfs://nameserv:8020/apps/hbase/data',
+        expectedNewValue: 'hdfs://' + dfsNameservices + '/apps/hbase/data'
+      },
+      {
+        serviceName: 'ACCUMULO',
+        configToUpdate: 'instance.volumes',
+        oldValue: 'hdfs://localhost:8020/apps/accumulo/data',
+        expectedNewValue: 'hdfs://' + dfsNameservices + '/apps/accumulo/data'
+      }
+    ]).forEach(function (test) {
+      it(test.serviceName + ' ' + test.configToUpdate, function () {
+        var serviceConfigs = [App.ServiceConfig.create({
+          serviceName: test.serviceName,
+          configs: [
+            Em.Object.create({
+              name: test.configToUpdate,
+              value: test.oldValue
+            })
+          ]
+        }),
+          App.ServiceConfig.create({
+            serviceName: 'HDFS',
+            configs: [
+              Em.Object.create({
+                name: 'dfs.nameservices',
+                value: dfsNameservices
+              })
+            ]
+          })];
+        installerStep7Controller.reopen({
+          selectedServiceNames: [test.serviceName, 'HDFS']
+        });
+        serviceConfigs = installerStep7Controller._reconfigureServicesOnNnHa(serviceConfigs);
+        expect(serviceConfigs.findProperty('serviceName', test.serviceName).configs.findProperty('name', test.configToUpdate).get('value')).to.equal(test.expectedNewValue);
+      });
+    });
+
+  });
 });

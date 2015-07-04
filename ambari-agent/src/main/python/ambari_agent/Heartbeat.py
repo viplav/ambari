@@ -18,7 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 '''
 
-import json
+import ambari_simplejson as json
 import logging
 import os
 import time
@@ -29,7 +29,7 @@ from ambari_agent.HostInfo import HostInfo
 from ambari_agent.Hardware import Hardware
 
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 firstContact = True
 class Heartbeat:
@@ -87,7 +87,7 @@ class Heartbeat:
       # this must be the last step before returning heartbeat
       hostInfo.register(nodeInfo, componentsMapped, commandsInProgress)
       heartbeat['agentEnv'] = nodeInfo
-      mounts = Hardware.osdisks()
+      mounts = Hardware.osdisks(self.config)
       heartbeat['mounts'] = mounts
 
       if logger.isEnabledFor(logging.DEBUG):

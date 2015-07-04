@@ -169,7 +169,7 @@ App.MainAlertInstancesController = Em.Controller.extend({
    * @method getAlertInstancesSuccessCallback
    */
   getAlertInstancesSuccessCallback: function (json) {
-    App.alertInstanceMapper.map(json, true);
+    App.alertInstanceMapper.map(json);
     this.set('isLoaded', true);
     this.set('reload', !this.get('reload'));
   },
@@ -300,7 +300,7 @@ App.MainAlertInstancesController = Em.Controller.extend({
 
         refreshTooltips: function () {
           this.ensureTooltip();
-        }.observes('contents.[]'),
+        }.observes('contents.[]', 'filteringComplete'),
 
         ensureTooltip: function () {
           Em.run.next(this, function () {
@@ -323,7 +323,7 @@ App.MainAlertInstancesController = Em.Controller.extend({
          * Router transition to service summary page
          * @param event
          */
-        gotoService: function (event) {
+        goToService: function (event) {
           if (event && event.context) {
             this.get('parentView').hide();
             App.router.transitionTo('main.services.service.summary', event.context);

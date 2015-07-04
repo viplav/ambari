@@ -101,9 +101,9 @@ public class HostComponentResourceProvider extends AbstractControllerResourcePro
       = PropertyHelper.getPropertyId("HostRoles", "desired_admin_state");
   protected static final String HOST_COMPONENT_MAINTENANCE_STATE_PROPERTY_ID
       = "HostRoles/maintenance_state";
-  protected static final String HOST_COMPONENT_HDP_VERSION
+  protected static final String HOST_COMPONENT_HDP_VERSION_PROPERTY_ID
       = PropertyHelper.getPropertyId("HostRoles", "hdp_version");
-  protected static final String HOST_COMPONENT_UPGRADE_STATE = "HostRoles/upgrade_state";
+  protected static final String HOST_COMPONENT_UPGRADE_STATE_PROPERTY_ID = "HostRoles/upgrade_state";
 
   //Component name mappings
   private final Map<String, PropertyProvider> HOST_COMPONENT_PROPERTIES_PROVIDER = new HashMap<String, PropertyProvider>();
@@ -205,7 +205,7 @@ public class HostComponentResourceProvider extends AbstractControllerResourcePro
     final Set<ServiceComponentHostRequest> requests = new HashSet<ServiceComponentHostRequest>();
 
     for (Map<String, Object> propertyMap : getPropertyMaps(predicate)) {
-      requests.add(changeRequest(propertyMap));
+      requests.add(getRequest(propertyMap));
     }
 
     return findResources(request, predicate, requests);
@@ -249,14 +249,16 @@ public class HostComponentResourceProvider extends AbstractControllerResourcePro
               response.getActualConfigs(), requestedIds);
       setResourceProperty(resource, HOST_COMPONENT_STALE_CONFIGS_PROPERTY_ID,
               response.isStaleConfig(), requestedIds);
-      setResourceProperty(resource, HOST_COMPONENT_UPGRADE_STATE,
+      setResourceProperty(resource, HOST_COMPONENT_UPGRADE_STATE_PROPERTY_ID,
               response.getUpgradeState(), requestedIds);
 
-      HostVersionEntity versionEntity = hostVersionDAO.
-              findByHostAndStateCurrent(response.getClusterName(), response.getHostname());
-      if (versionEntity != null) {
-        setResourceProperty(resource, HOST_COMPONENT_HDP_VERSION,
-                versionEntity.getRepositoryVersion().getDisplayName(), requestedIds);
+      if (requestedIds.contains(HOST_COMPONENT_HDP_VERSION_PROPERTY_ID)) {
+        HostVersionEntity versionEntity = hostVersionDAO.
+            findByHostAndStateCurrent(response.getClusterName(), response.getHostname());
+        if (versionEntity != null) {
+          setResourceProperty(resource, HOST_COMPONENT_HDP_VERSION_PROPERTY_ID,
+              versionEntity.getRepositoryVersion().getDisplayName(), requestedIds);
+        }
       }
 
       if (response.getAdminState() != null) {
@@ -356,6 +358,7 @@ public class HostComponentResourceProvider extends AbstractControllerResourcePro
     installProperties.put(HOST_COMPONENT_DESIRED_STATE_PROPERTY_ID, "INSTALLED");
     Map<String, String> requestInfo = new HashMap<String, String>();
     requestInfo.put("context", String.format("Install components on host %s", hostname));
+    requestInfo.put("phase", "INITIAL_INSTALL");
     Request installRequest = PropertyHelper.getUpdateRequest(installProperties, requestInfo);
 
     Predicate statePredicate = new EqualsPredicate<String>(HOST_COMPONENT_STATE_PROPERTY_ID, "INIT");
@@ -388,6 +391,7 @@ public class HostComponentResourceProvider extends AbstractControllerResourcePro
 
     Map<String, String> requestInfo = new HashMap<String, String>();
     requestInfo.put("context", String.format("Start components on host %s", hostName));
+    requestInfo.put("phase", "INITIAL_START");
 
     Predicate clusterPredicate = new EqualsPredicate<String>(HOST_COMPONENT_CLUSTER_NAME_PROPERTY_ID, cluster);
     Predicate hostPredicate = new EqualsPredicate<String>(HOST_COMPONENT_HOST_NAME_PROPERTY_ID, hostName);

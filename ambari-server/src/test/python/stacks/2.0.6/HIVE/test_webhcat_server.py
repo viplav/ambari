@@ -48,9 +48,10 @@ class TestWebHCatServer(RMFTestCase):
     )
 
     self.assert_configure_default()
-    self.assertResourceCalled('Execute', 'cd /var/run/webhcat ; env HADOOP_HOME=/usr /usr/lib/hcatalog/sbin/webhcat_server.sh start',
-                              not_if = 'ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1',
-                              user = 'hcat'
+    self.assertResourceCalled('Execute', 'cd /var/run/webhcat ; /usr/lib/hcatalog/sbin/webhcat_server.sh start',
+        environment = {'HADOOP_HOME': '/usr'},
+        not_if = "ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1'",
+        user = 'hcat',
     )
     self.assertNoMoreResources()
 
@@ -63,8 +64,9 @@ class TestWebHCatServer(RMFTestCase):
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
 
-    self.assertResourceCalled('Execute', 'env HADOOP_HOME=/usr /usr/lib/hcatalog/sbin/webhcat_server.sh stop',
+    self.assertResourceCalled('Execute', '/usr/lib/hcatalog/sbin/webhcat_server.sh stop',
                               user = 'hcat',
+                              environment = {'HADOOP_HOME': '/usr' }
                               )
     self.assertResourceCalled('File', '/var/run/webhcat/webhcat.pid',
         action = ['delete'],
@@ -93,9 +95,10 @@ class TestWebHCatServer(RMFTestCase):
     )
 
     self.assert_configure_secured()
-    self.assertResourceCalled('Execute', 'cd /var/run/webhcat ; env HADOOP_HOME=/usr /usr/lib/hcatalog/sbin/webhcat_server.sh start',
-                              not_if = 'ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1',
-                              user = 'hcat'
+    self.assertResourceCalled('Execute', 'cd /var/run/webhcat ; /usr/lib/hcatalog/sbin/webhcat_server.sh start',
+        environment = {'HADOOP_HOME': '/usr'},
+        not_if = "ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1'",
+        user = 'hcat',
     )
     self.assertNoMoreResources()
 
@@ -108,8 +111,9 @@ class TestWebHCatServer(RMFTestCase):
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
 
-    self.assertResourceCalled('Execute', 'env HADOOP_HOME=/usr /usr/lib/hcatalog/sbin/webhcat_server.sh stop',
+    self.assertResourceCalled('Execute', '/usr/lib/hcatalog/sbin/webhcat_server.sh stop',
                               user = 'hcat',
+                              environment = {'HADOOP_HOME': '/usr' }
                               )
     self.assertResourceCalled('File', '/var/run/webhcat/webhcat.pid',
         action = ['delete'],
@@ -331,7 +335,7 @@ class TestWebHCatServer(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES)
     self.assertResourceCalled('Execute',
-                              'hdp-select set hive-webhcat %s' % version,)
+                              ('hdp-select', 'set', 'hive-webhcat', version), sudo=True,)
     self.assertNoMoreResources()
 
   @patch("resource_management.core.shell.call")
@@ -353,7 +357,7 @@ class TestWebHCatServer(RMFTestCase):
                        mocks_dict = mocks_dict)
 
     self.assertResourceCalled('Execute',
-                              'hdp-select set hive-webhcat %s' % version,)
+                              ('hdp-select', 'set', 'hive-webhcat', version), sudo=True,)
     self.assertNoMoreResources()
 
     self.assertEquals(2, mocks_dict['call'].call_count)

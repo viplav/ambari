@@ -50,7 +50,7 @@ public class AmbariAuthorizationFilter implements Filter {
 
   private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
 
-  private static final Pattern STACK_ADVISOR_REGEX = Pattern.compile("/api/v[0-9]+/stacks/[^/]+/versions/[^/]+/validations.*");
+  private static final Pattern STACK_ADVISOR_REGEX = Pattern.compile("/api/v[0-9]+/stacks/[^/]+/versions/[^/]+/(validations|recommendations).*");
 
   public static final String API_VERSION_PREFIX        = "/api/v[0-9]+";
   public static final String VIEWS_CONTEXT_PATH_PREFIX = "/views/";
@@ -175,6 +175,9 @@ public class AmbariAuthorizationFilter implements Filter {
       }
     }
 
+    if(AuthorizationHelper.getAuthenticatedName() != null) {
+      httpResponse.setHeader("User", AuthorizationHelper.getAuthenticatedName());
+    }
     chain.doFilter(request, response);
   }
 

@@ -18,7 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import json
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
 import subprocess
 import socket
 import time
@@ -26,7 +26,7 @@ import urllib2
 
 from resource_management.core.environment import Environment
 from resource_management.core.resources import Execute
-from resource_management.core.shell import call
+from resource_management.core import shell
 from resource_management.libraries.functions import format
 from resource_management.libraries.functions import get_kinit_path
 from resource_management.libraries.functions import get_klist_path
@@ -46,6 +46,7 @@ TEMPLETON_PORT_KEY = '{{webhcat-site/templeton.port}}'
 SECURITY_ENABLED_KEY = '{{cluster-env/security_enabled}}'
 WEBHCAT_PRINCIPAL_KEY = '{{webhcat-site/templeton.kerberos.principal}}'
 WEBHCAT_KEYTAB_KEY = '{{webhcat-site/templeton.kerberos.keytab}}'
+SMOKEUSER_KEY = '{{cluster-env/smokeuser}}'
 
 # The configured Kerberos executable search paths, if any
 KERBEROS_EXECUTABLE_SEARCH_PATHS_KEY = '{{kerberos-env/executable_search_paths}}'
@@ -57,13 +58,17 @@ CONNECTION_TIMEOUT_KEY = 'connection.timeout'
 CONNECTION_TIMEOUT_DEFAULT = 5.0
 CURL_CONNECTION_TIMEOUT_DEFAULT = str(int(CONNECTION_TIMEOUT_DEFAULT))
 
+# default smoke user
+SMOKEUSER_SCRIPT_PARAM_KEY = 'default.smoke.user'
+SMOKEUSER_DEFAULT = 'ambari-qa'
 
 def get_tokens():
   """
   Returns a tuple of tokens in the format {{site/property}} that will be used
   to build the dictionary passed into execute
   """
-  return (TEMPLETON_PORT_KEY, SECURITY_ENABLED_KEY, WEBHCAT_KEYTAB_KEY, WEBHCAT_PRINCIPAL_KEY, KERBEROS_EXECUTABLE_SEARCH_PATHS_KEY)
+  return (TEMPLETON_PORT_KEY, SECURITY_ENABLED_KEY, WEBHCAT_KEYTAB_KEY,
+    WEBHCAT_PRINCIPAL_KEY, KERBEROS_EXECUTABLE_SEARCH_PATHS_KEY, SMOKEUSER_KEY)
   
 
 def execute(configurations={}, parameters={}, host_name=None):
@@ -101,8 +106,13 @@ def execute(configurations={}, parameters={}, host_name=None):
   if host_name is None:
     host_name = socket.getfqdn()
 
+  smokeuser = SMOKEUSER_DEFAULT
+
+  if SMOKEUSER_KEY in configurations:
+    smokeuser = configurations[SMOKEUSER_KEY]
+
   # webhcat always uses http, never SSL
-  query_url = "http://{0}:{1}/templeton/v1/status".format(host_name, webhcat_port)
+  query_url = "http://{0}:{1}/templeton/v1/status?user.name={2}".format(host_name, webhcat_port, smokeuser)
 
   # initialize
   total_time = 0
@@ -137,20 +147,20 @@ def execute(configurations={}, parameters={}, host_name=None):
       # Determine if we need to kinit by testing to see if the relevant cache exists and has
       # non-expired tickets.  Tickets are marked to expire after 5 minutes to help reduce the number
       # it kinits we do but recover quickly when keytabs are regenerated
-      return_code, _ = call(klist_command)
+      return_code, _ = shell.call(klist_command, user=smokeuser)
       if return_code != 0:
         kinit_path_local = get_kinit_path(kerberos_executable_search_paths)
         kinit_command = format("{kinit_path_local} -l 5m -c {ccache_file} -kt {webhcat_keytab} {webhcat_principal}; ")
 
         # kinit so that curl will work with --negotiate
-        Execute(kinit_command)
+        Execute(kinit_command,
+                user=smokeuser,
+        )
 
       # make a single curl call to get just the http code
-      curl = subprocess.Popen(['curl', '--negotiate', '-u', ':', '-sL', '-w',
+      _, stdout, stderr = shell.checked_call(['curl', '--negotiate', '-u', ':', '-sL', '-w',
         '%{http_code}', '--connect-timeout', curl_connection_timeout,
-        '-o', '/dev/null', query_url], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=kerberos_env)
-
-      stdout, stderr = curl.communicate()
+        '-o', '/dev/null', query_url], stderr=subprocess.PIPE, env=kerberos_env)
 
       if stderr != '':
         raise Exception(stderr)
@@ -170,11 +180,10 @@ def execute(configurations={}, parameters={}, host_name=None):
 
       # now that we have the http status and it was 200, get the content
       start_time = time.time()
-      curl = subprocess.Popen(['curl', '--negotiate', '-u', ':', '-sL',
+      _, stdout, stderr = shell.checked_call(['curl', '--negotiate', '-u', ':', '-sL',
         '--connect-timeout', curl_connection_timeout, query_url, ],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=kerberos_env)
+        stderr=subprocess.PIPE, env=kerberos_env)
 
-      stdout, stderr = curl.communicate()
       total_time = time.time() - start_time
 
       if stderr != '':

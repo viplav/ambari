@@ -17,7 +17,6 @@
  */
 package org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline;
 
-import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
@@ -156,6 +155,9 @@ public class TimelineMetricConfiguration {
 
   public static final String CLUSTER_AGGREGATOR_APP_IDS =
     "timeline.metrics.service.cluster.aggregator.appIds";
+
+  public static final String SERVER_SIDE_TIMESIFT_ADJUSTMENT =
+    "timeline.metrics.service.cluster.aggregator.timeshift.adjustment";
 
   public static final String HOST_APP_ID = "HOST";
 

@@ -27,7 +27,7 @@
   <includeBaseDirectory>false</includeBaseDirectory>
   <fileSets>
     <fileSet>
-      <directory>${collector.dir}/target/embedded/${hbase.folder}</directory>
+      <directory>${collector.dir}/target/embedded/${hbase.winpkg.folder}</directory>
       <outputDirectory>hbase</outputDirectory>
     </fileSet>
     <fileSet>
@@ -77,6 +77,14 @@
       <outputDirectory>/sbin/ambari_commons/resources</outputDirectory>
       <includes>
         <include>*.json</include>
+      </includes>
+    </fileSet>
+    <fileSet>
+      <directory>${project.build.directory}/embedded/hadoop.temp/resources/${hadoop.winpkg.folder}/bin</directory>
+      <outputDirectory>hbase/bin</outputDirectory>
+      <includes>
+        <include>*.dll</include>
+        <include>*.exe</include>
       </includes>
     </fileSet>
   </fileSets>

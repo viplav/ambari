@@ -18,23 +18,31 @@
 
 <div id="index-content">
   <div class="main-content">
-    <aside class="col-md-3 col-xs-12 no-padding">
+    <aside {{bind-attr class="isDatabaseExplorerVisible:col-md-3:no-width :col-xs-12 :no-padding"}}>
       {{render 'databases'}}
     </aside>
 
-    <div class="col-md-9 col-xs-12 query-container">
-      {{#panel-widget headingTranslation="titles.query.editor" classNames="query-editor-panel"}}
+    <div {{bind-attr class="isDatabaseExplorerVisible:col-md-9:col-md-12 :col-xs-12 :query-container"}}>
+      {{#panel-widget headingTranslation="titles.query.editor" classNames="query-editor-panel" iconActions=queryPanelActions}}
         {{render 'open-queries'}}
 
         <div class="toolbox">
-          <button type="button"
-                  {{bind-attr class=":btn :btn-sm :btn-success :execute-query canExecute::disabled"}}
-                  {{action "executeQuery"}}>
-            {{t "buttons.execute"}}
-          </button>
-          <button type="button"
-                  {{bind-attr class=":btn :btn-sm :btn-default canExecute::disabled"}}
-                  {{action "explainQuery"}}>
+          {{#if canExecute}}
+            <button type="button" class="btn btn-sm btn-success execute-query" {{action "executeQuery"}}>
+              {{t "buttons.execute"}}
+            </button>
+          {{else}}
+            <button type="button" {{bind-attr class=":btn :btn-sm :btn-warning model.isCancelling:disabled"}} {{action "stopCurrentJob"}}>
+              {{#if model.isCancelling}}
+                {{t "buttons.stoppingJob"}}
+                <div class="spinner small inline-spinner"></div>
+              {{else}}
+                {{t "buttons.stopJob"}}
+              {{/if}}
+            </button>
+          {{/if}}
+
+          <button type="button" {{bind-attr class=":btn :btn-sm :btn-default canExecute::disabled"}} {{action "explainQuery"}}>
             {{t "buttons.explain"}}
           </button>
 
@@ -42,13 +50,19 @@
 
           {{render 'insert-udfs'}}
 
+          {{#if canKillSession}}
+            <button type="button" class="btn btn-sm btn-danger kill-session" {{action "killSession"}}>{{t "buttons.killSession"}}</button>
+          {{/if}}
+
           <button type="button" class="btn btn-sm btn-primary  pull-right" {{action "addQuery"}}>{{t "buttons.newQuery"}}</button>
         </div>
       {{/panel-widget}}
 
-      {{#if jobProgress.stages}}
-        {{#progress-widget value=jobProgress.totalProgress}}
-        {{/progress-widget}}
+      {{#if displayJobTabs}}
+        {{#if jobProgressService.currentJob.stages.length}}
+          {{#progress-widget value=jobProgressService.currentJob.totalProgress}}
+          {{/progress-widget}}
+        {{/if}}
       {{/if}}
 
       {{#if queryParams}}
@@ -67,8 +81,8 @@
       {{/if}}
 
       {{#if displayJobTabs}}
-        {{#panel-widget headingTranslation="titles.query.process"
-                        isLoading=model.isRunning
+        {{#panel-widget heading=queryProcessTitle
+                        isLoading=content.isRunning
                         menuItems=downloadMenu
                         menuHeadingTranslation="titles.download"
                         classNames="query-process-results-panel"}}

@@ -20,18 +20,15 @@ limitations under the License.
 
 import logging
 import time
-import subprocess
 import os
 import urllib2
 from urllib2 import HTTPError
-import uuid
 
 from  tempfile import gettempdir
 from alerts.base_alert import BaseAlert
 from collections import namedtuple
 from resource_management.libraries.functions.get_port_from_url import get_port_from_url
-from resource_management.libraries.functions import get_kinit_path
-from resource_management.libraries.functions import get_klist_path
+from resource_management.libraries.functions.curl_krb_request import curl_krb_request
 from ambari_commons import OSCheck
 from ambari_commons.inet_utils import resolve_address
 
@@ -46,10 +43,10 @@ except ImportError:
   import md5
   _md5 = md5.new
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
-CONNECTION_TIMEOUT = 10.0
-CURL_CONNECTION_TIMEOUT = "10"
+# default timeout
+DEFAULT_CONNECTION_TIMEOUT = 5
 
 WebResponse = namedtuple('WebResponse', 'status_code time_millis error_msg')
 
@@ -57,12 +54,21 @@ class WebAlert(BaseAlert):
 
   def __init__(self, alert_meta, alert_source_meta, config):
     super(WebAlert, self).__init__(alert_meta, alert_source_meta)
-    
+
+    connection_timeout = DEFAULT_CONNECTION_TIMEOUT
+
     # extract any lookup keys from the URI structure
     self.uri_property_keys = None
     if 'uri' in alert_source_meta:
       uri = alert_source_meta['uri']
       self.uri_property_keys = self._lookup_uri_property_keys(uri)
+
+      if 'connection_timeout' in uri:
+        connection_timeout = uri['connection_timeout']
+
+    # python uses 5.0, CURL uses "5"
+    self.connection_timeout = float(connection_timeout)
+    self.curl_connection_timeout = str(int(connection_timeout))
 
     self.config = config
 
@@ -158,7 +164,10 @@ class WebAlert(BaseAlert):
       if self.uri_property_keys.kerberos_keytab is not None:
         kerberos_keytab = self._get_configuration_value(self.uri_property_keys.kerberos_keytab)
 
-      if kerberos_principal is not None and kerberos_keytab is not None:
+      security_enabled = self._get_configuration_value('{{cluster-env/security_enabled}}')
+      
+      if kerberos_principal is not None and kerberos_keytab is not None \
+        and security_enabled is not None and security_enabled.lower() == "true":
         # Create the kerberos credentials cache (ccache) file and set it in the environment to use
         # when executing curl. Use the md5 hash of the combination of the principal and keytab file
         # to generate a (relatively) unique cache filename so that we can use it as needed.
@@ -166,60 +175,12 @@ class WebAlert(BaseAlert):
         if tmp_dir is None:
           tmp_dir = gettempdir()
 
-        ccache_file_name = _md5("{0}|{1}".format(kerberos_principal, kerberos_keytab)).hexdigest()
-        ccache_file_path = "{0}{1}web_alert_cc_{2}".format(tmp_dir, os.sep, ccache_file_name)
-        kerberos_env = {'KRB5CCNAME': ccache_file_path}
-
         # Get the configured Kerberos executables search paths, if any
         kerberos_executable_search_paths = self._get_configuration_value('{{kerberos-env/executable_search_paths}}')
+        smokeuser = self._get_configuration_value('{{cluster-env/smokeuser}}')
 
-        # If there are no tickets in the cache or they are expired, perform a kinit, else use what
-        # is in the cache
-        klist_path_local = get_klist_path(kerberos_executable_search_paths)
-
-        if os.system("{0} -s {1}".format(klist_path_local, ccache_file_path)) != 0:
-          kinit_path_local = get_kinit_path(kerberos_executable_search_paths)
-          logger.debug("[Alert][{0}] Enabling Kerberos authentication via GSSAPI using ccache at {1}.".format(
-            self.get_name(), ccache_file_path))
-
-          os.system("{0} -l 5m -c {1} -kt {2} {3} > /dev/null".format(
-            kinit_path_local, ccache_file_path, kerberos_keytab,
-            kerberos_principal))
-        else:
-          logger.debug("[Alert][{0}] Kerberos authentication via GSSAPI already enabled using ccache at {1}.".format(
-            self.get_name(), ccache_file_path))
-
-        # check if cookies dir exists, if not then create it
-        tmp_dir = self.config.get('agent', 'tmp_dir')
-        cookies_dir = os.path.join(tmp_dir, "cookies")
-
-        if not os.path.exists(cookies_dir):
-          os.makedirs(cookies_dir)
-
-        cookie_file_name = str(uuid.uuid4())
-        cookie_file = os.path.join(cookies_dir, cookie_file_name)
-
-        start_time = time.time()
-
-        try:
-          curl = subprocess.Popen(['curl', '--negotiate', '-u', ':', '-b', cookie_file, '-c', cookie_file, '-sL', '-w',
-            '%{http_code}', url, '--connect-timeout', CURL_CONNECTION_TIMEOUT,
-            '-o', '/dev/null'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=kerberos_env)
-
-          curl_stdout, curl_stderr = curl.communicate()
-        finally:
-          if os.path.isfile(cookie_file):
-            os.remove(cookie_file)
-
-        # empty quotes evaluates to false
-        if curl_stderr:
-          error_msg = curl_stderr
-
-        # empty quotes evaluates to false
-        if curl_stdout:
-          response_code = int(curl_stdout)
-
-        time_millis = time.time() - start_time
+        response_code, error_msg, time_millis = curl_krb_request(tmp_dir, kerberos_keytab, kerberos_principal, url,
+                                               "web_alert", kerberos_executable_search_paths, True, self.get_name(), smokeuser)
       else:
         # kerberos is not involved; use urllib2
         response_code, time_millis, error_msg = self._make_web_request_urllib(url)
@@ -246,7 +207,7 @@ class WebAlert(BaseAlert):
     start_time = time.time()
 
     try:
-      response = urllib2.urlopen(url, timeout=CONNECTION_TIMEOUT)
+      response = urllib2.urlopen(url, timeout=self.connection_timeout)
       response_code = response.getcode()
       time_millis = time.time() - start_time
 

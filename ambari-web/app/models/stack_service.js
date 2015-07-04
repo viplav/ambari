@@ -43,6 +43,13 @@ App.StackService = DS.Model.extend({
   configs: DS.attr('array'),
   requiredServices: DS.attr('array'),
 
+  /**
+   * contains array of serviceNames that have configs that
+   * depends on configs from current service
+   * @type {String[]}
+   */
+  dependentServiceNames: DS.attr('array', {defaultValue: []}),
+
   // Is the service a distributed filesystem
   isDFS: function () {
     var dfsServices = ['HDFS', 'GLUSTERFS'];
@@ -89,7 +96,7 @@ App.StackService = DS.Model.extend({
       skipServices.push('GANGLIA');
     }
     if(App.router.get('clusterInstallCompleted') != true){
-      skipServices.push('RANGER');
+      skipServices.push('RANGER', 'RANGER_KMS');
     }
     return skipServices.contains(this.get('serviceName'));
   }.property('serviceName'),
@@ -168,7 +175,7 @@ App.StackService = DS.Model.extend({
     var configTypes = this.get('configTypes');
     var serviceComponents = this.get('serviceComponents');
     if (configTypes && Object.keys(configTypes).length) {
-      var pattern = ["General", "CapacityScheduler", "FaultTolerance", "Isolation", "Performance", "KDC", "Kadmin","^Advanced", "Env$", "^Custom", "Falcon - Oozie integration", "FalconStartupSite", "FalconRuntimeSite", "MetricCollector", "Settings$"];
+      var pattern = ["General", "CapacityScheduler", "FaultTolerance", "Isolation", "Performance", "HIVE_SERVER2", "KDC", "Kadmin","^Advanced", "Env$", "^Custom", "Falcon - Oozie integration", "FalconStartupSite", "FalconRuntimeSite", "MetricCollector", "Settings$"];
       configCategories = App.StackService.configCategories.call(this).filter(function (_configCategory) {
         var serviceComponentName = _configCategory.get('name');
         var isServiceComponent = serviceComponents.someProperty('componentName', serviceComponentName);
@@ -190,8 +197,8 @@ App.StackService.FIXTURES = [];
 App.StackService.displayOrder = [
   'HDFS',
   'GLUSTERFS',
-  'MAPREDUCE2',
   'YARN',
+  'MAPREDUCE2',
   'TEZ',
   'GANGLIA',
   'HIVE',
@@ -259,7 +266,9 @@ App.StackService.configCategories = function () {
         App.ServiceConfigCategory.create({ name: 'HIVE_METASTORE', displayName: 'Hive Metastore'}),
         App.ServiceConfigCategory.create({ name: 'WEBHCAT_SERVER', displayName: 'WebHCat Server'}),
         App.ServiceConfigCategory.create({ name: 'General', displayName: 'General'}),
-        App.ServiceConfigCategory.create({ name: 'Performance', displayName: 'Performance'})
+        App.ServiceConfigCategory.create({ name: 'Performance', displayName: 'Performance'}),
+        App.ServiceConfigCategory.create({ name: 'HIVE_SERVER2', displayName: 'Hive Server2'}),
+        App.ServiceConfigCategory.create({ name: 'HIVE_CLIENT', displayName: 'Hive Client'})
       ]);
       break;
     case 'HBASE':

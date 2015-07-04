@@ -18,8 +18,10 @@
 
 package org.apache.ambari.server.upgrade;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -126,10 +128,10 @@ public class UpgradeCatalog161 extends AbstractUpgradeCatalog {
     dbAccessor.addColumn("viewinstancedata",
         new DBAccessor.DBColumnInfo("user_name", String.class, 255, " ", false));
 
-    dbAccessor.dropConstraint("viewinstancedata", "FK_viewinstdata_view_name");
-    dbAccessor.dropConstraint("viewinstanceproperty", "FK_viewinstprop_view_name");
-    dbAccessor.dropConstraint("viewentity", "FK_viewentity_view_name");
-    dbAccessor.dropConstraint("viewinstance", "FK_viewinst_view_name");
+    dbAccessor.dropFKConstraint("viewinstancedata", "FK_viewinstdata_view_name");
+    dbAccessor.dropFKConstraint("viewinstanceproperty", "FK_viewinstprop_view_name");
+    dbAccessor.dropFKConstraint("viewentity", "FK_viewentity_view_name");
+    dbAccessor.dropFKConstraint("viewinstance", "FK_viewinst_view_name");
 
     //modify primary key of viewinstancedata
     if (databaseType == DatabaseType.ORACLE
@@ -215,15 +217,24 @@ public class UpgradeCatalog161 extends AbstractUpgradeCatalog {
 
 
     long count = 1;
-    ResultSet resultSet = null;
+    Statement statement = null;
+    ResultSet rs = null;
     try {
-      resultSet = dbAccessor.executeSelect("SELECT count(*) FROM viewinstance");
-      if (resultSet.next()) {
-        count = resultSet.getLong(1) + 2;
+      statement = dbAccessor.getConnection().createStatement();
+      if (statement != null) {
+        rs = statement.executeQuery("SELECT count(*) FROM viewinstance");
+        if (rs != null) {
+          if (rs.next()) {
+            count = rs.getLong(1) + 2;
+          }
+        }
       }
     } finally {
-      if (resultSet != null) {
-        resultSet.close();
+      if (rs != null) {
+        rs.close();
+      }
+      if (statement != null) {
+        statement.close();
       }
     }
 
@@ -259,8 +270,8 @@ public class UpgradeCatalog161 extends AbstractUpgradeCatalog {
     // Clusters
     dbAccessor.addColumn("clusters", new DBColumnInfo("provisioning_state", String.class, 255, State.INIT.name(), false));
 
-    dbAccessor.dropConstraint("stage", "FK_stage_cluster_id", true);
-    dbAccessor.dropConstraint("request", "FK_request_cluster_id", true);
+    dbAccessor.dropFKConstraint("stage", "FK_stage_cluster_id", true);
+    dbAccessor.dropFKConstraint("request", "FK_request_cluster_id", true);
   }
 
 

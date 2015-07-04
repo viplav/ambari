@@ -22,9 +22,10 @@ import Ember from 'ember';
 import dagRules from '../utils/dag-rules';
 
 export default Ember.View.extend({
+  verticesGroups: [],
+  edges: [],
+
   willInsertElement: function () {
-    this.set('verticesGroups', []);
-    this.set('edges', []);
     this.set('graph', new dagre.graphlib.Graph());
   },
 
@@ -32,17 +33,23 @@ export default Ember.View.extend({
     this._super();
 
     var target = this.$('#visual-explain');
+    var panel = this.$('#visual-explain .panel-body');
 
-    target.css('min-height', $('.main-content').height());
+    panel.css('min-height', $('.main-content').height());
     target.animate({ width: $('.main-content').width() }, 'fast');
 
     this.$('#visual-explain-graph').draggable();
+
+    if (this.get('controller.rerender')) {
+      this.renderDag();
+    }
   },
 
   willDestroyElement: function () {
     var target = this.$('#visual-explain');
+    var panel = this.$('#visual-explain .panel-body');
 
-    target.css('min-height', 0);
+    panel.css('min-height', 0);
     target.css('width', 0);
   },
 
@@ -63,7 +70,7 @@ export default Ember.View.extend({
         }
       });
     });
-  }.observes('controller.verticesProgress', 'verticesGroups'),
+  }.observes('controller.verticesProgress.@each.value', 'verticesGroups'),
 
   jsonChanged: function () {
     if (this.get('controller.json')) {
@@ -105,12 +112,7 @@ export default Ember.View.extend({
       angle = 180 + angle;
     }
 
-    var style = "left: %@px; top: %@px; width: %@px;" +
-                "-moz-transform:rotate(%@4deg);" +
-                "-webkit-transform:rotate(%@4deg);" +
-                "-ms-transform:rotate(%@4deg);" +
-                "-transform:rotate(%@4deg);";
-
+    var style = "left: %@px; top: %@px; width: %@px; transform:rotate(%@4deg);";
     style = style.fmt(cx, cy, length, angle);
 
     var edgeType;
@@ -411,12 +413,15 @@ export default Ember.View.extend({
 
     Ember.run.later(function () {
       g.edges().forEach(function (value) {
-        var firstNode = self.$("[title='" + value.v + "']")[0];
-        var secondNode = self.$("[title='" + value.w + "']")[0];
+        var firstNode = self.$("[title='" + value.v + "']");
+        var secondNode = self.$("[title='" + value.w + "']");
 
-        self.addEdge(firstNode, secondNode, 2, g.edge(value).type);
+        if (firstNode && secondNode) {
+          self.addEdge(firstNode[0], secondNode[0], 2, g.edge(value).type);
+        }
+
       });
-    }, 200);
+    }, 400);
   },
 
   renderDag: function () {
@@ -434,6 +439,8 @@ export default Ember.View.extend({
 
       return array;
     };
+
+    this.set('edges', []);
 
     // Create a new directed graph
     var g = this.get('graph');
@@ -455,4 +462,3 @@ export default Ember.View.extend({
         .renderEdges();
   }
 });
-

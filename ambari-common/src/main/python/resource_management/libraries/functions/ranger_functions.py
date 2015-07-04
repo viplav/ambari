@@ -20,7 +20,7 @@ limitations under the License.
 import time
 import sys
 from StringIO import StringIO as BytesIO
-import json
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
 from resource_management.core.logger import Logger
 import urllib2, base64, httplib
 from resource_management.core.exceptions import Fail
@@ -87,15 +87,23 @@ class Rangeradmin:
       ambari_ranger_admin, ambari_ranger_password = self.create_ambari_admin_user(ambari_ranger_admin, ambari_ranger_password, format("{admin_uname}:{admin_password}"))
       ambari_username_password_for_ranger = ambari_ranger_admin + ':' + ambari_ranger_password
       if ambari_ranger_admin != '' and ambari_ranger_password != '':
-        repo = self.get_repository_by_name_urllib2(repo_name, component, 'true', ambari_username_password_for_ranger)
-        if repo and repo['name'] == repo_name:
-          Logger.info('{0} Repository exist'.format(component.title()))
-        else:
-          response = self.create_repository_urllib2(repo_data, ambari_username_password_for_ranger, policy_user)
-          if response is not None:
-            Logger.info('{0} Repository created in Ranger admin'.format(component.title()))
+        retryCount = 0
+        while retryCount <= 5:
+          repo = self.get_repository_by_name_urllib2(repo_name, component, 'true', ambari_username_password_for_ranger)
+          if repo and repo['name'] == repo_name:
+            Logger.info('{0} Repository exist'.format(component.title()))
+            break
           else:
-            raise Fail('{0} Repository creation failed in Ranger admin'.format(component.title()))
+            response = self.create_repository_urllib2(repo_data, ambari_username_password_for_ranger, policy_user)
+            if response is not None:
+              Logger.info('{0} Repository created in Ranger admin'.format(component.title()))
+              break
+            else:
+              if retryCount < 5:
+                Logger.info("Retry Repository Creation is being called")
+                retryCount += 1
+              else:
+                raise Fail('{0} Repository creation failed in Ranger admin'.format(component.title()))
       else:
         raise Fail('Ambari admin username and password are blank ')
           
@@ -238,27 +246,27 @@ class Rangeradmin:
 
     typeOfPolicy = typeOfPolicy.lower()
     if typeOfPolicy == "hdfs":
-      policyObj['permMapList'] = [{'userList': [policy_user], 'permList': ['Read', 'Write', 'Execute', 'Admin']}]
+      policyObj['permMapList'] = [{'userList': [policy_user], 'permList': ['read', 'write', 'execute', 'admin']}]
     elif typeOfPolicy == "hive":
       policyObj['permMapList'] = [{'userList': [policy_user],
-                                   'permList': ['Select', 'Update', 'Create', 'Drop', 'Alter', 'Index', 'Lock', 'All',
-                                                'Admin']}]
+                                   'permList': ['select', 'update', 'create', 'drop', 'alter', 'index', 'lock', 'all',
+                                                'admin']}]
     elif typeOfPolicy == "hbase":
-      policyObj['permMapList'] = [{'userList': [policy_user], 'permList': ['Read', 'Write', 'Create', 'Admin']}]
+      policyObj['permMapList'] = [{'userList': [policy_user], 'permList': ['read', 'write', 'create', 'admin']}]
     elif typeOfPolicy == "knox":
-      policyObj['permMapList'] = [{'userList': [policy_user], 'permList': ['Allow', 'Admin']}]
+      policyObj['permMapList'] = [{'userList': [policy_user], 'permList': ['allow', 'admin']}]
     elif typeOfPolicy == "storm":
       policyObj['permMapList'] = [{'userList': [policy_user],
-                                   'permList': ['SubmitTopology', 'FileUpload', 'GetNimbusConf', 'GetClusterInfo',
-                                                'FileDownload', 'KillTopology', 'Rebalance', 'Activate', 'Deactivate',
-                                                'GetTopologyConf', 'GetTopology', 'GetUserTopology',
-                                                'GetTopologyInfo', 'UploadNewCredential', 'Admin']}]
+                                   'permList': ['submitTopology', 'fileUpload', 'getNimbusConf', 'getClusterInfo',
+                                                'fileDownload', 'killTopology', 'rebalance', 'activate', 'deactivate',
+                                                'getTopologyConf', 'getTopology', 'getUserTopology',
+                                                'getTopologyInfo', 'uploadNewCredential', 'admin']}]
     return policyObj
 
 
   def create_ambari_admin_user(self,ambari_admin_username, ambari_admin_password,usernamepassword):
     try:
-      url =  self.urlUsers + '?startIndex=0'
+      url =  self.urlUsers + '?name=' + str(ambari_admin_username)
       request = urllib2.Request(url)
       base64string = base64.encodestring(usernamepassword).replace('\n', '')
       request.add_header("Content-Type", "application/json")

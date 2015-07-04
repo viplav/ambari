@@ -18,12 +18,24 @@ limitations under the License.
 """
 import os.path
 
-from resource_management import *
-from resource_management.core.logger import Logger
-from resource_management.core.exceptions import ComponentIsNotRunning
+
+from resource_management.core import shell
+from resource_management.core.source import Template
+from resource_management.core.resources.system import File, Execute, Directory
+from resource_management.core.resources.service import Service
+from resource_management.libraries.functions.format import format
 from resource_management.libraries.functions.check_process_status import check_process_status
+from resource_management.libraries.resources.execute_hadoop import ExecuteHadoop
+from ambari_commons import OSCheck, OSConst
 from ambari_commons.os_family_impl import OsFamilyImpl, OsFamilyFuncImpl
-from ambari_commons import OSConst
+
+if OSCheck.is_windows_family():
+  from resource_management.libraries.functions.windows_service_utils import check_windows_service_status
+
+from resource_management.core.shell import as_user
+from resource_management.core.exceptions import Fail
+from resource_management.core.logger import Logger
+
 from utils import service, safe_zkfc_op
 from setup_ranger_hdfs import setup_ranger_hdfs
 
@@ -35,7 +47,7 @@ def namenode(action=None, do_format=True, rolling_restart=False, env=None):
     #additional namenode)
     create_name_dirs(params.dfs_name_dir)
   elif action == "start":
-    setup_ranger_hdfs()
+    setup_ranger_hdfs(rolling_upgrade = rolling_restart)
     import params
     if do_format:
       format_namenode()
@@ -45,12 +57,6 @@ def namenode(action=None, do_format=True, rolling_restart=False, env=None):
          content=Template("exclude_hosts_list.j2"),
          owner=params.hdfs_user,
          group=params.user_group
-    )
-
-    Directory(params.hadoop_pid_dir_prefix,
-              mode=0755,
-              owner=params.hdfs_user,
-              group=params.user_group
     )
 
     if params.dfs_ha_enabled and \
@@ -83,41 +89,57 @@ def namenode(action=None, do_format=True, rolling_restart=False, env=None):
       Execute(format("{kinit_path_local} -kt {hdfs_user_keytab} {hdfs_principal_name}"),
               user = params.hdfs_user)
 
+    is_namenode_safe_mode_off = format("hdfs dfsadmin -fs {namenode_address} -safemode get | grep 'Safe mode is OFF'")
     if params.dfs_ha_enabled:
-      dfs_check_nn_status_cmd = as_user(format("hdfs --config {hadoop_conf_dir} haadmin -getServiceState {namenode_id} | grep active"), params.hdfs_user, env={'PATH':params.hadoop_bin_dir})
+      is_active_namenode_cmd = as_user(format("hdfs --config {hadoop_conf_dir} haadmin -getServiceState {namenode_id} | grep active"), params.hdfs_user, env={'PATH':params.hadoop_bin_dir})
     else:
-      dfs_check_nn_status_cmd = None
+      is_active_namenode_cmd = None
 
-    namenode_safe_mode_off = format("hadoop dfsadmin -fs {namenode_address} -safemode get | grep 'Safe mode is OFF'")
+    # During normal operations, if HA is enabled and it is in standby, then no need to check safemode staus.
+    # During Rolling Upgrade, both namenodes must eventually leave safemode, and Ambari can wait for this.
 
-    # If HA is enabled and it is in standby, then stay in safemode, otherwise, leave safemode.
-    leave_safe_mode = True
-    if dfs_check_nn_status_cmd is not None:
-      code, out = shell.call(dfs_check_nn_status_cmd) # If active NN, code will be 0
-      if code != 0:
-        leave_safe_mode = False
+    # ___Scenario_________|_Expected safemode state___|_Wait for safemode OFF____|
+    # 1 (HA and active)   | ON -> OFF                 | Yes                      |
+    # 2 (HA and standby)  | no change (yes during RU) | no check (yes during RU) |
+    # 3 (no-HA)           | ON -> OFF                 | Yes                      |
+    check_for_safemode_off = False
+    msg = ""
+    if params.dfs_ha_enabled:
+      code, out = shell.call(is_active_namenode_cmd, logoutput=True) # If active NN, code will be 0
+      if code == 0: # active
+        check_for_safemode_off = True
+        msg = "Must wait to leave safemode since High Availability is enabled and this is the Active NameNode."
+      elif rolling_restart:
+        check_for_safemode_off = True
+        msg = "Must wait to leave safemode since High Availability is enabled during a Rolling Upgrade"
+    else:
+      msg = "Must wait to leave safemode since High Availability is not enabled."
+      check_for_safemode_off = True
 
-    if leave_safe_mode:
-      # First check if Namenode is not in 'safemode OFF' (equivalent to safemode ON), if so, then leave it
-      code, out = shell.call(namenode_safe_mode_off)
-      if code != 0:
-        leave_safe_mode_cmd = format("hdfs --config {hadoop_conf_dir} dfsadmin -fs {namenode_address} -safemode leave")
-        Execute(leave_safe_mode_cmd,
-                tries=10,
+    if not msg:
+      msg = "Will remain in the current safemode state."
+    Logger.info(msg)
+
+    if check_for_safemode_off:
+      # First check if Namenode is not in 'safemode OFF' (equivalent to safemode ON). If safemode is OFF, no change.
+      # If safemode is ON, first wait for NameNode to leave safemode on its own (if that doesn't happen within 30 seconds, then
+      # force NameNode to leave safemode).
+      Logger.info("Checking the NameNode safemode status since may need to transition from ON to OFF.")
+
+      try:
+        # Wait up to 30 mins
+        Execute(is_namenode_safe_mode_off,
+                tries=180,
                 try_sleep=10,
                 user=params.hdfs_user,
-                path=[params.hadoop_bin_dir],
+                logoutput=True
         )
+      except Fail:
+        Logger.error("NameNode is still in safemode, please be careful with commands that need safemode OFF.")
 
-    # Verify if Namenode should be in safemode OFF
-    Execute(namenode_safe_mode_off,
-            tries=40,
-            try_sleep=10,
-            path=[params.hadoop_bin_dir],
-            user=params.hdfs_user,
-            only_if=dfs_check_nn_status_cmd #skip when HA not active
-    )
-    create_hdfs_directories(dfs_check_nn_status_cmd)
+    # Always run this on non-HA, or active NameNode during HA.
+    create_hdfs_directories(is_active_namenode_cmd)
+
   elif action == "stop":
     import params
     service(
@@ -172,13 +194,15 @@ def create_hdfs_directories(check):
                        type="directory",
                        action="create_on_execute",
                        owner=params.hdfs_user,
-                       mode=0777
+                       mode=0777,
+                       only_if=check
   )
   params.HdfsResource(params.smoke_hdfs_user_dir,
                        type="directory",
                        action="create_on_execute",
                        owner=params.smoke_user,
-                       mode=params.smoke_hdfs_user_mode
+                       mode=params.smoke_hdfs_user_mode,
+                       only_if=check
   )
   params.HdfsResource(None, 
                       action="execute",
@@ -309,7 +333,7 @@ def decommission():
       # need to execute each command scoped to a particular namenode
       nn_refresh_cmd = format('dfsadmin -fs hdfs://{namenode_rpc} -refreshNodes')
     else:
-      nn_refresh_cmd = format('dfsadmin -refreshNodes')
+      nn_refresh_cmd = format('dfsadmin -fs {namenode_address} -refreshNodes')
     ExecuteHadoop(nn_refresh_cmd,
                   user=hdfs_user,
                   conf_dir=conf_dir,

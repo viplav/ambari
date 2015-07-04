@@ -20,6 +20,7 @@ import Ember from 'ember';
 import { moduleForComponent, test } from 'ember-qunit';
 
 moduleForComponent('no-bubbling', 'NoBubblingWidgetComponent', {
+  unit: true
 });
 
 
@@ -37,7 +38,7 @@ test('External actions', function() {
     data: 'data'
   });
 
-  var $component = this.render();
+  var $component = this.$();
 
   $component.trigger('click');
 });

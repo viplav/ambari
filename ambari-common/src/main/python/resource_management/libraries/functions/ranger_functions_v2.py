@@ -20,7 +20,7 @@ limitations under the License.
 import time
 import sys
 from StringIO import StringIO as BytesIO
-import json
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
 from resource_management.core.logger import Logger
 import urllib2, base64, httplib
 from resource_management.core.exceptions import Fail
@@ -178,7 +178,7 @@ class RangeradminV2:
     :return: Returns user credentials if user exist otherwise rerutns credentials of  created user.
     """
     try:
-      url =  self.url_users + '?startIndex=0'
+      url =  self.url_users + '?name=' + str(ambari_admin_username)
       request = urllib2.Request(url)
       base_64_string = base64.encodestring(usernamepassword).replace('\n', '')
       request.add_header("Content-Type", "application/json")

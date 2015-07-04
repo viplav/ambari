@@ -249,71 +249,74 @@ App.ClusterController = Em.Controller.extend({
 
     /**
      * Order of loading:
-     * 1. request for service components supported by stack
-     * 2. load stack components to model
-     * 3. request for services
-     * 4. put services in cache
-     * 5. request for hosts and host-components (single call)
-     * 6. request for service metrics
-     * 7. load host-components to model
-     * 8. load hosts to model
-     * 9. load services from cache with metrics to model
-     * 10. update stale_configs of host-components (depends on App.supports.hostOverrides)
-     * 11. load root service (Ambari)
-     * 12. load alert definitions to model
-     * 13. load unhealthy alert instances
-     * 14. load security status
+     * 1. load all created service components
+     * 2. request for service components supported by stack
+     * 3. load stack components to model
+     * 4. request for services
+     * 5. put services in cache
+     * 6. request for hosts and host-components (single call)
+     * 7. request for service metrics
+     * 8. load host-components to model
+     * 9. load hosts to model
+     * 10. load services from cache with metrics to model
+     * 11. update stale_configs of host-components (depends on App.supports.hostOverrides)
+     * 12. load root service (Ambari)
+     * 13. load alert definitions to model
+     * 14. load unhealthy alert instances
+     * 15. load security status
      */
-    self.loadStackServiceComponents(function (data) {
-      data.items.forEach(function (service) {
-        service.StackServices.is_selected = true;
-        service.StackServices.is_installed = false;
-      }, self);
-      App.stackServiceMapper.mapStackServices(data);
-      App.config.setPreDefinedServiceConfigs(true);
-      var updater = App.router.get('updateController');
-      self.updateLoadStatus('stackComponents');
-      updater.updateServices(function () {
-        self.updateLoadStatus('services');
-        //force clear filters  for hosts page to load all data
-        App.db.setFilterConditions('mainHostController', null);
+    self.loadServiceComponents(function () {
+      self.loadStackServiceComponents(function (data) {
+        data.items.forEach(function (service) {
+          service.StackServices.is_selected = true;
+          service.StackServices.is_installed = false;
+        }, self);
+        App.stackServiceMapper.mapStackServices(data);
+        App.config.setPreDefinedServiceConfigs(true);
+        var updater = App.router.get('updateController');
+        self.updateLoadStatus('stackComponents');
+        updater.updateServices(function () {
+          self.updateLoadStatus('services');
+          //force clear filters  for hosts page to load all data
+          App.db.setFilterConditions('mainHostController', null);
 
-        updater.updateHost(function () {
-          self.updateLoadStatus('hosts');
-        });
+          updater.updateHost(function () {
+            self.updateLoadStatus('hosts');
+          });
 
-        updater.updateServiceMetric(function () {
-          App.config.loadConfigsFromStack(App.Service.find().mapProperty('serviceName')).complete(function() {
-            updater.updateComponentConfig(function () {
-              self.updateLoadStatus('componentConfigs');
-            });
+          updater.updateServiceMetric(function () {
+            App.config.loadConfigsFromStack(App.Service.find().mapProperty('serviceName')).complete(function () {
+              updater.updateComponentConfig(function () {
+                self.updateLoadStatus('componentConfigs');
+              });
 
-            updater.updateComponentsState(function () {
-              self.updateLoadStatus('componentsState');
-            });
-            self.updateLoadStatus('serviceMetrics');
+              updater.updateComponentsState(function () {
+                self.updateLoadStatus('componentsState');
+              });
+              self.updateLoadStatus('serviceMetrics');
 
-            updater.updateAlertGroups(function () {
-              updater.updateAlertDefinitions(function() {
-                updater.updateAlertDefinitionSummary(function () {
-                  updater.updateUnhealthyAlertInstances(function () {
-                    self.updateLoadStatus('alertGroups');
-                    self.updateLoadStatus('alertDefinitions');
-                    self.updateLoadStatus('alertInstancesUnhealthy');
+              updater.updateAlertGroups(function () {
+                updater.updateAlertDefinitions(function () {
+                  updater.updateAlertDefinitionSummary(function () {
+                    updater.updateUnhealthyAlertInstances(function () {
+                      self.updateLoadStatus('alertGroups');
+                      self.updateLoadStatus('alertDefinitions');
+                      self.updateLoadStatus('alertInstancesUnhealthy');
+                    });
                   });
                 });
               });
             });
           });
         });
-      });
-      self.loadRootService().done(function (data) {
-        App.rootServiceMapper.map(data);
-        self.updateLoadStatus('rootService');
-      });
-      // load security status
-      App.router.get('mainAdminKerberosController').getSecurityStatus().always(function() {
-        self.updateLoadStatus('securityStatus');
+        self.loadRootService().done(function (data) {
+          App.rootServiceMapper.map(data);
+          self.updateLoadStatus('rootService');
+        });
+        // load security status
+        App.router.get('mainAdminKerberosController').getSecurityStatus().always(function () {
+          self.updateLoadStatus('securityStatus');
+        });
       });
     });
   },
@@ -326,20 +329,25 @@ App.ClusterController = Em.Controller.extend({
     this.getAllUpgrades().done(function (data) {
       var upgradeController = App.router.get('mainAdminStackAndUpgradeController');
       var lastUpgradeData = data.items.sortProperty('Upgrade.request_id').pop();
+      var dbUpgradeState = App.db.get('MainAdminStackAndUpgrade', 'upgradeState');
+
+      if (!Em.isNone(dbUpgradeState)) {
+        App.set('upgradeState', dbUpgradeState);
+      }
 
       if (lastUpgradeData) {
         upgradeController.setDBProperty('upgradeId', lastUpgradeData.Upgrade.request_id);
         upgradeController.setDBProperty('isDowngrade', lastUpgradeData.Upgrade.direction === 'DOWNGRADE');
         upgradeController.setDBProperty('upgradeState', lastUpgradeData.Upgrade.request_status);
-        upgradeController.setDBProperty('upgradeVersion', lastUpgradeData.Upgrade.to_version);
+        upgradeController.loadRepoVersionsToModel().done(function () {
+          upgradeController.setDBProperty('upgradeVersion', App.RepositoryVersion.find().findProperty('repositoryVersion', lastUpgradeData.Upgrade.to_version).get('displayName'));
+          upgradeController.initDBProperties();
+          upgradeController.loadUpgradeData(true);
+        });
+      } else {
+        upgradeController.initDBProperties();
+        upgradeController.loadUpgradeData(true);
       }
-
-      var dbUpgradeState = App.db.get('MainAdminStackAndUpgrade', 'upgradeState');
-      if (!Em.isNone(dbUpgradeState)) {
-        App.set('upgradeState', dbUpgradeState);
-      }
-      upgradeController.initDBProperties();
-      upgradeController.loadUpgradeData(true);
       upgradeController.loadStackVersionsToModel(true).done(function () {
         App.set('stackVersionsAvailable', App.StackVersion.find().content.length > 0);
       });
@@ -359,6 +367,36 @@ App.ClusterController = Em.Controller.extend({
     App.HttpClient.get(url, App.hostsMapper, {
       complete: callback
     }, callback)
+  },
+
+  /**
+   * Load data about created service components
+   * @param callback
+   */
+  loadServiceComponents: function (callback) {
+    App.ajax.send({
+      name: 'service.components.load',
+      sender: this,
+      data: {
+        callback: callback
+      },
+      success: 'loadStackServiceComponentsSuccess'
+    });
+  },
+
+  /**
+   * Callback for load service components request
+   * @param data
+   * @param request
+   * @param params
+   */
+  loadStackServiceComponentsSuccess: function (data, request, params) {
+    var serviceComponents = [];
+    data.items.forEach(function (service) {
+      serviceComponents = serviceComponents.concat(service.components.mapProperty('ServiceComponentInfo.component_name'));
+    });
+    App.serviceComponents = serviceComponents;
+    params.callback();
   },
 
   /**

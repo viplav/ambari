@@ -101,14 +101,17 @@ def yarn(name = None):
               mode=0775
               )
 
-    Execute(('chown', '-R', params.yarn_user, params.nm_local_dirs),
-            only_if=format("test -d {nm_local_dirs}"),
+    smokeuser_directories = [os.path.join(dir, 'usercache' ,params.smokeuser)
+                             for dir in params.nm_local_dirs.split(',')]
+
+    if not params.security_enabled:
+      for directory in smokeuser_directories:
+        Execute(('chown', '-R', params.yarn_user, directory),
+            only_if=format("test -d {directory}"),
             sudo=True)
 
 
     if params.security_enabled:
-      smokeuser_directories = [os.path.join(dir, 'usercache' ,params.smokeuser)
-                               for dir in params.nm_local_dirs.split(',')]
       for directory in smokeuser_directories:
         Execute(('chown', '-R', params.smokeuser, directory),
                 only_if=format("test -d {directory}"),
@@ -138,6 +141,18 @@ def yarn(name = None):
             conf_dir=params.hadoop_conf_dir,
             configurations=params.config['configurations']['core-site'],
             configuration_attributes=params.config['configuration_attributes']['core-site'],
+            owner=params.hdfs_user,
+            group=params.user_group,
+            mode=0644
+  )
+
+  # During RU, Core Masters and Slaves need hdfs-site.xml
+  # TODO, instead of specifying individual configs, which is susceptible to breaking when new configs are added,
+  # RU should rely on all available in /usr/hdp/<version>/hadoop/conf
+  XmlConfig("hdfs-site.xml",
+            conf_dir=params.hadoop_conf_dir,
+            configurations=params.config['configurations']['hdfs-site'],
+            configuration_attributes=params.config['configuration_attributes']['hdfs-site'],
             owner=params.hdfs_user,
             group=params.user_group,
             mode=0644
@@ -179,6 +194,7 @@ def yarn(name = None):
       params.HdfsResource(params.node_labels_dir,
                            type="directory",
                            action="create_on_execute",
+                           change_permissions_for_parents=True,
                            owner=params.yarn_user,
                            group=params.user_group,
                            mode=0700
@@ -191,6 +207,15 @@ def yarn(name = None):
        recursive=True,
        cd_access="a",
     )
+
+    # if HDP stack is greater than/equal to 2.2, mkdir for state store property (added in 2.2)
+    if (Script.is_hdp_stack_greater_or_equal("2.2")):
+      Directory(params.ats_leveldb_state_store_dir,
+       owner=params.yarn_user,
+       group=params.user_group,
+       recursive=True,
+       cd_access="a",
+      )
 
   File(params.rm_nodes_exclude_path,
        owner=params.yarn_user,
@@ -217,7 +242,7 @@ def yarn(name = None):
   container_executor = format("{yarn_container_bin}/container-executor")
   File(container_executor,
       group=params.yarn_executor_container_group,
-      mode=06050
+      mode=params.container_executor_mode
   )
 
   File(format("{hadoop_conf_dir}/container-executor.cfg"),
@@ -283,6 +308,21 @@ def yarn(name = None):
   if "ssl-client" in params.config['configurations']:
     XmlConfig("ssl-client.xml",
               conf_dir=params.hadoop_conf_dir,
+              configurations=params.config['configurations']['ssl-client'],
+              configuration_attributes=params.config['configuration_attributes']['ssl-client'],
+              owner=params.hdfs_user,
+              group=params.user_group
+    )
+
+    Directory(params.hadoop_conf_secure_dir,
+              recursive=True,
+              owner='root',
+              group=params.user_group,
+              cd_access='a',
+              )
+
+    XmlConfig("ssl-client.xml",
+              conf_dir=params.hadoop_conf_secure_dir,
               configurations=params.config['configurations']['ssl-client'],
               configuration_attributes=params.config['configuration_attributes']['ssl-client'],
               owner=params.hdfs_user,

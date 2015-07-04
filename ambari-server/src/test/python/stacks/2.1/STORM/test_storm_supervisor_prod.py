@@ -55,7 +55,7 @@ class TestStormSupervisor(TestStormBase):
         wait_for_finish = False,
         path = ['/usr/bin'],
         user = 'storm',
-        not_if = 'ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1',
+        not_if = "ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1'",
     )
     self.assertResourceCalled('Execute', "/usr/jdk64/jdk1.7.0_45/bin/jps -l  | grep storm.daemon.logviewer$ && /usr/jdk64/jdk1.7.0_45/bin/jps -l  | grep storm.daemon.logviewer$ | awk {'print $1'} > /var/run/storm/logviewer.pid",
         logoutput = True,
@@ -77,11 +77,11 @@ class TestStormSupervisor(TestStormBase):
     self.assertResourceCalled('Execute', 'supervisorctl stop storm-supervisor',
                               wait_for_finish = False,
     )
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill `cat /var/run/storm/logviewer.pid`',
-        not_if = '! (ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1)',
+    self.assertResourceCalled('Execute', "ambari-sudo.sh kill `ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/storm/logviewer.pid'`",
+        not_if = "! (ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1')",
     )
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `cat /var/run/storm/logviewer.pid`',
-        not_if = 'sleep 2; ! (ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1) || sleep 20; ! (ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1)',
+    self.assertResourceCalled('Execute', "ambari-sudo.sh kill -9 `ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/storm/logviewer.pid'`",
+        not_if = "sleep 2; ! (ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1') || sleep 20; ! (ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1')",
         ignore_failures = True,
     )
     self.assertResourceCalled('File', '/var/run/storm/logviewer.pid',
@@ -118,7 +118,7 @@ class TestStormSupervisor(TestStormBase):
         wait_for_finish = False,
         path = ['/usr/bin'],
         user = 'storm',
-        not_if = 'ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1',
+        not_if = "ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1'",
     )
     self.assertResourceCalled('Execute', "/usr/jdk64/jdk1.7.0_45/bin/jps -l  | grep storm.daemon.logviewer$ && /usr/jdk64/jdk1.7.0_45/bin/jps -l  | grep storm.daemon.logviewer$ | awk {'print $1'} > /var/run/storm/logviewer.pid",
         logoutput = True,
@@ -142,11 +142,11 @@ class TestStormSupervisor(TestStormBase):
                               wait_for_finish = False,
     )
 
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill `cat /var/run/storm/logviewer.pid`',
-        not_if = '! (ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1)',
+    self.assertResourceCalled('Execute', "ambari-sudo.sh kill `ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/storm/logviewer.pid'`",
+        not_if = "! (ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1')",
     )
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `cat /var/run/storm/logviewer.pid`',
-        not_if = 'sleep 2; ! (ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1) || sleep 20; ! (ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1)',
+    self.assertResourceCalled('Execute', "ambari-sudo.sh kill -9 `ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/storm/logviewer.pid'`",
+        not_if = "sleep 2; ! (ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1') || sleep 20; ! (ambari-sudo.sh su storm -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/storm/logviewer.pid >/dev/null 2>&1 && ps -p `cat /var/run/storm/logviewer.pid` >/dev/null 2>&1')",
         ignore_failures = True,
     )
     self.assertResourceCalled('File', '/var/run/storm/logviewer.pid',
@@ -163,7 +163,8 @@ class TestStormSupervisor(TestStormBase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES)
 
-    self.assertResourceCalled("Execute", "hdp-select set storm-supervisor 2.2.1.0-2067")
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'storm-client', '2.2.1.0-2067'), sudo=True)
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'storm-supervisor', '2.2.1.0-2067'), sudo=True)
 
   def test_pre_rolling_restart_23(self):
     config_file = self.get_src_folder()+"/test/python/stacks/2.1/configs/default.json"
@@ -182,7 +183,8 @@ class TestStormSupervisor(TestStormBase):
                      call_mocks = [(0, None), (0, None)],
                      mocks_dict = mocks_dict)
 
-    self.assertResourceCalled("Execute", "hdp-select set storm-supervisor 2.3.0.0-1234")
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'storm-client', '2.3.0.0-1234'), sudo=True)
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'storm-supervisor', '2.3.0.0-1234'), sudo=True)
 
     self.assertEquals(2, mocks_dict['call'].call_count)
     self.assertEquals(

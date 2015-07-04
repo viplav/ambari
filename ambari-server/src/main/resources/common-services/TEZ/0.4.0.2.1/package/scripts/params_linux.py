@@ -19,14 +19,13 @@ limitations under the License.
 """
 import os
 
-from resource_management import *
+from resource_management.libraries.resources import HdfsResource
 from resource_management.libraries.functions import conf_select
+from resource_management.libraries.functions import hdp_select
 from resource_management.libraries.functions.version import format_hdp_stack_version
 from resource_management.libraries.functions.default import default
-from resource_management.libraries.functions.format import format
 from resource_management.libraries.functions import get_kinit_path
 from resource_management.libraries.script.script import Script
-
 
 # server configurations
 config = Script.get_config()
@@ -43,15 +42,15 @@ version = default("/commandParams/version", None)
 
 # default hadoop parameters
 hadoop_home = '/usr'
-hadoop_bin_dir = conf_select.get_hadoop_dir("bin")
+hadoop_bin_dir = hdp_select.get_hadoop_dir("bin")
 hadoop_conf_dir = conf_select.get_hadoop_conf_dir()
 tez_etc_dir = "/etc/tez"
 config_dir = "/etc/tez/conf"
-path_to_tez_examples_jar = "/usr/lib/tez/tez-mapreduce-examples*.jar"
+tez_examples_jar = "/usr/lib/tez/tez-mapreduce-examples*.jar"
 
 # hadoop parameters for 2.2+
 if Script.is_hdp_stack_greater_or_equal("2.2"):
-  path_to_tez_examples_jar = "/usr/hdp/{hdp_version}/tez/tez-examples*.jar"
+  tez_examples_jar = "/usr/hdp/current/tez-client/tez-examples*.jar"
 
 # tez only started linking /usr/hdp/x.x.x.x/tez-client/conf in HDP 2.3+
 if Script.is_hdp_stack_greater_or_equal("2.3"):
@@ -74,6 +73,12 @@ tez_user = config['configurations']['tez-env']['tez_user']
 user_group = config['configurations']['cluster-env']['user_group']
 tez_env_sh_template = config['configurations']['tez-env']['content']
 
+
+
+
+hdfs_site = config['configurations']['hdfs-site']
+default_fs = config['configurations']['core-site']['fs.defaultFS']
+
 import functools
 #create partial functions with common arguments for every HdfsResource call
 #to create/delete/copyfromlocal hdfs directories/files we need to call params.HdfsResource in code
@@ -84,7 +89,10 @@ HdfsResource = functools.partial(
   keytab = hdfs_user_keytab,
   kinit_path_local = kinit_path_local,
   hadoop_bin_dir = hadoop_bin_dir,
-  hadoop_conf_dir = hadoop_conf_dir
+  hadoop_conf_dir = hadoop_conf_dir,
+  principal_name = hdfs_principal_name,
+  hdfs_site = hdfs_site,
+  default_fs = default_fs
 )
 
 

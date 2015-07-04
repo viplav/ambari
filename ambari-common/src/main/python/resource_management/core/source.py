@@ -25,7 +25,6 @@ from resource_management.core.environment import Environment
 from resource_management.core.logger import Logger
 from resource_management.core.exceptions import Fail
 from resource_management.core.utils import checked_unite
-from resource_management.core import sudo
 
 __all__ = ["Source", "Template", "InlineTemplate", "StaticFile", "DownloadSource"]
 
@@ -33,9 +32,9 @@ import os
 import time
 import urllib2
 import urlparse
+
 from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
 from ambari_commons import OSConst
-
 
 class Source(object):
   def __init__(self, name):
@@ -56,7 +55,7 @@ class Source(object):
   
   def __eq__(self, other):
     return (isinstance(other, self.__class__)
-        and self.get_content() == other.get_content())
+        and ((self.name.startswith(os.sep) and self.name == other.name) or self.get_content() == other.get_content()))
 
 
 class StaticFile(Source):

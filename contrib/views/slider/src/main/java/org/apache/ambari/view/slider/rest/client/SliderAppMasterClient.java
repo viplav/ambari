@@ -46,8 +46,8 @@ public class SliderAppMasterClient extends BaseHttpClient {
   private static final Logger logger = Logger
       .getLogger(SliderAppMasterClient.class);
 
-  public SliderAppMasterClient(String url) {
-    super(url);
+  public SliderAppMasterClient(String url, ViewContext viewContext) {
+    super(url, viewContext);
   }
 
   public SliderAppMasterData getAppMasterData() {
@@ -271,7 +271,7 @@ public class SliderAppMasterClient extends BaseHttpClient {
       InputStream jmxStream = null;
       Map<String, String> headers = new HashMap<String, String>();
       try {
-        jmxStream = streamProvider.readFrom(jmxUrl, "GET", null, headers);
+        jmxStream = streamProvider.readFrom(jmxUrl, "GET", (String)null, headers);
       } catch (IOException e) {
         logger.error(String.format(
             "Unable to access JMX endpoint at %s. Error %s", jmxUrl,

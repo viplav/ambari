@@ -25,7 +25,6 @@ var App = require('app');
 App.ComboConfigWidgetView = App.ConfigWidgetView.extend({
   templateName: require('templates/common/configs/widgets/combo_config_widget'),
   classNames: ['widget-config', 'combo-widget'],
-
   supportSwitchToCheckBox: true,
   /**
    * Object with following structure:
@@ -40,10 +39,10 @@ App.ComboConfigWidgetView = App.ConfigWidgetView.extend({
   content: null,
 
   didInsertElement: function() {
-    this.generateContent();
+    this.initWidget();
+    this._super();
     this.toggleWidgetState();
     this.initPopover();
-    this._super();
   },
 
   /**
@@ -51,7 +50,7 @@ App.ComboConfigWidgetView = App.ConfigWidgetView.extend({
    *
    * @method generateContent
    */
-  generateContent: function() {
+  initWidget: function() {
     this.set('content', Em.Object.create({}));
     this.set('content.valuesList', this.convertToWidgetUnits(this.get('config.stackConfigProperty.valueAttributes')));
     this.set('content.value', this.generateWidgetValue(this.get('config.value')));
@@ -81,7 +80,10 @@ App.ComboConfigWidgetView = App.ConfigWidgetView.extend({
    * @returns {String}
    */
   generateWidgetValue: function(value) {
-    return this.get('content.valuesList').findProperty('configValue', value).get('widgetValue');
+    if (this.isValueCompatibleWithWidget()) {
+      return this.get('content.valuesList').findProperty('configValue', value).get('widgetValue');
+    }
+    return null;
   },
 
   /**
@@ -102,12 +104,12 @@ App.ComboConfigWidgetView = App.ConfigWidgetView.extend({
    * @param {Object} e
    */
   setConfigValue: function(e) {
-    var configValueChanged = this.get('config.value') != e.context;
     this.set('config.value', e.context);
     this.set('content.value', this.generateWidgetValue(e.context));
-    if (configValueChanged) {
+    if (this.get('config.previousValue') != this.get('config.value')) {
       this.sendRequestRorDependentConfigs(this.get('config'));
     }
+    this.set('config.previousValue', this.get('config.value'));
   },
 
   /**
@@ -115,8 +117,10 @@ App.ComboConfigWidgetView = App.ConfigWidgetView.extend({
    * @method restoreValue
    */
   restoreValue: function() {
-    this._super();
-    this.setConfigValue({ context: this.get('config.defaultValue') });
+    this.setConfigValue({ context: this.get('config.savedValue') });
+    if (this.get('config.supportsFinal')) {
+      this.get('config').set('isFinal', this.get('config.savedIsFinal'));
+    }
   },
 
   /**
@@ -124,6 +128,9 @@ App.ComboConfigWidgetView = App.ConfigWidgetView.extend({
    */
   setRecommendedValue: function () {
     this.setConfigValue({ context: this.get('config.recommendedValue')});
+    if (this.get('config.supportsFinal')) {
+      this.get('config').set('isFinal', this.get('config.recommendedIsFinal'));
+    }
   },
 
   /**
@@ -136,12 +143,18 @@ App.ComboConfigWidgetView = App.ConfigWidgetView.extend({
     }
   },
 
-  setValue: function() {
-    this.setConfigValue({ context: this.get('config.value') });
-  },
+  // setValue: function() {
+  //   this.setConfigValue({ context: this.get('config.value') });
+  // },
 
   isValueCompatibleWithWidget: function() {
-    return this._super() && this.get('content.valuesList').someProperty('configValue', this.get('config.value'));
+    var res = this._super() && this.get('content.valuesList').someProperty('configValue', this.get('config.value'));
+    if (!res) {
+      this.updateWarningsForCompatibilityWithWidget(Em.I18n.t('config.infoMessage.wrong.value.for.widget'));
+      return false;
+    }
+    this.updateWarningsForCompatibilityWithWidget('');
+    return true;
   }
 
 });

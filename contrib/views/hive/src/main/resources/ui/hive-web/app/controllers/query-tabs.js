@@ -20,16 +20,13 @@ import Ember from 'ember';
 import constants from 'hive/utils/constants';
 
 export default Ember.Controller.extend({
-  needs: [ constants.namingConventions.index],
-
-  index: Ember.computed.alias('controllers' + constants.namingConventions.index),
-
   tabClassNames : "fa queries-icon query-context-tab",
 
   tabs: [
     Ember.Object.create({
-      iconClass: 'fa-code',
+      iconClass: 'text-icon',
       id: 'query-icon',
+      text: 'SQL',
       action: 'setDefaultActive',
       name: constants.namingConventions.index,
       tooltip: Ember.I18n.t('tooltips.query')

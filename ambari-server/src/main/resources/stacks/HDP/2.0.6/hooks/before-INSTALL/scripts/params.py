@@ -19,10 +19,9 @@ limitations under the License.
 
 from ambari_commons.constants import AMBARI_SUDO_BINARY
 from resource_management.libraries.functions.version import format_hdp_stack_version, compare_versions
-from resource_management import *
 from resource_management.core.system import System
-import json
-import collections
+from resource_management.libraries.script.script import Script
+from resource_management.libraries.functions import default, format
 
 config = Script.get_config()
 tmp_dir = Script.get_tmp_dir()
@@ -42,6 +41,10 @@ user_group = config['configurations']['cluster-env']['user_group']
 proxyuser_group = default("/configurations/hadoop-env/proxyuser_group","users")
 
 hdfs_log_dir_prefix = config['configurations']['hadoop-env']['hdfs_log_dir_prefix']
+
+# repo templates
+repo_rhel_suse =  config['configurations']['cluster-env']['repo_suse_rhel_template']
+repo_ubuntu =  config['configurations']['cluster-env']['repo_ubuntu_template']
 
 #hosts
 hostname = config["hostname"]
@@ -84,7 +87,7 @@ is_slave = hostname in slave_hosts
 if has_ganglia_server:
   ganglia_server_host = ganglia_server_hosts[0]
 
-hbase_tmp_dir = config['configurations']['hbase-site']['hbase.tmp.dir']
+hbase_tmp_dir = "/tmp/hbase-hbase"
 
 #security params
 security_enabled = config['configurations']['cluster-env']['security_enabled']
@@ -105,16 +108,3 @@ if has_hbase_masters:
 #repo params
 repo_info = config['hostLevelParams']['repo_info']
 service_repo_info = default("/hostLevelParams/service_repo_info",None)
-
-user_to_groups_dict = collections.defaultdict(lambda:[user_group])
-user_to_groups_dict[smoke_user] = [proxyuser_group]
-if has_ganglia_server:
-  user_to_groups_dict[gmond_user] = [gmond_user]
-  user_to_groups_dict[gmetad_user] = [gmetad_user]
-if has_tez:
-  user_to_groups_dict[tez_user] = [proxyuser_group]
-
-user_to_gid_dict = collections.defaultdict(lambda:user_group)
-
-user_list = json.loads(config['hostLevelParams']['user_list'])
-group_list = json.loads(config['hostLevelParams']['group_list'])

@@ -23,6 +23,13 @@ import os
 from resource_management import *
 from resource_management.core.logger import Logger
 
+def ranger(name=None):
+  if name == 'ranger_admin':
+    setup_ranger_admin()
+
+  if name == 'ranger_usersync':
+    setup_usersync()
+
 def setup_ranger_admin():
   import params
 
@@ -91,7 +98,7 @@ def check_db_connnection():
     env_dict = {'ORACLE_HOME':params.oracle_home, 'LD_LIBRARY_PATH':params.oracle_home}
   elif params.db_flavor.lower() == 'postgres':
     cmd = 'true'
-  elif params.db_flavor.lower() == 'sqlserver':
+  elif params.db_flavor.lower() == 'mssql':
     cmd = 'true'
 
   try:

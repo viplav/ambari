@@ -19,12 +19,27 @@
 var App = require('app');
 
 App.ServiceConfigView = Em.View.extend({
+
   templateName: require('templates/common/configs/service_config'),
+
   isRestartMessageCollapsed: false,
-  filter: '', //from template
-  columns: [], //from template
+
+  /**
+   * Bound from parent view in the template
+   * @type {string}
+   */
+  filter: '',
+
+  /**
+   * Bound from parent view in the template
+   * @type {object[]}
+   */
+  columns: [],
+
   propertyFilterPopover: [Em.I18n.t('services.service.config.propertyFilterPopover.title'), Em.I18n.t('services.service.config.propertyFilterPopover.content')],
+
   canEdit: true, // View is editable or read-only?
+
   supportsHostOverrides: function () {
     switch (this.get('controller.name')) {
       case 'wizardStep7Controller':
@@ -37,6 +52,10 @@ App.ServiceConfigView = Em.View.extend({
     }
   }.property('controller.name', 'controller.selectedService'),
 
+  /**
+   * Determines if user is on the service configs page
+   * @type {boolean}
+   */
   isOnTheServicePage: function () {
     return this.get('controller.name') === 'mainServiceInfoConfigsController';
   }.property('controller.name'),
@@ -101,6 +120,7 @@ App.ServiceConfigView = Em.View.extend({
     this.$('.service-body').toggle('blind', 200);
     this.set('isRestartMessageCollapsed', !this.get('isRestartMessageCollapsed'));
   },
+
   didInsertElement: function () {
     if (this.get('isNotEditable') === true) {
       this.set('canEdit', false);
@@ -114,8 +134,13 @@ App.ServiceConfigView = Em.View.extend({
     this.checkCanEdit();
   },
 
+  willDestroyElement: function() {
+    this.get('tabs').setEach('isActive', false);
+  },
+
   /**
    * Check if we should show Custom Property category
+   * @method checkCanEdit
    */
   checkCanEdit: function () {
     var controller = this.get('controller');
@@ -129,10 +154,7 @@ App.ServiceConfigView = Em.View.extend({
       });
     }
 
-  }.observes(
-      'App.router.mainServiceInfoConfigsController.selectedConfigGroup.name',
-      'App.router.wizardStep7Controller.selectedConfigGroup.name'
-  ),
+  }.observes('controller.selectedConfigGroup.name'),
 
   setActiveTab: function (event) {
     if (event.context.get('isHiddenByFilter')) return false;
@@ -141,6 +163,7 @@ App.ServiceConfigView = Em.View.extend({
     });
     var currentTab = event.context;
     currentTab.set('isActive', true);
+    currentTab.set('isRendered', true);
   },
 
   /**
@@ -153,6 +176,11 @@ App.ServiceConfigView = Em.View.extend({
       return Em.A([]);
     }
     var tabs = App.Tab.find().filterProperty('serviceName', this.get('controller.selectedService.serviceName'));
+    tabs.setEach('isActive', false);
+    var advancedTab = tabs.findProperty('isAdvanced', true);
+    if (advancedTab) {
+      advancedTab.set('isRendered', false);
+    }
     this.processTabs(tabs);
     this.pickActiveTab(tabs);
     return tabs;
@@ -175,6 +203,9 @@ App.ServiceConfigView = Em.View.extend({
       var firstHotHiddenTab = tabs.filterProperty('isHiddenByFilter', false).get('firstObject');
       if(firstHotHiddenTab) {
         firstHotHiddenTab.set('isActive', true);
+        if (firstHotHiddenTab.get('isAdvanced') && !firstHotHiddenTab.get('isRendered')) {
+          firstHotHiddenTab.set('isRendered', true);
+        }
       }
     }
   },
@@ -205,6 +236,8 @@ App.ServiceConfigView = Em.View.extend({
           var subsectionRow = subsectionRows[subsection.get('rowIndex')];
           if (!subsectionRow) { subsectionRow = subsectionRows[subsection.get('rowIndex')] = []; }
           subsectionRow.push(subsection);
+          // leave a title gap if one of the subsection on the same row within the same section has title
+          if (subsection.get('displayName')) {subsectionRow.hasTitleGap = true;}
         }
         section.set('subsectionRows', subsectionRows);
       }
@@ -218,6 +251,46 @@ App.ServiceConfigView = Em.View.extend({
    */
   filterEnhancedConfigs: function () {
     var self = this;
+
+    var serviceConfigs = this.get('controller.selectedService.configs').filterProperty('isVisible', true);
+    var filter = (this.get('filter')|| '').toLowerCase();
+    var selectedFilters = (this.get('columns') || []).filterProperty('selected');
+
+    if (selectedFilters.length > 0 || filter.length > 0) {
+      serviceConfigs.forEach(function (config) {
+        var passesFilters = true;
+
+        selectedFilters.forEach(function (filter) {
+          if (config.get(filter.attributeName) !== filter.attributeValue) {
+            passesFilters = false;
+          }
+        });
+
+        if (!passesFilters) {
+          config.set('isHiddenByFilter', true);
+          return false;
+        }
+
+        var searchString = config.get('savedValue') + config.get('description') +
+          config.get('displayName') + config.get('name') + config.get('value') + config.getWithDefault('stackConfigProperty.displayName', '');
+
+        if (config.get('overrides')) {
+          config.get('overrides').forEach(function (overriddenConf) {
+            searchString += overriddenConf.get('value') + overriddenConf.get('group.name');
+          });
+        }
+
+        if (filter != null && typeof searchString === "string") {
+          config.set('isHiddenByFilter', !(searchString.toLowerCase().indexOf(filter) > -1));
+        } else {
+          config.set('isHiddenByFilter', false);
+        }
+      });
+    }
+    else {
+      serviceConfigs.setEach('isHiddenByFilter', false);
+    }
+
     Em.run.next(function () {
       self.pickActiveTab(self.get('tabs'));
     });

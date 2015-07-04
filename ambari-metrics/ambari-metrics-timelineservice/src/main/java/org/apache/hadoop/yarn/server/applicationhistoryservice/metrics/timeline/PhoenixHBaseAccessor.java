@@ -313,8 +313,7 @@ public class PhoenixHBaseAccessor {
     }
   }
 
-  public void insertMetricRecords(TimelineMetrics metrics)
-    throws SQLException, IOException {
+  public void insertMetricRecords(TimelineMetrics metrics) throws SQLException, IOException {
 
     List<TimelineMetric> timelineMetrics = metrics.getMetrics();
     if (timelineMetrics == null || timelineMetrics.isEmpty()) {
@@ -351,9 +350,8 @@ public class PhoenixHBaseAccessor {
         metricRecordStmt.setDouble(8, aggregates[0]);
         metricRecordStmt.setDouble(9, aggregates[1]);
         metricRecordStmt.setDouble(10, aggregates[2]);
-        metricRecordStmt.setLong(11, (long)aggregates[3]);
-        String json =
-          TimelineUtils.dumpTimelineRecordtoJSON(metric.getMetricValues());
+        metricRecordStmt.setLong(11, (long) aggregates[3]);
+        String json = TimelineUtils.dumpTimelineRecordtoJSON(metric.getMetricValues());
         metricRecordStmt.setString(12, json);
 
         try {
@@ -398,7 +396,7 @@ public class PhoenixHBaseAccessor {
     try {
       //get latest
       if(condition.isPointInTime()){
-        stmt = getLatestMetricRecords(condition, conn, metrics);
+        getLatestMetricRecords(condition, conn, metrics);
       } else {
         stmt = PhoenixTransactSQL.prepareGetMetricsSqlStmt(conn, condition);
         rs = stmt.executeQuery();
@@ -467,39 +465,35 @@ public class PhoenixHBaseAccessor {
     }
   }
 
-  private PreparedStatement getLatestMetricRecords(
+  private void getLatestMetricRecords(
     Condition condition, Connection conn, TimelineMetrics metrics)
     throws SQLException, IOException {
 
     validateConditionIsNotEmpty(condition);
 
-    PreparedStatement stmt = null;
-    SplitByMetricNamesCondition splitCondition =
-      new SplitByMetricNamesCondition(condition);
+    PreparedStatement stmt;
 
-    for (String metricName: splitCondition.getOriginalMetricNames()) {
-      splitCondition.setCurrentMetric(metricName);
-      stmt = PhoenixTransactSQL.prepareGetLatestMetricSqlStmt(conn,
-        splitCondition);
-      ResultSet rs = null;
-      try {
-        rs = stmt.executeQuery();
-        while (rs.next()) {
-          TimelineMetric metric = getLastTimelineMetricFromResultSet(rs);
-          metrics.getMetrics().add(metric);
-        }
-      } finally {
-        if (rs != null) {
-          try {
-            rs.close();
-          } catch (SQLException e) {
-            // Ignore
-          }
+    stmt = PhoenixTransactSQL.prepareGetLatestMetricSqlStmt(conn,
+        condition);
+    ResultSet rs = null;
+    try {
+      rs = stmt.executeQuery();
+      while (rs.next()) {
+        TimelineMetric metric = getLastTimelineMetricFromResultSet(rs);
+        metrics.getMetrics().add(metric);
+      }
+    } finally {
+      if (rs != null) {
+        try {
+          rs.close();
+        } catch (SQLException e) {
+          // Ignore
         }
       }
+      if (stmt != null) {
+        stmt.close();
+      }
     }
-
-    return stmt;
   }
 
   /**
@@ -522,7 +516,7 @@ public class PhoenixHBaseAccessor {
     try {
       //get latest
       if(condition.isPointInTime()) {
-        stmt = getLatestAggregateMetricRecords(condition, conn, metrics, metricFunctions);
+        getLatestAggregateMetricRecords(condition, conn, metrics, metricFunctions);
       } else {
         stmt = PhoenixTransactSQL.prepareGetAggregateSqlStmt(conn, condition);
 
@@ -584,7 +578,7 @@ public class PhoenixHBaseAccessor {
     }
   }
 
-  private PreparedStatement getLatestAggregateMetricRecords(Condition condition,
+  private void getLatestAggregateMetricRecords(Condition condition,
       Connection conn, TimelineMetrics metrics,
       Map<String, List<Function>> metricFunctions) throws SQLException {
 
@@ -626,10 +620,11 @@ public class PhoenixHBaseAccessor {
             // Ignore
           }
         }
+        if (stmt != null) {
+          stmt.close();
+        }        
       }
     }
-
-    return stmt;
   }
 
   private SingleValuedTimelineMetric getAggregateTimelineMetricFromResultSet(ResultSet rs,

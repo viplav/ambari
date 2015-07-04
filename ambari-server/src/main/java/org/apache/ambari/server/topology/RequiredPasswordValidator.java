@@ -20,6 +20,7 @@
 package org.apache.ambari.server.topology;
 
 import org.apache.ambari.server.controller.internal.Stack;
+import org.apache.ambari.server.state.PropertyInfo;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -90,7 +91,7 @@ public class RequiredPasswordValidator implements TopologyValidator {
         if (processedServices.add(serviceName)) {
           //todo: do I need to subtract excluded configs?
           Collection<Stack.ConfigProperty> requiredProperties =
-              stack.getRequiredConfigurationProperties(serviceName, "PASSWORD");
+              stack.getRequiredConfigurationProperties(serviceName, PropertyInfo.PropertyType.PASSWORD);
 
           for (Stack.ConfigProperty property : requiredProperties) {
             String category = property.getType();

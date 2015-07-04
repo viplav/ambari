@@ -76,6 +76,10 @@ public class ConfigHelper {
   public static final String HDFS_SITE = "hdfs-site";
   public static final String HIVE_SITE = "hive-site";
   public static final String YARN_SITE = "yarn-site";
+  public static final String CLUSTER_ENV = "cluster-env";
+  public static final String CLUSTER_ENV_RETRY_ENABLED = "command_retry_enabled";
+  public static final String CLUSTER_ENV_RETRY_COMMANDS = "commands_to_retry";
+  public static final String CLUSTER_ENV_RETRY_MAX_TIME_IN_SEC = "command_retry_max_time_in_sec";
 
   public static final String HTTP_ONLY = "HTTP_ONLY";
   public static final String HTTPS_ONLY = "HTTPS_ONLY";
@@ -129,28 +133,30 @@ public class ConfigHelper {
       String tag = clusterEntry.getValue().getTag();
 
       // 1) start with cluster config
-      Config config = cluster.getConfig(type, tag);
-      if (null == config) {
-        continue;
-      }
+      if (cluster != null) {
+        Config config = cluster.getConfig(type, tag);
+        if (null == config) {
+          continue;
+        }
 
-      Map<String, String> tags = new LinkedHashMap<String, String>();
+        Map<String, String> tags = new LinkedHashMap<String, String>();
 
-      tags.put(CLUSTER_DEFAULT_TAG, config.getTag());
+        tags.put(CLUSTER_DEFAULT_TAG, config.getTag());
 
       // AMBARI-3672. Only consider Config groups for override tags
-      // tags -> (configGroupId, versionTag)
-      if (hostConfigOverrides != null) {
-        HostConfig hostConfig = hostConfigOverrides.get(config.getType());
-        if (hostConfig != null) {
-          for (Entry<Long, String> tagEntry : hostConfig
-              .getConfigGroupOverrides().entrySet()) {
-            tags.put(tagEntry.getKey().toString(), tagEntry.getValue());
+        // tags -> (configGroupId, versionTag)
+        if (hostConfigOverrides != null) {
+          HostConfig hostConfig = hostConfigOverrides.get(config.getType());
+          if (hostConfig != null) {
+            for (Entry<Long, String> tagEntry : hostConfig
+                    .getConfigGroupOverrides().entrySet()) {
+              tags.put(tagEntry.getKey().toString(), tagEntry.getValue());
+            }
           }
         }
-      }
 
-      resolved.put(type, tags);
+        resolved.put(type, tags);
+      }
     }
 
     return resolved;
@@ -549,12 +555,14 @@ public class ConfigHelper {
   public String getValueFromDesiredConfigurations(Cluster cluster, String configType, String propertyName) {
     Map<String, DesiredConfig> desiredConfigs = cluster.getDesiredConfigs();
     DesiredConfig desiredConfig = desiredConfigs.get(configType);
-    Config config = cluster.getConfig(configType, desiredConfig.getTag());
-    Map<String, String> configurationProperties = config.getProperties();
-    if (null != configurationProperties) {
-      String value = configurationProperties.get(propertyName);
-      if (null != value) {
-        return value;
+    if(desiredConfig != null) {
+      Config config = cluster.getConfig(configType, desiredConfig.getTag());
+      Map<String, String> configurationProperties = config.getProperties();
+      if (null != configurationProperties) {
+        String value = configurationProperties.get(propertyName);
+        if (null != value) {
+          return value;
+        }
       }
     }
     return null;
@@ -865,6 +873,59 @@ public class ConfigHelper {
     if (configurations.get(Configuration.GLOBAL_CONFIG_TAG).size() == 0) {
       configurations.remove(Configuration.GLOBAL_CONFIG_TAG);
     }
+  }
+
+  /**
+   * Gets the default properties from the specified stack and services when a
+   * cluster is first installed.
+   *
+   * @param stack
+   *          the stack to pull stack-values from (not {@code null})
+   * @param cluster
+   *          the cluster to use when determining which services default
+   *          configurations to include (not {@code null}).
+   * @return a mapping of configuration type to map of key/value pairs for the
+   *         default configurations.
+   * @throws AmbariException
+   */
+  public Map<String, Map<String, String>> getDefaultProperties(StackId stack, Cluster cluster)
+      throws AmbariException {
+    Map<String, Map<String, String>> defaultPropertiesByType = new HashMap<String, Map<String, String>>();
+
+    // populate the stack (non-service related) properties first
+    Set<org.apache.ambari.server.state.PropertyInfo> stackConfigurationProperties = ambariMetaInfo.getStackProperties(
+        stack.getStackName(), stack.getStackVersion());
+
+    for (PropertyInfo stackDefaultProperty : stackConfigurationProperties) {
+      String type = ConfigHelper.fileNameToConfigType(stackDefaultProperty.getFilename());
+
+      if (!defaultPropertiesByType.containsKey(type)) {
+        defaultPropertiesByType.put(type, new HashMap<String, String>());
+      }
+
+      defaultPropertiesByType.get(type).put(stackDefaultProperty.getName(),
+          stackDefaultProperty.getValue());
+    }
+
+    // for every installed service, populate the default service properties
+    for (String serviceName : cluster.getServices().keySet()) {
+      Set<org.apache.ambari.server.state.PropertyInfo> serviceConfigurationProperties = ambariMetaInfo.getServiceProperties(
+          stack.getStackName(), stack.getStackVersion(), serviceName);
+
+      // !!! use new stack as the basis
+      for (PropertyInfo serviceDefaultProperty : serviceConfigurationProperties) {
+        String type = ConfigHelper.fileNameToConfigType(serviceDefaultProperty.getFilename());
+
+        if (!defaultPropertiesByType.containsKey(type)) {
+          defaultPropertiesByType.put(type, new HashMap<String, String>());
+        }
+
+        defaultPropertiesByType.get(type).put(serviceDefaultProperty.getName(),
+            serviceDefaultProperty.getValue());
+      }
+    }
+
+    return defaultPropertiesByType;
   }
 
   private boolean calculateIsStaleConfigs(ServiceComponentHost sch) throws AmbariException {

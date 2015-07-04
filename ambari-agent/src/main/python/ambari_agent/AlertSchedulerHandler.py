@@ -21,12 +21,11 @@ limitations under the License.
 """
 http://apscheduler.readthedocs.org/en/v2.1.2
 """
-import json
+import ambari_simplejson as json
 import logging
 import os
 import sys
 import time
-import atexit
 
 from apscheduler.scheduler import Scheduler
 from alerts.collector import AlertCollector
@@ -34,8 +33,8 @@ from alerts.metric_alert import MetricAlert
 from alerts.port_alert import PortAlert
 from alerts.script_alert import ScriptAlert
 from alerts.web_alert import WebAlert
-
-logger = logging.getLogger()
+from ambari_agent.ExitHelper import ExitHelper
+logger = logging.getLogger(__name__)
 
 class AlertSchedulerHandler():
   FILENAME = 'definitions.json'
@@ -72,7 +71,7 @@ class AlertSchedulerHandler():
     self.config = config
 
     # register python exit handler
-    atexit.register(self.exit_handler)
+    ExitHelper().register(self.exit_handler)
 
 
   def exit_handler(self):
@@ -270,7 +269,7 @@ class AlertSchedulerHandler():
     alert = None
 
     if source_type == AlertSchedulerHandler.TYPE_METRIC:
-      alert = MetricAlert(json_definition, source)
+      alert = MetricAlert(json_definition, source, self.config)
     elif source_type == AlertSchedulerHandler.TYPE_PORT:
       alert = PortAlert(json_definition, source)
     elif source_type == AlertSchedulerHandler.TYPE_SCRIPT:
@@ -364,15 +363,7 @@ def main():
   args = list(sys.argv)
   del args[0]
 
-  try:
-    logger.setLevel(logging.DEBUG)
-  except TypeError:
-    logger.setLevel(12)
-
-  ch = logging.StreamHandler()
-  ch.setLevel(logger.level)
-  logger.addHandler(ch)
-    
+  
   ash = AlertSchedulerHandler(args[0], args[1], args[2], False)
   ash.start()
   

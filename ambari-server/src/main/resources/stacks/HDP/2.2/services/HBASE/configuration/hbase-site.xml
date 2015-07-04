@@ -20,6 +20,13 @@
  */
 -->
 <configuration>
+  <property >
+    <name>hbase.bulkload.staging.dir</name>
+    <value>/apps/hbase/staging</value>
+    <description>A staging directory in default file system (HDFS)
+    for bulk loading.
+    </description>
+  </property>
   <property>
     <name>hbase.hstore.flush.retries.number</name>
     <value>120</value>
@@ -66,6 +73,7 @@
     resultant flush files take a long time to compact or split, or
     worse, we OOME.
     </description>
+    <display-name>HBase Region Block Multiplier</display-name>
     <value-attributes>
       <type>value-list</type>
       <entries>
@@ -98,15 +106,6 @@
     <description>Value to be set between 0.0 and 1.0</description>
   </property>
   <property>
-    <name>hbase.regionserver.global.memstore.size</name>
-    <value>${hbase.regionserver.global.memstore.upperLimit}</value>
-    <description>Maximum size of all memstores in a region server before new
-      updates are blocked and flushes are forced. Defaults to 40% of heap.
-      Updates are blocked and flushes are forced until size of all memstores
-      in a region server hits hbase.regionserver.global.memstore.size.lower.limit.
-    </description>
-  </property>
-  <property>
     <name>hbase.regionserver.wal.codec</name>
     <display-name>RegionServer WAL Codec</display-name>
     <value>org.apache.hadoop.hbase.regionserver.wal.WALCellCodec</value>
@@ -118,8 +117,8 @@
     </depends-on>
   </property>
   <property>
-    <name>hbase.regionserver.rpc.scheduler.factory.class</name>
-    <value> </value>
+    <name>hbase.region.server.rpc.scheduler.factory.class</name>
+    <value></value>
     <depends-on>
       <property>
         <type>hbase-env</type>
@@ -129,6 +128,16 @@
   </property>
   <property>
     <name>hbase.rpc.controllerfactory.class</name>
+    <value></value>
+    <depends-on>
+      <property>
+        <type>hbase-env</type>
+        <name>phoenix_sql_enabled</name>
+      </property>
+    </depends-on>
+  </property>
+  <property>
+    <name>phoenix.functions.allowUserDefinedFunctions</name>
     <value> </value>
     <depends-on>
       <property>
@@ -156,7 +165,7 @@
       complete. Setting it larger means that more StoreFiles are included in a compaction. For most
       cases, the default value is appropriate.
     </description>
-    <display-name>Maximum Files in a Store before Compaction</display-name>
+    <display-name>Maximum Files for Compaction</display-name>
     <value-attributes>
       <type>int</type>
       <entries>

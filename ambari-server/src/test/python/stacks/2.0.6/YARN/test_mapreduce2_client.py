@@ -99,6 +99,14 @@ class TestMapReduce2Client(RMFTestCase):
       configurations = self.getConfig()['configurations']['core-site'],
       configuration_attributes = self.getConfig()['configuration_attributes']['core-site']
     )
+    self.assertResourceCalled('XmlConfig', 'hdfs-site.xml',
+      owner = 'hdfs',
+      group = 'hadoop',
+      mode = 0644,
+      conf_dir = '/etc/hadoop/conf',
+      configurations = self.getConfig()['configurations']['hdfs-site'],
+      configuration_attributes = self.getConfig()['configuration_attributes']['hdfs-site']
+    )
     self.assertResourceCalled('XmlConfig', 'mapred-site.xml',
       owner = 'yarn',
       group = 'hadoop',
@@ -143,7 +151,7 @@ class TestMapReduce2Client(RMFTestCase):
     )
     self.assertResourceCalled('File', '/usr/lib/hadoop-yarn/bin/container-executor',
                               group = 'hadoop',
-                              mode = 06050,
+                              mode = 02050,
                               )
     self.assertResourceCalled('File', '/etc/hadoop/conf/container-executor.cfg',
                               content = Template('container-executor.cfg.j2'),
@@ -257,6 +265,14 @@ class TestMapReduce2Client(RMFTestCase):
       configurations = self.getConfig()['configurations']['core-site'],
       configuration_attributes = self.getConfig()['configuration_attributes']['core-site']
     )
+    self.assertResourceCalled('XmlConfig', 'hdfs-site.xml',
+      owner = 'hdfs',
+      group = 'hadoop',
+      mode = 0644,
+      conf_dir = '/etc/hadoop/conf',
+      configurations = self.getConfig()['configurations']['hdfs-site'],
+      configuration_attributes = self.getConfig()['configuration_attributes']['hdfs-site']
+    )
     self.assertResourceCalled('XmlConfig', 'mapred-site.xml',
       owner = 'yarn',
       group = 'hadoop',
@@ -368,7 +384,7 @@ class TestMapReduce2Client(RMFTestCase):
     )
 
     # for now, it's enough that hdp-select is confirmed
-    self.assertResourceCalled("Execute", "hdp-select set hadoop-client 2.2.1.0-2067")
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'hadoop-client', '2.2.1.0-2067'), sudo=True)
 
 
   def test_pre_rolling_restart_23(self):
@@ -388,7 +404,7 @@ class TestMapReduce2Client(RMFTestCase):
                        call_mocks = [(0, None), (0, None)],
                        mocks_dict = mocks_dict)
 
-    self.assertResourceCalled('Execute', 'hdp-select set hadoop-client {0}'.format(version))
+    self.assertResourceCalled('Execute', ('hdp-select', 'set', 'hadoop-client', version), sudo=True)
     self.assertNoMoreResources()
 
     self.assertEquals(2, mocks_dict['call'].call_count)

@@ -20,14 +20,16 @@ limitations under the License.
 '''
 
 import StringIO
+import os
 import ssl
+import tempfile
 import unittest, threading
 import sys
 from mock.mock import patch, MagicMock, call, Mock
 import logging
 import platform
 from threading import Event
-import json
+import ambari_simplejson
 from ambari_commons import OSCheck
 from only_for_platform import not_for_platform, only_for_platform, get_platform, PLATFORM_LINUX, PLATFORM_WINDOWS
 from ambari_agent import Controller, ActionQueue, Register
@@ -35,6 +37,8 @@ from ambari_agent import hostname
 from ambari_agent.Controller import AGENT_AUTO_RESTART_EXIT_CODE
 from ambari_commons import OSCheck
 from ambari_agent.Hardware import Hardware
+from ambari_agent.ExitHelper import ExitHelper
+from ambari_agent.AmbariConfig import AmbariConfig
 import ambari_commons
 
 OPERATING_SYSTEM_DISTRO = ('Suse','11','Final')
@@ -47,15 +51,16 @@ class TestController(unittest.TestCase):
 
   @patch.object(Controller, "NetUtil", MagicMock())
   @patch.object(Controller, "AlertSchedulerHandler", MagicMock())
+  @patch.object(Controller.Controller, "read_agent_version")
   @patch("threading.Thread")
   @patch("threading.Lock")
   @patch.object(hostname, "hostname")
-  def setUp(self, hostname_method, lockMock, threadMock):
+  def setUp(self, hostname_method, lockMock, threadMock, read_agent_versionMock):
 
     Controller.logger = MagicMock()
     lockMock.return_value = MagicMock()
     hostname_method.return_value = "test_hostname"
-
+    read_agent_versionMock.return_value = '2.1.0'
 
     config = MagicMock()
     #config.get.return_value = "something"
@@ -65,8 +70,23 @@ class TestController(unittest.TestCase):
     self.controller.netutil.MINIMUM_INTERVAL_BETWEEN_HEARTBEATS = 0.1
     self.controller.netutil.HEARTBEAT_NOT_IDDLE_INTERVAL_SEC = 0.1
 
+  @patch.object(OSCheck, "get_os_type")
+  @patch.object(OSCheck, "get_os_version")
+  def test_read_agent_version(self, get_os_version_mock, get_os_type_mock):
+    config = AmbariConfig().getConfig()
+    tmpdir = tempfile.gettempdir()
+    config.set('agent', 'prefix', tmpdir)
+    config.set('agent', 'current_ping_port', '33777')
+    ver_file = os.path.join(tmpdir, "version")
+    reference_version = "1.3.0"
+    with open(ver_file, "w") as text_file:
+      text_file.write(reference_version)
+    version = self.controller.read_agent_version(config)
+    os.remove(ver_file)
+    self.assertEqual(reference_version, version)
 
-  @patch("json.dumps")
+
+  @patch("ambari_simplejson.dumps")
   @patch("time.sleep")
   @patch("pprint.pformat")
   @patch.object(Controller, "randint")
@@ -142,7 +162,7 @@ class TestController(unittest.TestCase):
     LiveStatus_mock.SERVICES = ["foo"]
     LiveStatus_mock.CLIENT_COMPONENTS = ["foo"]
     LiveStatus_mock.COMPONENTS = ["foo"]
-    commands = json.loads('[{"clusterName":"dummy_cluster"}]')
+    commands = ambari_simplejson.loads('[{"clusterName":"dummy_cluster"}]')
     actionQueue = MagicMock()
     self.controller.actionQueue = actionQueue
     updateComponents = Mock()
@@ -334,12 +354,12 @@ class TestController(unittest.TestCase):
     self.assertTrue(sendRequestMock.call_count > 5)
 
 
-  @patch("sys.exit")
-  def test_restartAgent(self, sys_exit_mock):
+  @patch.object(ExitHelper, "exit")
+  def test_restartAgent(self, exit_mock):
 
     self.controller.restartAgent()
-    self.assertTrue(sys_exit_mock.called)
-    self.assertTrue(sys_exit_mock.call_args[0][0] == AGENT_AUTO_RESTART_EXIT_CODE)
+    self.assertTrue(exit_mock.called)
+    self.assertTrue(exit_mock.call_args[0][0] == AGENT_AUTO_RESTART_EXIT_CODE)
 
 
   @patch("urllib2.Request")
@@ -356,13 +376,13 @@ class TestController(unittest.TestCase):
 
     conMock.request.return_value = '{"valid_object": true}'
     actual = self.controller.sendRequest(url, data)
-    expected = json.loads('{"valid_object": true}')
+    expected = ambari_simplejson.loads('{"valid_object": true}')
     self.assertEqual(actual, expected)
     
     security_mock.CachedHTTPSConnection.assert_called_once_with(
       self.controller.config)
     requestMock.called_once_with(url, data,
-      {'Content-Type': 'application/json'})
+      {'Content-Type': 'application/ambari_simplejson'})
 
     conMock.request.return_value = '{invalid_object}'
 
@@ -385,7 +405,7 @@ class TestController(unittest.TestCase):
 
   @patch.object(threading._Event, "wait")
   @patch("time.sleep")
-  @patch("json.dumps")
+  @patch("ambari_simplejson.dumps")
   def test_heartbeatWithServer(self, dumpsMock, sleepMock, event_mock):
     out = StringIO.StringIO()
     sys.stdout = out
@@ -551,8 +571,8 @@ class TestController(unittest.TestCase):
 
   @patch("pprint.pformat")
   @patch("time.sleep")
-  @patch("json.loads")
-  @patch("json.dumps")
+  @patch("ambari_simplejson.loads")
+  @patch("ambari_simplejson.dumps")
   def test_certSigningFailed(self, dumpsMock, loadsMock, sleepMock, pformatMock):
     register = MagicMock()
     self.controller.register = register
@@ -599,7 +619,7 @@ class TestController(unittest.TestCase):
     self.assertEquals(LiveStatus_mock.COMPONENTS, components_expected)
 
   @patch("socket.gethostbyname")
-  @patch("json.dumps")
+  @patch("ambari_simplejson.dumps")
   @patch("time.sleep")
   @patch("pprint.pformat")
   @patch.object(Controller, "randint")
@@ -653,7 +673,7 @@ class TestController(unittest.TestCase):
 
   @patch.object(threading._Event, "wait")
   @patch("time.sleep")
-  @patch("json.dumps")
+  @patch("ambari_simplejson.dumps")
   def test_recoveryHbCmd(self, dumpsMock, sleepMock, event_mock):
 
     out = StringIO.StringIO()

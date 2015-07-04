@@ -18,7 +18,6 @@
 
 var App = require('app');
 require('controllers/main/admin/kerberos/progress_controller');
-require('controllers/main/admin/security/security_progress_controller');
 
 App.KerberosDisableController = App.KerberosProgressPageController.extend(App.WizardEnableDone, {
 
@@ -39,6 +38,15 @@ App.KerberosDisableController = App.KerberosProgressPageController.extend(App.Wi
   unkerberize: function () {
     return App.ajax.send({
       name: 'admin.unkerberize.cluster',
+      sender: this,
+      success: 'startPolling',
+      error: 'onTaskErrorWithSkip'
+    });
+  },
+
+  skipTask: function () {
+    return App.ajax.send({
+      name: 'admin.unkerberize.cluster.skip',
       sender: this,
       success: 'startPolling',
       error: 'onTaskError'

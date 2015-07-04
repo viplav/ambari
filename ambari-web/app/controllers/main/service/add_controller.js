@@ -40,6 +40,8 @@ App.AddServiceController = App.WizardController.extend(App.AddSecurityConfigs, {
    */
   installClientQueueLength: 0,
 
+  areInstalledConfigGroupsLoaded: false,
+
   /**
    * All wizards data will be stored in this variable
    *
@@ -252,7 +254,7 @@ App.AddServiceController = App.WizardController.extend(App.AddSecurityConfigs, {
   loadMasterComponentHosts: function () {
     this._super();
     this.set('content.skipMasterStep', App.StackService.find().filterProperty('isSelected').filterProperty('hasMaster').everyProperty('isInstalled', true));
-    this.get('isStepDisabled').findProperty('step', 2).set('value', this.get('content.skipMasterStep'));
+    this.get('isStepDisabled').findProperty('step', 2).set('value', this.get('content.skipMasterStep') || (this.get('currentStep') == 7 || this.get('currentStep') == 8));
   },
 
   /**
@@ -298,6 +300,7 @@ App.AddServiceController = App.WizardController.extend(App.AddSecurityConfigs, {
     if (App.router.get('mainAdminKerberosController.securityEnabled')) {
       this.getDescriptorConfigs().then(function(properties) {
         self.set('kerberosDescriptorConfigs', properties);
+      }).always(function(){
         dfd.resolve();
       });
     } else {
@@ -523,8 +526,9 @@ App.AddServiceController = App.WizardController.extend(App.AddSecurityConfigs, {
    */
   installAdditionalClients: function () {
     var dfd = $.Deferred();
+    var count = 0;
     if (this.get('content.additionalClients.length') > 0) {
-      this.get('content.additionalClients').forEach(function (c, k) {
+      this.get('content.additionalClients').forEach(function (c) {
         if (c.hostNames.length > 0) {
           var queryStr = 'HostRoles/component_name='+ c.componentName + '&HostRoles/host_name.in(' + c.hostNames.join() + ')';
           this.get('installClietsQueue').addRequest({
@@ -536,7 +540,7 @@ App.AddServiceController = App.WizardController.extend(App.AddSecurityConfigs, {
               HostRoles: {
                 state: 'INSTALLED'
               },
-              counter: k,
+              counter: count++,
               deferred: dfd
             },
             success: 'installClientSuccess',
@@ -589,6 +593,16 @@ App.AddServiceController = App.WizardController.extend(App.AddSecurityConfigs, {
       this.set('skipConfigureIdentitiesStep', true);
       this.get('isStepDisabled').findProperty('step', 5).set('value', true);
     }
+  },
+
+  loadServiceConfigGroups: function () {
+    this._super();
+    this.set('areInstalledConfigGroupsLoaded', !Em.isNone(this.getDBProperty('serviceConfigGroups')));
+  },
+
+  clearStorageData: function () {
+    this._super();
+    this.set('areInstalledConfigGroupsLoaded', false);
   }
 
 });

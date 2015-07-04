@@ -21,9 +21,8 @@ package org.apache.ambari.view.hive;
 import org.apache.ambari.view.ViewInstanceDefinition;
 import org.apache.ambari.view.validation.ValidationResult;
 import org.apache.ambari.view.validation.Validator;
-
-import java.net.URI;
-import java.net.URISyntaxException;
+import org.apache.commons.validator.routines.RegexValidator;
+import org.apache.commons.validator.routines.UrlValidator;
 
 public class PropertyValidator implements Validator {
 
@@ -39,28 +38,7 @@ public class PropertyValidator implements Validator {
 
   @Override
   public ValidationResult validateProperty(String property, ViewInstanceDefinition viewInstanceDefinition, ValidationContext validationContext) {
-    if (property.equals(WEBHDFS_URL)) {
-      String webhdfsUrl = viewInstanceDefinition.getPropertyMap().get(WEBHDFS_URL);
-      if (validateURL(webhdfsUrl)) return new InvalidPropertyValidationResult(false, "Must be valid URL");
-    }
-
-    if (property.equals(HIVE_PORT)) {
-      String hivePort = viewInstanceDefinition.getPropertyMap().get(HIVE_PORT);
-      try {
-        int port = Integer.valueOf(hivePort);
-        if (port < 1 || port > 65535) {
-          return new InvalidPropertyValidationResult(false, "Must be from 1 to 65535");
-        }
-      } catch (NumberFormatException e) {
-        return new InvalidPropertyValidationResult(false, "Must be integer");
-      }
-    }
-
-    if (property.equals(YARN_ATS_URL)) {
-      String atsUrl = viewInstanceDefinition.getPropertyMap().get(YARN_ATS_URL);
-      if (validateURL(atsUrl)) return new InvalidPropertyValidationResult(false, "Must be valid URL");
-    }
-
+    // Validate non cluster associated properties
     if (property.equals(HIVE_AUTH)) {
       String auth = viewInstanceDefinition.getPropertyMap().get(HIVE_AUTH);
 
@@ -74,16 +52,63 @@ public class PropertyValidator implements Validator {
       }
     }
 
+    // if associated with cluster, no need to validate associated properties
+    String cluster = viewInstanceDefinition.getClusterHandle();
+    if (cluster != null) {
+      return ValidationResult.SUCCESS;
+    }
+
+    // Cluster associated properties
+    if (property.equals(WEBHDFS_URL)) {
+      String webhdfsUrl = viewInstanceDefinition.getPropertyMap().get(WEBHDFS_URL);
+      if (!validateHdfsURL(webhdfsUrl)) {
+        return new InvalidPropertyValidationResult(false, "Must be valid URL");
+      }
+    }
+
+    if (property.equals(HIVE_PORT)) {
+      String hivePort = viewInstanceDefinition.getPropertyMap().get(HIVE_PORT);
+      if (hivePort != null) {
+        try {
+          int port = Integer.valueOf(hivePort);
+          if (port < 1 || port > 65535) {
+            return new InvalidPropertyValidationResult(false, "Must be from 1 to 65535");
+          }
+        } catch (NumberFormatException e) {
+          return new InvalidPropertyValidationResult(false, "Must be integer");
+        }
+      }
+    }
+
+    if (property.equals(YARN_ATS_URL)) {
+      String atsUrl = viewInstanceDefinition.getPropertyMap().get(YARN_ATS_URL);
+      if (!validateHttpURL(atsUrl)) {
+        return new InvalidPropertyValidationResult(false, "Must be valid URL");
+      }
+    }
+
     return ValidationResult.SUCCESS;
   }
 
-  public boolean validateURL(String webhdfsUrl) {
-    try {
-      new URI(webhdfsUrl);
-    } catch (URISyntaxException e) {
-      return true;
-    }
-    return false;
+  /**
+   * Validates filesystem URL
+   * @param webhdfsUrl url
+   * @return is url valid
+   */
+  private boolean validateHdfsURL(String webhdfsUrl) {
+    String[] schemes = {"webhdfs", "hdfs", "s3", "file"};
+    return validateURL(webhdfsUrl, schemes);
+  }
+
+  private boolean validateHttpURL(String webhdfsUrl) {
+    String[] schemes = {"http", "https"};
+    return validateURL(webhdfsUrl, schemes);
+  }
+
+  private boolean validateURL(String webhdfsUrl, String[] schemes) {
+    RegexValidator authority = new RegexValidator(".*");
+    UrlValidator urlValidator = new UrlValidator(schemes, authority, UrlValidator.ALLOW_LOCAL_URLS);
+    return urlValidator.isValid(webhdfsUrl);
   }
 
   public static class InvalidPropertyValidationResult implements ValidationResult {

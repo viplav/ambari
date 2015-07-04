@@ -18,6 +18,8 @@ limitations under the License.
 
 """
 
+import os
+
 from resource_management.libraries.functions.format import format
 from resource_management.libraries.functions import get_unique_id_and_date
 from resource_management.core.resources import File
@@ -38,7 +40,7 @@ class ServiceCheckWindows(ServiceCheck):
     env.set_params(params)
     smoke_cmd = os.path.join(params.hdp_root,"Run-SmokeTests.cmd")
     service = "STORM"
-    Execute(format("cmd /C {smoke_cmd} {service}"), logoutput=True)
+    Execute(format("cmd /C {smoke_cmd} {service}", smoke_cmd=smoke_cmd, service=service), user=params.storm_user, logoutput=True)
 
 
 @OsFamilyImpl(os_family=OsFamilyImpl.DEFAULT)
@@ -50,7 +52,8 @@ class ServiceCheckDefault(ServiceCheck):
     unique = get_unique_id_and_date()
 
     File("/tmp/wordCount.jar",
-         content=StaticFile("wordCount.jar")
+         content=StaticFile("wordCount.jar"),
+         owner=params.storm_user
     )
 
     cmd = ""

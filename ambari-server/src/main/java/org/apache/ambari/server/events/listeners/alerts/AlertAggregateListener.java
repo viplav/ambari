@@ -18,8 +18,12 @@
 package org.apache.ambari.server.events.listeners.alerts;
 
 import java.text.MessageFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.ambari.server.EagerSingleton;
+import org.apache.ambari.server.events.AggregateAlertRecalculateEvent;
 import org.apache.ambari.server.events.AlertReceivedEvent;
 import org.apache.ambari.server.events.AlertStateChangeEvent;
 import org.apache.ambari.server.events.InitialAlertEvent;
@@ -33,7 +37,11 @@ import org.apache.ambari.server.state.alert.AggregateSource;
 import org.apache.ambari.server.state.alert.AlertDefinition;
 import org.apache.ambari.server.state.alert.Reporting;
 import org.apache.ambari.server.state.alert.SourceType;
+import org.apache.commons.lang.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import com.google.common.eventbus.AllowConcurrentEvents;
 import com.google.common.eventbus.Subscribe;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -51,6 +59,11 @@ import com.google.inject.Singleton;
 @EagerSingleton
 public class AlertAggregateListener {
 
+  /**
+   * Logger.
+   */
+  private final static Logger LOG = LoggerFactory.getLogger(AlertAggregateListener.class);
+
   @Inject
   private AlertsDAO m_alertsDao = null;
 
@@ -59,6 +72,13 @@ public class AlertAggregateListener {
    * when an aggregate alert is run.
    */
   private final AlertEventPublisher m_publisher;
+
+  /**
+   * A cache used to store the last state and text of an aggregate alert. We
+   * shouldn't need to fire new aggregate alerts unless the state or text has
+   * changed.
+   */
+  private Map<String, Alert> m_alertCache = new ConcurrentHashMap<String, Alert>();
 
   /**
    * Used for quick lookups of aggregate alerts.
@@ -77,7 +97,9 @@ public class AlertAggregateListener {
    */
   @Subscribe
   public void onInitialAlertEvent(InitialAlertEvent event) {
-    onAlertEvent(event.getClusterId(), event.getAlert());
+    LOG.debug("Received event {}", event);
+
+    onAlertEvent(event.getClusterId(), event.getAlert().getName());
   }
 
   /**
@@ -85,15 +107,44 @@ public class AlertAggregateListener {
    */
   @Subscribe
   public void onAlertStateChangeEvent(AlertStateChangeEvent event) {
-    onAlertEvent(event.getClusterId(), event.getAlert());
+    LOG.debug("Received event {}", event);
+
+    onAlertEvent(event.getClusterId(), event.getAlert().getName());
   }
 
   /**
-   * Calculates the aggregate alert state for the aggregated alert specified.
+   * Consumes an {@link AggregateAlertRecalculateEvent}. When a component is
+   * removed, there may be alerts that were removed which have aggregate alerts
+   * associated with this. This will ensure that all aggregates recalculate. It
+   * can also be used at any point to recalculate all of the aggregates for a
+   * cluster.
+   *
    */
-  private void onAlertEvent(long clusterId, Alert alert) {
-    AlertDefinition aggregateDefinition = m_aggregateMapping.getAggregateDefinition(
-        clusterId, alert.getName());
+  @Subscribe
+  public void onAlertStateChangeEvent(AggregateAlertRecalculateEvent event) {
+    LOG.debug("Received event {}", event);
+
+    List<String> alertNames = m_aggregateMapping.getAlertsWithAggregates(event.getClusterId());
+    for (String alertName : alertNames) {
+      onAlertEvent(event.getClusterId(), alertName);
+    }
+  }
+
+  /**
+   * Calculates the aggregate alert state if there is an aggregate alert for the
+   * specified alert.
+   * <p/>
+   * This method should not be decoratd with {@link AllowConcurrentEvents} since
+   * it would need extra locking around {@link #m_alertCache}.
+   *
+   * @param clusterId
+   *          the ID of the cluster.
+   * @param alertName
+   *          the name of the alert to use when looking up the aggregate.
+   */
+  private void onAlertEvent(long clusterId, String alertName) {
+    AlertDefinition aggregateDefinition = m_aggregateMapping.getAggregateDefinition(clusterId,
+        alertName);
 
     if (null == aggregateDefinition || null == m_alertsDao) {
       return;
@@ -150,10 +201,29 @@ public class AlertAggregateListener {
       }
     }
 
-    // make a new event and allow others to consume it
-    AlertReceivedEvent aggEvent = new AlertReceivedEvent(clusterId,
-        aggregateAlert);
+    // now that the alert has been created, see if we need to send it; only send
+    // alerts if the state or the text has changed
+    boolean sendAlertEvent = true;
+    Alert cachedAlert = m_alertCache.get(aggregateAlert.getName());
+    if (null != cachedAlert) {
+      AlertState cachedState = cachedAlert.getState();
+      AlertState alertState = aggregateAlert.getState();
+      String cachedText = cachedAlert.getText();
+      String alertText = aggregateAlert.getText();
 
-    m_publisher.publish(aggEvent);
+      if (cachedState == alertState && StringUtils.equals(cachedText, alertText)) {
+        sendAlertEvent = false;
+      }
+    }
+
+    // update the cache
+    m_alertCache.put(aggregateAlert.getName(), aggregateAlert);
+
+    // make a new event and allow others to consume it, but only if the
+    // aggregate has changed
+    if (sendAlertEvent) {
+      AlertReceivedEvent aggEvent = new AlertReceivedEvent(clusterId, aggregateAlert);
+      m_publisher.publish(aggEvent);
+    }
   }
 }

@@ -19,7 +19,7 @@ limitations under the License.
 """
 
 import status_params
-import json
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
 import os
 
 from ambari_commons.constants import AMBARI_SUDO_BINARY
@@ -29,11 +29,11 @@ from resource_management.libraries.resources.hdfs_resource import HdfsResource
 from resource_management.libraries.functions.default import default
 from resource_management.libraries.functions.format import format
 from resource_management.libraries.functions.version import format_hdp_stack_version
+from resource_management.libraries.functions.copy_tarball import STACK_VERSION_PATTERN
 from resource_management.libraries.functions import get_kinit_path
 from resource_management.libraries.script.script import Script
 from resource_management.libraries.functions.get_port_from_url import get_port_from_url
 from resource_management.libraries import functions
-
 
 # server configurations
 config = Script.get_config()
@@ -50,21 +50,31 @@ stack_version_unformatted = str(config['hostLevelParams']['stack_version'])
 hdp_stack_version_major = format_hdp_stack_version(stack_version_unformatted)
 stack_is_hdp21 = Script.is_hdp_stack_greater_or_equal("2.0") and Script.is_hdp_stack_less_than("2.2")
 
-# this is not avaliable on INSTALL action because hdp-select is not available
+# this is not available on INSTALL action because hdp-select is not available
 hdp_stack_version = functions.get_hdp_version('hive-server2')
 
-# New Cluster Stack Version that is defined during the RESTART of a Rolling Upgrade
+# New Cluster Stack Version that is defined during the RESTART of a Rolling Upgrade.
+# It cannot be used during the initial Cluser Install because the version is not yet known.
 version = default("/commandParams/version", None)
+
+# current host stack version
+current_version = default("/hostLevelParams/current_version", None)
+
+# Upgrade direction
+upgrade_direction = default("/commandParams/upgrade_direction", None)
 
 hadoop_bin_dir = "/usr/bin"
 hadoop_home = '/usr'
-hadoop_streeming_jars = '/usr/lib/hadoop-mapreduce/hadoop-streaming-*.jar'
 hive_bin = '/usr/lib/hive/bin'
 hive_lib = '/usr/lib/hive/lib/'
 hive_var_lib = '/var/lib/hive'
+
+# These tar folders were used in HDP 2.1
+hadoop_streaming_jars = '/usr/lib/hadoop-mapreduce/hadoop-streaming-*.jar'
 pig_tar_file = '/usr/share/HDP-webhcat/pig.tar.gz'
 hive_tar_file = '/usr/share/HDP-webhcat/hive.tar.gz'
 sqoop_tar_file = '/usr/share/HDP-webhcat/sqoop*.tar.gz'
+
 hive_specific_configs_supported = False
 hive_etc_dir_prefix = "/etc/hive"
 limits_conf_dir = "/etc/security/limits.d"
@@ -89,6 +99,11 @@ if Script.is_hdp_stack_greater_or_equal("2.1"):
   hcat_lib = '/usr/lib/hive-hcatalog/share/hcatalog'
   webhcat_bin_dir = '/usr/lib/hive-hcatalog/sbin'
 
+# Starting from HDP2.3 drop should be executed with purge suffix
+purge_tables = "false"
+if Script.is_hdp_stack_greater_or_equal("2.3"):
+  purge_tables = 'true'
+
 if Script.is_hdp_stack_greater_or_equal("2.2"):
   hive_specific_configs_supported = True
 
@@ -102,40 +117,36 @@ if Script.is_hdp_stack_greater_or_equal("2.2"):
   webhcat_bin_dir = '/usr/hdp/current/hive-webhcat/sbin'
   
   # --- Tarballs ---
+  # DON'T CHANGE THESE VARIABLE NAMES
+  # Values don't change from those in copy_tarball.py
+  hive_tar_source = "/usr/hdp/{0}/hive/hive.tar.gz".format(STACK_VERSION_PATTERN)
+  pig_tar_source = "/usr/hdp/{0}/pig/pig.tar.gz".format(STACK_VERSION_PATTERN)
+  hive_tar_dest_file = "/hdp/apps/{0}/hive/hive.tar.gz".format(STACK_VERSION_PATTERN)
+  pig_tar_dest_file = "/hdp/apps/{0}/pig/pig.tar.gz".format(STACK_VERSION_PATTERN)
 
-  hive_tar_source = config['configurations']['cluster-env']['hive_tar_source']
-  pig_tar_source = config['configurations']['cluster-env']['pig_tar_source']
-  hadoop_streaming_tar_source = config['configurations']['cluster-env']['hadoop-streaming_tar_source']
-  sqoop_tar_source = config['configurations']['cluster-env']['sqoop_tar_source']
-  mapreduce_tar_source = config['configurations']['cluster-env']['mapreduce_tar_source']
-  tez_tar_source = config['configurations']['cluster-env']['tez_tar_source']
-  
-  hive_tar_destination = config['configurations']['cluster-env']['hive_tar_destination_folder']  + "/" + os.path.basename(hive_tar_source)
-  pig_tar_destination = config['configurations']['cluster-env']['pig_tar_destination_folder'] + "/" + os.path.basename(pig_tar_source)
-  hadoop_streaming_tar_destination_dir = config['configurations']['cluster-env']['hadoop-streaming_tar_destination_folder']
-  sqoop_tar_destination_dir = config['configurations']['cluster-env']['sqoop_tar_destination_folder']
-  mapreduce_tar_destination = config['configurations']['cluster-env']['mapreduce_tar_destination_folder'] + "/" + os.path.basename(mapreduce_tar_source)
-  tez_tar_destination = config['configurations']['cluster-env']['tez_tar_destination_folder'] + "/" + os.path.basename(tez_tar_source)
+  hadoop_streaming_tar_source = "/usr/hdp/{0}/hadoop-mapreduce/hadoop-streaming.jar".format(STACK_VERSION_PATTERN)
+  sqoop_tar_source = "/usr/hdp/{0}/sqoop/sqoop.tar.gz".format(STACK_VERSION_PATTERN)
+  hadoop_streaming_tar_dest_dir = "/hdp/apps/{0}/mapreduce/".format(STACK_VERSION_PATTERN)
+  sqoop_tar_dest_dir = "/hdp/apps/{0}/sqoop/".format(STACK_VERSION_PATTERN)
 
   tarballs_mode = 0444
 else:
   # --- Tarballs ---
+  webhcat_apps_dir = "/apps/webhcat"
+
+  # In HDP 2.1, the tarballs were copied from and to different locations.
+  # DON'T CHANGE THESE VARIABLE NAMES
   hive_tar_source = hive_tar_file
   pig_tar_source = pig_tar_file
-  hadoop_streaming_tar_source = hadoop_streeming_jars
-  sqoop_tar_source = sqoop_tar_file
+  hive_tar_dest_file = webhcat_apps_dir + "/hive.tar.gz"
+  pig_tar_dest_file = webhcat_apps_dir + "/pig.tar.gz"
 
-  webhcat_apps_dir = "/apps/webhcat"
-  
-  hive_tar_destination = webhcat_apps_dir + "/" + os.path.basename(hive_tar_source)
-  pig_tar_destination = webhcat_apps_dir + "/" + os.path.basename(pig_tar_source)
-  hadoop_streaming_tar_destination_dir = webhcat_apps_dir
-  sqoop_tar_destination_dir = webhcat_apps_dir
+  hadoop_streaming_tar_source = hadoop_streaming_jars   # this contains *
+  sqoop_tar_source = sqoop_tar_file                     # this contains *
+  hadoop_streaming_tar_dest_dir = webhcat_apps_dir
+  sqoop_tar_dest_dir = webhcat_apps_dir
 
   tarballs_mode = 0755
-
-
-
 
 execute_path = os.environ['PATH'] + os.pathsep + hive_bin + os.pathsep + hadoop_bin_dir
 hive_metastore_user_name = config['configurations']['hive-site']['javax.jdo.option.ConnectionUserName']
@@ -211,7 +222,6 @@ hive_metastore_keytab_path =  config['configurations']['hive-site']['hive.metast
 hive_server2_keytab = config['configurations']['hive-site']['hive.server2.authentication.kerberos.keytab']
 
 #hive_env
-hive_dbroot = config['configurations']['hive-env']['hive_dbroot']
 hive_log_dir = config['configurations']['hive-env']['hive_log_dir']
 hive_pid_dir = status_params.hive_pid_dir
 hive_pid = status_params.hive_pid
@@ -253,6 +263,8 @@ if 'role' in config and config['role'] in ["HIVE_SERVER", "HIVE_METASTORE"]:
   hive_heapsize = config['configurations']['hive-site']['hive.heapsize']
 else:
   hive_heapsize = config['configurations']['hive-env']['hive.client.heapsize']
+
+hive_metastore_heapsize = config['configurations']['hive-env']['hive.metastore.heapsize']
 
 java64_home = config['hostLevelParams']['java_home']
 
@@ -337,12 +349,54 @@ hive_exclude_packages = []
 # There are other packages that contain /usr/share/java/mysql-connector-java.jar (like libmysql-java),
 # trying to install mysql-connector-java upon them can cause packages to conflict.
 if hive_use_existing_db:
-  hive_exclude_packages = ['mysql-connector-java', 'mysql', 'mysql-server']
+  hive_exclude_packages = ['mysql-connector-java', 'mysql', 'mysql-server',
+                           'mysql-community-release', 'mysql-community-server']
 else:
   if 'role' in config and config['role'] != "MYSQL_SERVER":
-    hive_exclude_packages = ['mysql', 'mysql-server']
+    hive_exclude_packages = ['mysql', 'mysql-server', 'mysql-community-release',
+                             'mysql-community-server']
   if os.path.exists(mysql_jdbc_driver_jar):
     hive_exclude_packages.append('mysql-connector-java')
+
+
+hive_site_config = dict(config['configurations']['hive-site'])
+########################################################
+############# Atlas related params #####################
+########################################################
+
+atlas_hosts = default('/clusterHostInfo/atlas_server_hosts', [])
+has_atlas = len(atlas_hosts) > 0
+classpath_addition = ""
+atlas_plugin_package = "atlas-metadata*-hive-plugin"
+
+if not has_atlas:
+  hive_exclude_packages.append(atlas_plugin_package)
+else:
+  # hive-site
+  hive_site_config['hive.cluster.name'] = config['clusterName']
+  atlas_config = config['configurations']['application-properties']
+  metadata_port = config['configurations']['atlas-env']['metadata_port']
+  metadata_host = atlas_hosts[0]
+  tls_enabled = config['configurations']['application-properties']['atlas.enableTLS']
+  if tls_enabled:
+    scheme = "https"
+  else:
+    scheme = "http"
+  hive_site_config['hive.hook.dgi.url'] = format('{scheme}://{metadata_host}:{metadata_port}')
+
+  if not 'hive.exec.post.hooks' in hive_site_config:
+    hive_site_config['hive.exec.post.hooks'] = 'org.apache.atlas.hive.hook.HiveHook'
+  else:
+    current_hook = hive_site_config['hive.exec.post.hooks']
+    hive_site_config['hive.exec.post.hooks'] =  format('{current_hook}, org.apache.atlas.hive.hook.HiveHook')
+
+  # client.properties
+  atlas_client_props = {}
+  auth_enabled = config['configurations']['application-properties'].get(
+    'atlas.http.authentication.enabled', False)
+  atlas_client_props['atlas.http.authentication.enabled'] = auth_enabled
+  if auth_enabled:
+    atlas_client_props['atlas.http.authentication.type'] = config['configurations']['application-properties'].get('atlas.http.authentication.type', 'simple')
 
 ########################################################
 ########### WebHCat related params #####################
@@ -366,6 +420,11 @@ webhcat_hdfs_user_mode = 0755
 #for create_hdfs_directory
 security_param = "true" if security_enabled else "false"
 
+
+
+hdfs_site = config['configurations']['hdfs-site']
+default_fs = config['configurations']['core-site']['fs.defaultFS']
+
 import functools
 #create partial functions with common arguments for every HdfsResource call
 #to create hdfs directory we need to call params.HdfsResource in code
@@ -376,23 +435,23 @@ HdfsResource = functools.partial(
   keytab = hdfs_user_keytab,
   kinit_path_local = kinit_path_local,
   hadoop_bin_dir = hadoop_bin_dir,
-  hadoop_conf_dir = hadoop_conf_dir
+  hadoop_conf_dir = hadoop_conf_dir,
+  principal_name = hdfs_principal_name,
+  hdfs_site = hdfs_site,
+  default_fs = default_fs
  )
 
 
 # ranger host
 ranger_admin_hosts = default("/clusterHostInfo/ranger_admin_hosts", [])
 has_ranger_admin = not len(ranger_admin_hosts) == 0
-if Script.is_hdp_stack_greater_or_equal("2.2"):
-  enable_ranger_hive = (config['configurations']['ranger-hive-plugin-properties']['ranger-hive-plugin-enabled'].lower() == 'yes')
+xml_configurations_supported = config['configurations']['ranger-env']['xml_configurations_supported']
 
 #ranger hive properties
 policymgr_mgr_url = config['configurations']['admin-properties']['policymgr_external_url']
 sql_connector_jar = config['configurations']['admin-properties']['SQL_CONNECTOR_JAR']
-xa_audit_db_flavor = config['configurations']['admin-properties']['DB_FLAVOR']
 xa_audit_db_name = config['configurations']['admin-properties']['audit_db_name']
 xa_audit_db_user = config['configurations']['admin-properties']['audit_db_user']
-xa_audit_db_password = config['configurations']['admin-properties']['audit_db_password']
 xa_db_host = config['configurations']['admin-properties']['db_host']
 repo_name = str(config['clusterName']) + '_hive'
 
@@ -400,7 +459,6 @@ jdbc_driver_class_name = config['configurations']['ranger-hive-plugin-properties
 common_name_for_certificate = config['configurations']['ranger-hive-plugin-properties']['common.name.for.certificate']
 
 repo_config_username = config['configurations']['ranger-hive-plugin-properties']['REPOSITORY_CONFIG_USERNAME']
-repo_config_password = config['configurations']['ranger-hive-plugin-properties']['REPOSITORY_CONFIG_PASSWORD']
 
 ranger_env = config['configurations']['ranger-env']
 ranger_plugin_properties = config['configurations']['ranger-hive-plugin-properties']
@@ -408,27 +466,39 @@ policy_user = config['configurations']['ranger-hive-plugin-properties']['policy_
 
 if security_enabled:
   hive_principal = hive_server_principal.replace('_HOST',hostname.lower())
-  
+
 #For curl command in ranger plugin to get db connector
 if has_ranger_admin:
-  if xa_audit_db_flavor and xa_audit_db_flavor.lower() == 'mysql':
+  enable_ranger_hive = (config['configurations']['hive-env']['hive_security_authorization'].lower() == 'ranger')
+  repo_config_password = unicode(config['configurations']['ranger-hive-plugin-properties']['REPOSITORY_CONFIG_PASSWORD'])
+  xa_audit_db_flavor = (config['configurations']['admin-properties']['DB_FLAVOR']).lower()
+
+  if xa_audit_db_flavor and xa_audit_db_flavor == 'mysql':
     ranger_jdbc_symlink_name = "mysql-jdbc-driver.jar"
     ranger_jdbc_jar_name = "mysql-connector-java.jar"
-  elif xa_audit_db_flavor and xa_audit_db_flavor.lower() == 'oracle':
+    audit_jdbc_url = format('jdbc:mysql://{xa_db_host}/{xa_audit_db_name}')
+    jdbc_driver = "com.mysql.jdbc.Driver"
+  elif xa_audit_db_flavor and xa_audit_db_flavor == 'oracle':
     ranger_jdbc_jar_name = "ojdbc6.jar"
     ranger_jdbc_symlink_name = "oracle-jdbc-driver.jar"
-  elif xa_audit_db_flavor and xa_audit_db_flavor.lower() == 'postgres':
+    audit_jdbc_url = format('jdbc:oracle:thin:\@//{xa_db_host}')
+    jdbc_driver = "oracle.jdbc.OracleDriver"
+  elif xa_audit_db_flavor and xa_audit_db_flavor == 'postgres':
     ranger_jdbc_jar_name = "postgresql.jar"
     ranger_jdbc_symlink_name = "postgres-jdbc-driver.jar"
-  elif xa_audit_db_flavor and xa_audit_db_flavor.lower() == 'sqlserver':
+    audit_jdbc_url = format('jdbc:postgresql://{xa_db_host}/{xa_audit_db_name}')
+    jdbc_driver = "org.postgresql.Driver"
+  elif xa_audit_db_flavor and xa_audit_db_flavor == 'mssql':
     ranger_jdbc_jar_name = "sqljdbc4.jar"
     ranger_jdbc_symlink_name = "mssql-jdbc-driver.jar"
+    audit_jdbc_url = format('jdbc:sqlserver://{xa_db_host};databaseName={xa_audit_db_name}')
+    jdbc_driver = "com.microsoft.sqlserver.jdbc.SQLServerDriver"
   
   ranger_downloaded_custom_connector = format("{tmp_dir}/{ranger_jdbc_jar_name}")
   
   ranger_driver_curl_source = format("{jdk_location}/{ranger_jdbc_symlink_name}")
   ranger_driver_curl_target = format("{java_share_dir}/{ranger_jdbc_jar_name}")
-  
+
   hive_ranger_plugin_config = {
     'username': repo_config_username,
     'password': repo_config_password,
@@ -445,3 +515,11 @@ if has_ranger_admin:
     'repositoryType': 'hive',
     'assetType': '3'
   }
+
+  xa_audit_db_password = unicode(config['configurations']['admin-properties']['audit_db_password'])
+  ranger_audit_solr_urls = config['configurations']['ranger-admin-site']['ranger.audit.solr.urls']
+  xa_audit_db_is_enabled = config['configurations']['ranger-hive-audit']['xasecure.audit.destination.db'] if xml_configurations_supported else None
+  ssl_keystore_password = unicode(config['configurations']['ranger-hive-policymgr-ssl']['xasecure.policymgr.clientssl.keystore.password']) if xml_configurations_supported else None
+  ssl_truststore_password = unicode(config['configurations']['ranger-hive-policymgr-ssl']['xasecure.policymgr.clientssl.truststore.password']) if xml_configurations_supported else None
+  credential_file = format('/etc/ranger/{repo_name}/cred.jceks') if xml_configurations_supported else None
+

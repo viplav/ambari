@@ -87,9 +87,11 @@ App.hostsMapper = App.QuickDataMapper.create({
       var stackVersions = [];
       var componentsIdMap = {};
       var cacheServices = App.cache['services'];
-      var loadedServiceComponentsMap = App.get('componentConfigMapper').buildServiceComponentMap(cacheServices);
-      var serviceToHostComponentIdMap = {};
+      var currentServiceComponentsMap = App.get('componentConfigMapper').buildServiceComponentMap(cacheServices);
+      var newHostComponentsMap = {};
       var selectedHosts = App.db.getSelectedHosts('mainHostController');
+      var stackUpgradeSupport = App.get('supports.stackUpgrade');
+      var clusterName = App.get('clusterName');
 
       json.items.forEach(function (item, index) {
         item.host_components = item.host_components || [];
@@ -103,13 +105,18 @@ App.hostsMapper = App.QuickDataMapper.create({
           component.host_name = item.Hosts.host_name;
           components.push(component);
           componentsIdMap[component.id] = component;
-          if (!serviceToHostComponentIdMap[serviceName]) {
-            serviceToHostComponentIdMap[serviceName] = [];
+          if (!newHostComponentsMap[serviceName]) {
+            newHostComponentsMap[serviceName] = [];
           }
-          serviceToHostComponentIdMap[serviceName].push(component.id);
+          if (!currentServiceComponentsMap[serviceName]) {
+            currentServiceComponentsMap[serviceName] = [];
+          }
+          if (!currentServiceComponentsMap[serviceName][component.id]) {
+            newHostComponentsMap[serviceName].push(component.id);
+          }
         }, this);
 
-        if (App.get('supports.stackUpgrade')) {
+        if (stackUpgradeSupport) {
           var currentVersion = item.stack_versions.findProperty('HostStackVersions.state', 'CURRENT');
           var currentVersionNumber = currentVersion && currentVersion.repository_versions
             ? Em.get(currentVersion.repository_versions[0], 'RepositoryVersions.repository_version') : '';
@@ -123,10 +130,10 @@ App.hostsMapper = App.QuickDataMapper.create({
 
         var alertsSummary = item.alerts_summary;
         item.critical_warning_alerts_count = alertsSummary ? (alertsSummary.CRITICAL || 0) + (alertsSummary.WARNING || 0) : 0;
-        item.cluster_id = App.get('clusterName');
+        item.cluster_id = clusterName;
         item.index = index;
 
-        if (App.get('supports.stackUpgrade')) {
+        if (stackUpgradeSupport) {
           this.config = $.extend(this.config, {
             stack_versions_key: 'stack_versions',
             stack_versions_type: 'array',
@@ -158,7 +165,7 @@ App.hostsMapper = App.QuickDataMapper.create({
         if (componentsIdMap[component.get('id')]) componentsIdMap[component.get('id')].display_name_advanced = component.get('displayNameAdvanced');
       });
       App.store.commit();
-      if (App.get('supports.stackUpgrade')) {
+      if (stackUpgradeSupport) {
         App.store.loadMany(App.HostStackVersion, stackVersions);
       }
       App.store.loadMany(App.HostComponent, components);
@@ -168,8 +175,23 @@ App.hostsMapper = App.QuickDataMapper.create({
         App.router.set('mainHostController.filteredCount', itemTotal);
       }
       //bind host-components with service records
-      App.get('componentConfigMapper').addNewHostComponents(loadedServiceComponentsMap, serviceToHostComponentIdMap, cacheServices);
+      App.get('componentConfigMapper').addNewHostComponents(newHostComponentsMap, cacheServices);
     }
     console.timeEnd('App.hostsMapper execution time');
+  },
+
+  /**
+   * set metric fields of hosts
+   * @param {object} data
+   */
+  setMetrics: function (data) {
+    this.get('model').find().forEach(function (host) {
+      if (host.get('isRequested')) {
+        var hostMetrics = data.items.findProperty('Hosts.host_name', host.get('hostName'));
+        host.set('diskTotal', Em.get(hostMetrics, 'metrics.disk.disk_total'));
+        host.set('diskFree', Em.get(hostMetrics, 'metrics.disk.disk_free'));
+        host.set('loadOne', Em.get(hostMetrics, 'metrics.load.load_one'));
+      }
+    }, this);
   }
 });

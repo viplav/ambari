@@ -26,15 +26,16 @@ App.stackConfigPropertiesMapper = App.QuickDataMapper.create({
     file_name: 'StackConfigurations.type',
     description: 'StackConfigurations.property_description',
     value: 'StackConfigurations.property_value',
-    default_value: 'StackConfigurations.property_value',
+    recommended_value: 'StackConfigurations.property_value',
     type: 'StackConfigurations.property_type',
     service_name: 'StackConfigurations.service_name',
     stack_name: 'StackConfigurations.stack_name',
     stack_version: 'StackConfigurations.stack_version',
     property_depended_by: 'StackConfigurations.property_depended_by',
+    property_depends_on: 'StackConfigurations.property_depends_on',
     value_attributes: 'StackConfigurations.property_value_attributes',
     is_final: 'default_is_final',
-    default_is_final: 'default_is_final',
+    recommended_is_final: 'default_is_final',
     supports_final: 'supports_final',
     widget: 'widget',
     /**** ui properties ***/
@@ -52,7 +53,7 @@ App.stackConfigPropertiesMapper = App.QuickDataMapper.create({
         stackItem.configurations.forEach(function(config) {
           var configType = App.config.getConfigTagFromFileName(config.StackConfigurations.type);
           config.id = config.StackConfigurations.property_name + '_' + configType;
-          config.default_is_final = config.StackConfigurations.final === "true";
+          config.recommended_is_final = config.StackConfigurations.final === "true";
           config.supports_final = !!configTypeInfo[configType] && configTypeInfo[configType].supports.final === "true";
           // Map from /dependencies to property_depended_by
           config.StackConfigurations.property_depended_by = [];
@@ -74,6 +75,10 @@ App.stackConfigPropertiesMapper = App.QuickDataMapper.create({
         }, this);
       }, this);
       App.store.loadMany(this.get('model'), configs);
+
+      App.StackService.find().filterProperty('id').forEach(function(service) {
+        this.setDependentServices(service);
+      }, this);
     }
     console.timeEnd('stackConfigMapper execution time');
   },
@@ -106,5 +111,44 @@ App.stackConfigPropertiesMapper = App.QuickDataMapper.create({
    */
   getUIConfig: function(propertyName, siteName) {
     return App.config.get('preDefinedSiteProperties').filterProperty('filename', siteName).findProperty('name', propertyName);
+  },
+
+  /**
+   * runs <code>setDependentServicesAndFileNames<code>
+   * for stack properties for current service
+   * @method loadDependentConfigs
+   */
+  setDependentServices: function(service) {
+    App.StackConfigProperty.find().filterProperty('serviceName', service.get('serviceName')).forEach(function(stackProperty) {
+      if (stackProperty.get('propertyDependedBy.length')) {
+        this._setDependentServices(stackProperty, 'propertyDependedBy', service);
+      }
+      if (stackProperty.get('propertyDependsOn.length')) {
+        this._setDependentServices(stackProperty, 'propertyDependsOn', service);
+      }
+    }, this);
+  },
+  /**
+   * defines service names for configs and set them to <code>dependentServiceNames<code>
+   * @param {App.StackConfigProperty} stackProperty
+   * @param {String} [key='propertyDependedBy'] - attribute to check dependent configs
+   * @param service
+   * @private
+   */
+  _setDependentServices: function(stackProperty, key, service) {
+    key = key || 'propertyDependedBy';
+    if (stackProperty.get(key + '.length') > 0) {
+      stackProperty.get(key).forEach(function(dependent) {
+        var tag = App.config.getConfigTagFromFileName(dependent.type);
+        /** setting dependent serviceNames (without current serviceName) **/
+        var dependentProperty = App.StackConfigProperty.find(dependent.name + "_" + tag);
+        if (dependentProperty) {
+          if (dependentProperty.get('serviceName') && dependentProperty.get('serviceName') != service.get('serviceName') && !service.get('dependentServiceNames').contains(dependentProperty.get('serviceName'))) {
+            service.set('dependentServiceNames', service.get('dependentServiceNames').concat([dependentProperty.get('serviceName')]));
+          }
+          this._setDependentServices(dependentProperty, key, service);
+        }
+      }, this);
+    }
   }
 });

@@ -136,7 +136,7 @@ public class SliderAppsViewControllerImpl implements SliderAppsViewController {
           clusterName = clusterName.substring(0, clusterName.length() - 1);
         }
         AmbariHttpClient ambariClient = new AmbariHttpClient(ambariUrl,
-            ambariUsername, ambariPassword);
+            ambariUsername, ambariPassword, viewContext);
         try {
           AmbariClusterInfo clusterInfo = ambariClient.getClusterInfo();
           if (clusterInfo!=null && clusterName.equals(clusterInfo.getName())) {
@@ -292,7 +292,7 @@ public class SliderAppsViewControllerImpl implements SliderAppsViewController {
                     + clusterName + "] was not found on Ambari server"));
           }
         } catch (Throwable e) {
-          logger.warn("Exception determining view status", e);
+          logger.error("Exception determining view status", e);
           String message = e.getClass().getName() + ": " + e.getMessage();
           if (e instanceof RuntimeException && e.getCause() != null) {
             message = e.getCause().getClass().getName() + ": " + e.getMessage();
@@ -659,7 +659,7 @@ public class SliderAppsViewControllerImpl implements SliderAppsViewController {
       }
 
       SliderAppMasterClient sliderAppClient = yarnApp.getTrackingUrl() == null ? null
-          : new SliderAppMasterClient(yarnApp.getTrackingUrl());
+          : new SliderAppMasterClient(yarnApp.getTrackingUrl(), viewContext);
       SliderAppMasterData appMasterData = null;
       Map<String, String> quickLinks = new HashMap<String, String>();
       Set<String> metrics = new HashSet<String>();
@@ -1008,6 +1008,10 @@ public class SliderAppsViewControllerImpl implements SliderAppsViewController {
             JsonElement componentJson = resourcesObj.get(component.getName());
             if (componentJson != null && componentJson.isJsonObject()) {
               JsonObject componentObj = componentJson.getAsJsonObject();
+              if (componentObj.has("yarn.component.instances")) {
+                component.setInstanceCount(Integer.parseInt(componentObj.get(
+                    "yarn.component.instances").getAsString()));
+              }
               if (componentObj.has("yarn.role.priority")) {
                 component.setPriority(Integer.parseInt(componentObj.get("yarn.role.priority").getAsString()));
               }
@@ -1182,6 +1186,7 @@ public class SliderAppsViewControllerImpl implements SliderAppsViewController {
       final String appName = json.get("name").getAsString();
       final String queueName = json.has("queue") ? json.get("queue").getAsString() : null;
       final boolean securityEnabled = Boolean.valueOf(getHadoopConfigs().get("security_enabled"));
+      final boolean twoWaySSlEnabled = json.has("twoWaySSLEnabled") ? Boolean.valueOf(json.get("twoWaySSLEnabled").getAsString()) : false;
       JsonObject configs = json.get("typeConfigs").getAsJsonObject();
       JsonObject resourcesObj = json.get("resources").getAsJsonObject();
       JsonArray componentsArray = resourcesObj.get("components").getAsJsonArray();
@@ -1213,7 +1218,7 @@ public class SliderAppsViewControllerImpl implements SliderAppsViewController {
       appCreateFolder.mkdirs();
       File appConfigJsonFile = new File(appCreateFolder, "appConfig.json");
       File resourcesJsonFile = new File(appCreateFolder, "resources.json");
-      saveAppConfigs(configs, componentsArray, appName, sliderAppType.getTypeName(), securityEnabled, appConfigJsonFile);
+      saveAppConfigs(configs, componentsArray, appName, sliderAppType.getTypeName(), securityEnabled, twoWaySSlEnabled, appConfigJsonFile);
       saveAppResources(resourcesObj, resourcesJsonFile);
 
       final ActionCreateArgs createArgs = new ActionCreateArgs();
@@ -1371,7 +1376,7 @@ public class SliderAppsViewControllerImpl implements SliderAppsViewController {
   }
 
   private void saveAppConfigs(JsonObject configs, JsonArray componentsArray,
-      String appName, String appType, boolean securityEnabled, File appConfigJsonFile) throws IOException {
+      String appName, String appType, boolean securityEnabled, boolean twoWaySSlEnabled, File appConfigJsonFile) throws IOException {
     JsonObject appConfigs = new JsonObject();
     appConfigs.addProperty("schema", "http://example.org/specification/v2.0.0");
     appConfigs.add("metadata", new JsonObject());
@@ -1398,7 +1403,17 @@ public class SliderAppsViewControllerImpl implements SliderAppsViewController {
       appMasterComponent.add("slider.am.login.keytab.name", new JsonPrimitive(fileName));
       appMasterComponent.add("slider.hdfs.keytab.dir", new JsonPrimitive(".slider/keytabs/" + appName));
       componentsObj.add("slider-appmaster", appMasterComponent);
-    }
+   }
+   if (twoWaySSlEnabled) {
+     JsonObject appMasterComponent;
+     if (componentsObj.has("slider-appmaster")) {
+       appMasterComponent = componentsObj.get("slider-appmaster").getAsJsonObject();
+     } else {
+       appMasterComponent = new JsonObject();
+       componentsObj.add("slider-appmaster", appMasterComponent);
+     }
+     appMasterComponent.add("ssl.server.client.auth", new JsonPrimitive("true"));
+   }
    appConfigs.add("components", componentsObj);
     String jsonString = new GsonBuilder().setPrettyPrinting().create().toJson(appConfigs);
     FileOutputStream fos = null;

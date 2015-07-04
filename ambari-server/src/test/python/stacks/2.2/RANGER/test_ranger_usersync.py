@@ -30,7 +30,7 @@ class TestRangerUsersync(RMFTestCase):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/ranger_usersync.py",
                    classname = "RangerUsersync",
                    command = "configure",
-                   config_file="default.json",
+                   config_file="ranger-admin-default.json",
                    hdp_stack_version = self.STACK_VERSION,
                    target = RMFTestCase.TARGET_COMMON_SERVICES
     )
@@ -41,12 +41,13 @@ class TestRangerUsersync(RMFTestCase):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/ranger_usersync.py",
                    classname = "RangerUsersync",
                    command = "start",
-                   config_file="default.json",
+                   config_file="ranger-admin-default.json",
                    hdp_stack_version = self.STACK_VERSION,
                    target = RMFTestCase.TARGET_COMMON_SERVICES
     )
     self.assert_configure_default()
     self.assertResourceCalled('Execute', ('/usr/bin/ranger-usersync-start',),
+        environment = {'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_45'},
         not_if = 'ps -ef | grep proc_rangerusersync | grep -v grep',
         sudo = True,
     )
@@ -56,12 +57,13 @@ class TestRangerUsersync(RMFTestCase):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/ranger_usersync.py",
                    classname = "RangerUsersync",
                    command = "stop",
-                   config_file="default.json",
+                   config_file="ranger-admin-default.json",
                    hdp_stack_version = self.STACK_VERSION,
                    target = RMFTestCase.TARGET_COMMON_SERVICES
     )
     self.assertResourceCalled('Execute', ('/usr/bin/ranger-usersync-stop',),
-        sudo = True,
+	    environment = {'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_45'},
+        sudo = True
     )
     self.assertNoMoreResources()
     
@@ -69,7 +71,7 @@ class TestRangerUsersync(RMFTestCase):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/ranger_usersync.py",
                    classname = "RangerUsersync",
                    command = "configure",
-                   config_file="secured.json",
+                   config_file="ranger-admin-secured.json",
                    hdp_stack_version = self.STACK_VERSION,
                    target = RMFTestCase.TARGET_COMMON_SERVICES
     )
@@ -80,14 +82,15 @@ class TestRangerUsersync(RMFTestCase):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/ranger_usersync.py",
                    classname = "RangerUsersync",
                    command = "start",
-                   config_file="secured.json",
+                   config_file="ranger-admin-secured.json",
                    hdp_stack_version = self.STACK_VERSION,
                    target = RMFTestCase.TARGET_COMMON_SERVICES
     )
     self.assert_configure_secured()
     self.assertResourceCalled('Execute', ('/usr/bin/ranger-usersync-start',),
+        environment= {'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_45'},
         not_if = 'ps -ef | grep proc_rangerusersync | grep -v grep',
-        sudo = True,
+        sudo = True
     )
     self.assertNoMoreResources()
     
@@ -95,12 +98,13 @@ class TestRangerUsersync(RMFTestCase):
     self.executeScript(self.COMMON_SERVICES_PACKAGE_DIR + "/scripts/ranger_usersync.py",
                    classname = "RangerUsersync",
                    command = "stop",
-                   config_file="secured.json",
+                   config_file="ranger-admin-secured.json",
                    hdp_stack_version = self.STACK_VERSION,
                    target = RMFTestCase.TARGET_COMMON_SERVICES
     )
     self.assertResourceCalled('Execute', ('/usr/bin/ranger-usersync-stop',),
-        sudo = True,
+	    environment = {'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_45'},
+        sudo = True
     )
     self.assertNoMoreResources()
     
@@ -114,8 +118,11 @@ class TestRangerUsersync(RMFTestCase):
                        target = RMFTestCase.TARGET_COMMON_SERVICES)
 
     self.assertTrue(setup_usersync_mock.called)
-    self.assertResourceCalled("Execute", ("/usr/bin/ranger-usersync-stop",), sudo=True)
-    self.assertResourceCalled("Execute", "hdp-select set ranger-usersync 2.2.2.0-2399")
+    self.assertResourceCalled("Execute", ("/usr/bin/ranger-usersync-stop",),
+                              environment = {'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_67'},
+                              sudo = True
+    )
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'ranger-usersync', '2.2.2.0-2399'), sudo=True)
 
   @patch("setup_ranger.setup_usersync")
   def test_upgrade_23(self, setup_usersync_mock):
@@ -135,8 +142,10 @@ class TestRangerUsersync(RMFTestCase):
                        mocks_dict = mocks_dict)
 
     self.assertTrue(setup_usersync_mock.called)
-    self.assertResourceCalled("Execute", ("/usr/bin/ranger-usersync-stop",), sudo=True)
-    self.assertResourceCalled("Execute", "hdp-select set ranger-usersync 2.3.0.0-1234")
+    self.assertResourceCalled("Execute", ("/usr/bin/ranger-usersync-stop",),
+                              environment = {'JAVA_HOME': u'/usr/jdk64/jdk1.7.0_67'},
+                              sudo = True)
+    self.assertResourceCalled("Execute", ('hdp-select', 'set', 'ranger-usersync', '2.3.0.0-1234'), sudo=True)
 
     self.assertEquals(3, mocks_dict['call'].call_count)
     self.assertEquals(

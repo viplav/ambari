@@ -19,13 +19,12 @@ limitations under the License.
 import status_params
 
 from resource_management.libraries.resources.hdfs_resource import HdfsResource
-from resource_management.libraries.functions import conf_select
+from resource_management.libraries.functions import hdp_select
 from resource_management.libraries.functions import format
 from resource_management.libraries.functions.version import format_hdp_stack_version
 from resource_management.libraries.functions.default import default
 from resource_management.libraries.functions import get_kinit_path
 from resource_management.libraries.script.script import Script
-
 
 config = Script.get_config()
 
@@ -39,7 +38,8 @@ hdp_stack_version = format_hdp_stack_version(stack_version_unformatted)
 etc_prefix_dir = "/etc/falcon"
 
 # hadoop params
-hadoop_bin_dir = conf_select.get_hadoop_dir("bin")
+hadoop_home_dir = hdp_select.get_hadoop_dir("home")
+hadoop_bin_dir = hdp_select.get_hadoop_dir("bin")
 
 if Script.is_hdp_stack_greater_or_equal("2.2"):
 
@@ -101,6 +101,16 @@ hdfs_user = config['configurations']['hadoop-env']['hdfs_user']
 hdfs_principal_name = config['configurations']['hadoop-env']['hdfs_principal_name']
 smokeuser_principal =  config['configurations']['cluster-env']['smokeuser_principal_name']
 kinit_path_local = get_kinit_path(default('/configurations/kerberos-env/executable_search_paths', None))
+
+supports_hive_dr = config['configurations']['falcon-env']['supports_hive_dr']
+local_data_mirroring_dir = "/usr/hdp/current/falcon-server/data-mirroring"
+dfs_data_mirroring_dir = "/apps/data-mirroring"
+
+
+
+hdfs_site = config['configurations']['hdfs-site']
+default_fs = config['configurations']['core-site']['fs.defaultFS']
+
 import functools
 #create partial functions with common arguments for every HdfsResource call
 #to create/delete hdfs directory/file/copyfromlocal we need to call params.HdfsResource in code
@@ -111,6 +121,9 @@ HdfsResource = functools.partial(
   keytab = hdfs_user_keytab,
   kinit_path_local = kinit_path_local,
   hadoop_bin_dir = hadoop_bin_dir,
-  hadoop_conf_dir = hadoop_conf_dir
+  hadoop_conf_dir = hadoop_conf_dir,
+  principal_name = hdfs_principal_name,
+  hdfs_site = hdfs_site,
+  default_fs = default_fs
  )
 

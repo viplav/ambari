@@ -49,7 +49,7 @@ hdp22properties.push(
     "id": "site property",
     "name": "hive.zookeeper.quorum",
     "displayName": "hive.zookeeper.quorum",
-    "defaultValue": "localhost:2181",
+    "recommendedValue": "localhost:2181",
     "displayType": "multiLine",
     "isRequired": false,
     "isVisible": true,
@@ -61,7 +61,7 @@ hdp22properties.push(
     "id": "site property",
     "name": "hadoop.registry.rm.enabled",
     "displayName": "hadoop.registry.rm.enabled",
-    "defaultValue": "false",
+    "recommendedValue": "false",
     "displayType": "checkbox",
     "isVisible": true,
     "serviceName": "YARN",
@@ -72,11 +72,29 @@ hdp22properties.push(
     "id": "site property",
     "name": "hadoop.registry.zk.quorum",
     "displayName": "hadoop.registry.zk.quorum",
-    "defaultValue": "localhost:2181",
+    "recommendedValue": "localhost:2181",
     "isVisible": true,
     "serviceName": "YARN",
     "filename": "yarn-site.xml",
     "category": "Advanced yarn-site"
+  },
+  {
+    "id": "site property",
+    "name": "yarn.timeline-service.leveldb-state-store.path",
+    "displayName": "yarn.timeline-service.leveldb-state-store.path",
+    "defaultDirectory": "/hadoop/yarn/timeline",
+    "category": "APP_TIMELINE_SERVER",
+    "displayType": "directory",
+    "serviceName": "YARN",
+    "filename": "yarn-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "yarn.timeline-service.state-store-class",
+    "displayName": "yarn.timeline-service.state-store-class",
+    "category": "APP_TIMELINE_SERVER",
+    "serviceName": "YARN",
+    "filename": "yarn-site.xml"
   },
   {
     "id": "site property",
@@ -88,6 +106,26 @@ hdp22properties.push(
     "serviceName": "HDFS",
     "filename": "hdfs-site.xml",
     "index": 1
+  },
+  {
+    "id": "site property",
+    "name": "hadoop.security.key.provider.path",
+    "displayName": "hadoop.security.key.provider.path",
+    "defaultValue": "",
+    "isRequired": false,
+    "category": "Advanced core-site",
+    "serviceName": "HDFS",
+    "filename": "core-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "dfs.encryption.key.provider.uri",
+    "displayName": "dfs.encryption.key.provider.uri",
+    "defaultValue": "",
+    "isRequired": false,
+    "category": "Advanced hdfs-site",
+    "serviceName": "HDFS",
+    "filename": "hdfs-site.xml"
   },
   {
     "id": "site property",
@@ -140,16 +178,8 @@ hdp22properties.push(
     "id": "site property",
     "name": "policy_user",
     "value": "ambari-qa",
-    "defaultValue": "ambari-qa",
+    "recommendedValue": "ambari-qa",
     "displayName": "policy User for HDFS",
-    "filename": "ranger-hdfs-plugin-properties.xml",
-    "category": "Advanced ranger-hdfs-plugin-properties",
-    "serviceName": "HDFS"
-  },
-  {
-    "id": "site property",
-    "name": "REPOSITORY_CONFIG_PASSWORD",
-    "displayName": "Ranger repository config password",
     "filename": "ranger-hdfs-plugin-properties.xml",
     "category": "Advanced ranger-hdfs-plugin-properties",
     "serviceName": "HDFS"
@@ -184,29 +214,10 @@ hdp22properties.push(
   },
   {
     "id": "site property",
-    "name": "ranger-hive-plugin-enabled",
-    "displayType": "checkbox",
-    "displayName": "Enable Ranger for HIVE",
-    "isOverridable": false,
-    "filename": "ranger-hive-plugin-properties.xml",
-    "category": "Advanced ranger-hive-plugin-properties",
-    "serviceName": "HIVE",
-    "index": 1
-  },
-  {
-    "id": "site property",
     "name": "policy_user",
     "value": "ambari-qa",
-    "defaultValue": "ambari-qa",
+    "recommendedValue": "ambari-qa",
     "displayName": "policy User for HIVE",
-    "filename": "ranger-hive-plugin-properties.xml",
-    "category": "Advanced ranger-hive-plugin-properties",
-    "serviceName": "HIVE"
-  },
-  {
-    "id": "site property",
-    "name": "REPOSITORY_CONFIG_PASSWORD",
-    "displayName": "Ranger repository config password",
     "filename": "ranger-hive-plugin-properties.xml",
     "category": "Advanced ranger-hive-plugin-properties",
     "serviceName": "HIVE"
@@ -222,7 +233,7 @@ hdp22properties.push(
   {
     "id": "site property",
     "name": "UPDATE_XAPOLICIES_ON_GRANT_REVOKE",
-    "defaultValue": true,
+    "recommendedValue": true,
     "displayType": "checkbox",
     "displayName": "Should Hive GRANT/REVOKE update XA policies?",
     "filename": "ranger-hive-plugin-properties.xml",
@@ -264,16 +275,8 @@ hdp22properties.push(
     "id": "site property",
     "name": "policy_user",
     "value": "ambari-qa",
-    "defaultValue": "ambari-qa",
+    "recommendedValue": "ambari-qa",
     "displayName": "policy User for HBASE",
-    "filename": "ranger-hbase-plugin-properties.xml",
-    "category": "Advanced ranger-hbase-plugin-properties",
-    "serviceName": "HBASE"
-  },
-  {
-    "id": "site property",
-    "name": "REPOSITORY_CONFIG_PASSWORD",
-    "displayName": "Ranger repository config password",
     "filename": "ranger-hbase-plugin-properties.xml",
     "category": "Advanced ranger-hbase-plugin-properties",
     "serviceName": "HBASE"
@@ -289,7 +292,7 @@ hdp22properties.push(
   {
     "id": "site property",
     "name": "UPDATE_XAPOLICIES_ON_GRANT_REVOKE",
-    "defaultValue": true,
+    "recommendedValue": true,
     "displayName": "Should HBase GRANT/REVOKE update XA policies?",
     "displayType": "checkbox",
     "filename": "ranger-hbase-plugin-properties.xml",
@@ -331,16 +334,8 @@ hdp22properties.push(
     "id": "site property",
     "name": "policy_user",
     "value": "ambari-qa",
-    "defaultValue": "ambari-qa",
+    "recommendedValue": "ambari-qa",
     "displayName": "policy User for STORM",
-    "filename": "ranger-storm-plugin-properties.xml",
-    "category": "Advanced ranger-storm-plugin-properties",
-    "serviceName": "STORM"
-  },
-  {
-    "id": "site property",
-    "name": "REPOSITORY_CONFIG_PASSWORD",
-    "displayName": "Ranger repository config password",
     "filename": "ranger-storm-plugin-properties.xml",
     "category": "Advanced ranger-storm-plugin-properties",
     "serviceName": "STORM"
@@ -388,16 +383,8 @@ hdp22properties.push(
     "id": "site property",
     "name": "policy_user",
     "value": "ambari-qa",
-    "defaultValue": "ambari-qa",
+    "recommendedValue": "ambari-qa",
     "displayName": "policy User for KNOX",
-    "filename": "ranger-knox-plugin-properties.xml",
-    "category": "Advanced ranger-knox-plugin-properties",
-    "serviceName": "KNOX"
-  },
-  {
-    "id": "site property",
-    "name": "REPOSITORY_CONFIG_PASSWORD",
-    "displayName": "Ranger repository config password",
     "filename": "ranger-knox-plugin-properties.xml",
     "category": "Advanced ranger-knox-plugin-properties",
     "serviceName": "KNOX"
@@ -415,7 +402,7 @@ hdp22properties.push(
     "id": "site property",
     "name": "spark.driver.extraJavaOptions",
     "displayName": "spark.driver.extraJavaOptions",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isRequired": false,
     "category": "Advanced spark-defaults",
     "serviceName": "SPARK",
@@ -425,7 +412,7 @@ hdp22properties.push(
     "id": "site property",
     "name": "spark.yarn.am.extraJavaOptions",
     "displayName": "spark.yarn.am.extraJavaOptions",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isRequired": false,
     "category": "Advanced spark-defaults",
     "serviceName": "SPARK",
@@ -436,7 +423,7 @@ hdp22properties.push(
     "id": "site property",
     "name": "ranger_admin_password",
     "displayName": "Ranger Admin user's password for Ambari",
-    "defaultValue": "ambari",
+    "recommendedValue": "ambari",
     "isReconfigurable": true,
     "displayType": "password",
     "isOverridable": false,
@@ -449,7 +436,7 @@ hdp22properties.push(
     "id": "site property",
     "name": "SQL_CONNECTOR_JAR",
     "displayName": "Location of Sql Connector Jar",
-    "defaultValue": "/usr/share/java/mysql-connector-java.jar",
+    "recommendedValue": "/usr/share/java/mysql-connector-java.jar",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
@@ -463,7 +450,7 @@ hdp22properties.push(
     "name": "DB_FLAVOR",
     "displayName": "DB FLAVOR",
     "value": "MYSQL",
-    "defaultValue": "MYSQL",
+    "recommendedValue": "MYSQL",
     "isReconfigurable": true,
     "options": [
       {
@@ -479,13 +466,14 @@ hdp22properties.push(
     "isVisible": true,
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
-    "category": "DBSettings"
+    "category": "DBSettings",
+    "index": 1
   },
   {
     "id": "site property",
     "name": "SQL_COMMAND_INVOKER",
     "displayName": "SQL Command Invoker",
-    "defaultValue": "mysql",
+    "recommendedValue": "mysql",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
@@ -498,125 +486,134 @@ hdp22properties.push(
     "id": "site property",
     "name": "db_host",
     "displayName": "Ranger DB host",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
     "isVisible": true,
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
-    "category": "DBSettings"
+    "category": "DBSettings",
+    "index": 2
   },
   {
     "id": "site property",
     "name": "db_root_user",
     "displayName": "Ranger DB root user",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
     "isVisible": true,
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
-    "category": "DBSettings"
+    "category": "DBSettings",
+    "index": 5
   },
   {
     "id": "site property",
     "name": "db_root_password",
     "displayName": "Ranger DB root password",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "displayType": "password",
     "isOverridable": false,
     "isVisible": true,
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
-    "category": "DBSettings"
+    "category": "DBSettings",
+    "index": 6
   },
   {
     "id": "site property",
     "name": "db_name",
     "displayName": "Ranger DB name",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
     "isVisible": true,
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
-    "category": "DBSettings"
+    "category": "DBSettings",
+    "index": 7
   },
 
   {
     "id": "site property",
     "name": "db_user",
     "displayName": "Ranger DB username",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
     "isVisible": true,
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
-    "category": "DBSettings"
+    "category": "DBSettings",
+    "index": 3
   },
   {
     "id": "site property",
     "name": "db_password",
     "displayName": "Ranger DB password",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "displayType": "password",
     "isOverridable": false,
     "isVisible": true,
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
-    "category": "DBSettings"
+    "category": "DBSettings",
+    "index": 4
   },
   {
     "id": "site property",
     "name": "audit_db_name",
     "displayName": "Ranger Audit DB name",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
     "isVisible": true,
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
-    "category": "DBSettings"
+    "category": "DBSettings",
+    "index": 11
   },
   {
     "id": "site property",
     "name": "audit_db_user",
     "displayName": "Ranger Audit DB username",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
     "isVisible": true,
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
-    "category": "DBSettings"
+    "category": "DBSettings",
+    "index": 12
   },
   {
     "id": "site property",
     "name": "audit_db_password",
     "displayName": "Ranger Audit DB password",
-    "defaultValue": "",
+    "recommendedValue": "",
     "isReconfigurable": true,
     "displayType": "password",
     "isOverridable": false,
     "isVisible": true,
     "serviceName": "RANGER",
     "filename": "admin-properties.xml",
-    "category": "DBSettings"
+    "category": "DBSettings",
+    "index": 13
   },
   {
     "id": "puppet var",
     "name": "policymgr_external_url",
     "displayName": "External URL",
-    "defaultValue": "http://localhost:6080",
+    "recommendedValue": "http://localhost:6080",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
@@ -629,7 +626,7 @@ hdp22properties.push(
     "id": "puppet var",
     "name": "policymgr_http_enabled",
     "displayName": "HTTP enabled",
-    "defaultValue": true,
+    "recommendedValue": true,
     "isReconfigurable": true,
     "displayType": "checkbox",
     "isOverridable": false,
@@ -642,7 +639,7 @@ hdp22properties.push(
     "id": "puppet var",
     "name": "ranger_user",
     "displayName": "Used to create user and assign permission",
-    "defaultValue": "ranger",
+    "recommendedValue": "ranger",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
@@ -655,7 +652,7 @@ hdp22properties.push(
     "id": "puppet var",
     "name": "ranger_group",
     "displayName": "Used to create group and assign permission",
-    "defaultValue": "ranger",
+    "recommendedValue": "ranger",
     "isReconfigurable": true,
     "displayType": "",
     "isOverridable": false,
@@ -668,7 +665,7 @@ hdp22properties.push(
     "id": "site property",
     "name": "authentication_method",
     "displayName": "Authentication method",
-    "defaultValue": "NONE",
+    "recommendedValue": "NONE",
     "options": [
       {
         displayName: 'LDAP',
@@ -699,7 +696,7 @@ hdp22properties.push(
     "id": "site property",
     "name": "remoteLoginEnabled",
     "displayName": "Allow remote Login",
-    "defaultValue": true,
+    "recommendedValue": true,
     "isReconfigurable": true,
     "displayType": "checkbox",
     "isOverridable": false,
@@ -712,7 +709,7 @@ hdp22properties.push(
     "id": "site property",
     "name": "authServiceHostName",
     "displayName": "authServiceHostName",
-    "defaultValue": 'localhost',
+    "recommendedValue": 'localhost',
     "isReconfigurable": true,
     "isOverridable": false,
     "isVisible": true,
@@ -724,7 +721,7 @@ hdp22properties.push(
     "id": "site property",
     "name": "authServicePort",
     "displayName": "authServicePort",
-    "defaultValue": '5151',
+    "recommendedValue": '5151',
     "isReconfigurable": true,
     "displayType": "int",
     "isOverridable": false,
@@ -790,6 +787,69 @@ hdp22properties.push(
   },
   {
     "id": "site property",
+    "name": "common.name.for.certificate",
+    "displayName": "common.name.for.certificate",
+    "category": "Advanced ranger-hdfs-plugin-properties",
+    "isRequired": false,
+    "serviceName": "HDFS",
+    "filename": "ranger-hdfs-plugin-properties.xml"
+  },
+  {
+    "id": "site property",
+    "name": "hadoop.rpc.protection",
+    "displayName": "hadoop.rpc.protection",
+    "category": "Advanced ranger-hdfs-plugin-properties",
+    "isRequired": false,
+    "serviceName": "HDFS",
+    "filename": "ranger-hdfs-plugin-properties.xml"
+  },  
+  {
+    "id": "site property",
+    "name": "common.name.for.certificate",
+    "displayName": "common.name.for.certificate",
+    "category": "Advanced ranger-hive-plugin-properties",
+    "isRequired": false,
+    "serviceName": "HIVE",
+    "filename": "ranger-hive-plugin-properties.xml"
+  },
+  {
+    "id": "site property",
+    "name": "common.name.for.certificate",
+    "displayName": "common.name.for.certificate",
+    "category": "Advanced ranger-hbase-plugin-properties",
+    "isRequired": false,
+    "serviceName": "HBASE",
+    "filename": "ranger-hbase-plugin-properties.xml"
+  },
+  {
+    "id": "site property",
+    "name": "common.name.for.certificate",
+    "displayName": "common.name.for.certificate",
+    "category": "Advanced ranger-knox-plugin-properties",
+    "isRequired": false,
+    "serviceName": "KNOX",
+    "filename": "ranger-knox-plugin-properties.xml"
+  },
+  {
+    "id": "site property",
+    "name": "common.name.for.certificate",
+    "displayName": "common.name.for.certificate",
+    "category": "Advanced ranger-storm-plugin-properties",
+    "isRequired": false,
+    "serviceName": "STORM",
+    "filename": "ranger-storm-plugin-properties.xml"
+  },
+  {
+    "id": "site property",
+    "name": "SYNC_LDAP_USER_SEARCH_FILTER",
+    "displayName": "SYNC_LDAP_USER_SEARCH_FILTER",
+    "category": "Advanced usersync-properties",
+    "isRequired": false,
+    "serviceName": "RANGER",
+    "filename": "usersync-properties.xml"
+  },
+  {
+    "id": "site property",
     "name": "hbase.bucketcache.ioengine",
     "displayName": "hbase.bucketcache.ioengine",
     "isRequired": false,
@@ -831,6 +891,26 @@ hdp22properties.push(
     "id": "site property",
     "name": "hbase.regionserver.global.memstore.size",
     "displayName": "hbase.regionserver.global.memstore.size",
+    "category": "Advanced hbase-site",
+    "serviceName": "HBASE",
+    "filename": "hbase-site.xml"
+  },
+  {
+  "id": "site property",
+    "name": "hbase.region.server.rpc.scheduler.factory.class",
+    "displayName": "hbase.region.server.rpc.scheduler.factory.class",
+    "defaultValue": "",
+    "isRequired": false,
+    "category": "Advanced hbase-site",
+    "serviceName": "HBASE",
+    "filename": "hbase-site.xml"
+  },
+  {
+    "id": "site property",
+    "name": "hbase.rpc.controllerfactory.class",
+    "displayName": "hbase.rpc.controllerfactory.class",
+    "defaultValue": "",
+    "isRequired": false,
     "category": "Advanced hbase-site",
     "serviceName": "HBASE",
     "filename": "hbase-site.xml"

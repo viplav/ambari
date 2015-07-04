@@ -16,7 +16,25 @@
           "name": "/smokeuser"
         },
         {
-          "name": "/hdfs"
+          "name": "hdfs",
+          "principal": {
+            "value": "${hadoop-env/hdfs_user}-${cluster_name}@${realm}",
+            "type" : "user" ,
+            "configuration": "hadoop-env/hdfs_principal_name",
+            "local_username" : "${hadoop-env/hdfs_user}"
+          },
+          "keytab": {
+            "file": "${keytab_dir}/hdfs.headless.keytab",
+            "owner": {
+              "name": "${hadoop-env/hdfs_user}",
+              "access": "r"
+            },
+            "group": {
+              "name": "${cluster-env/user_group}",
+              "access": "r"
+            },
+            "configuration": "hadoop-env/hdfs_user_keytab"
+          }
         }
       ],
       "auth_to_local_properties" : [
@@ -29,16 +47,6 @@
             "hadoop.rpc.protection": "authentication",
             "hadoop.security.authorization": "true",
             "hadoop.security.auth_to_local": "",
-            "hadoop.http.authentication.kerberos.name.rules": "",
-            "hadoop.http.filter.initializers": "",
-            "hadoop.http.authentication.type": "simple",
-            "hadoop.http.authentication.signature.secret": "",
-            "hadoop.http.authentication.signature.secret.file": "",
-            "hadoop.http.authentication.signer.secret.provider": "",
-            "hadoop.http.authentication.signer.secret.provider.object": "",
-            "hadoop.http.authentication.token.validity": "",
-            "hadoop.http.authentication.cookie.domain": "",
-            "hadoop.http.authentication.cookie.path": "",
             "hadoop.proxyuser.HTTP.groups": "${hadoop-env/proxyuser_group}"
           }
         }

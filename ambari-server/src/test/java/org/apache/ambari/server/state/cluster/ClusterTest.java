@@ -42,7 +42,6 @@ import java.util.Set;
 import javax.persistence.EntityManager;
 import javax.persistence.RollbackException;
 
-import com.google.gson.Gson;
 import junit.framework.Assert;
 
 import org.apache.ambari.server.AmbariException;
@@ -64,6 +63,7 @@ import org.apache.ambari.server.orm.dao.HostVersionDAO;
 import org.apache.ambari.server.orm.dao.RepositoryVersionDAO;
 import org.apache.ambari.server.orm.dao.ResourceTypeDAO;
 import org.apache.ambari.server.orm.dao.StackDAO;
+import org.apache.ambari.server.orm.entities.ClusterConfigEntity;
 import org.apache.ambari.server.orm.entities.ClusterEntity;
 import org.apache.ambari.server.orm.entities.ClusterServiceEntity;
 import org.apache.ambari.server.orm.entities.ClusterStateEntity;
@@ -107,12 +107,14 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
+import com.google.gson.Gson;
 import com.google.inject.AbstractModule;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.Singleton;
 import com.google.inject.persist.PersistService;
 import com.google.inject.persist.Transactional;
+import com.google.inject.persist.UnitOfWork;
 import com.google.inject.util.Modules;
 
 public class ClusterTest {
@@ -193,10 +195,12 @@ public class ClusterTest {
     hostComponentStateDAO = injector.getInstance(HostComponentStateDAO.class);
     repositoryVersionDAO = injector.getInstance(RepositoryVersionDAO.class);
     gson = injector.getInstance(Gson.class);
+    injector.getInstance(UnitOfWork.class).begin();
   }
 
   @After
   public void teardown() {
+    injector.getInstance(UnitOfWork.class).end();
     injector.getInstance(PersistService.class).stop();
   }
 
@@ -365,6 +369,11 @@ public class ClusterTest {
     cluster.setCurrentStackVersion(stackId);
     for(String hostName : hostNames) {
       clusters.mapHostToCluster(hostName, clusterName);
+    }
+
+    // Transition all hosts to HEALTHY state
+    for (Host host : cluster.getHosts()) {
+      host.setState(HostState.HEALTHY);
     }
 
     // Add Services
@@ -733,6 +742,80 @@ public class ClusterTest {
 
     scHosts = c1.getServiceComponentHosts("h1");
     Assert.assertEquals(2, scHosts.size());
+  }
+
+  @Test
+  public void testGetServiceComponentHosts_ForService() throws Exception {
+    createDefaultCluster();
+
+    Service s = serviceFactory.createNew(c1, "HDFS");
+    c1.addService(s);
+    s.persist();
+
+    ServiceComponent scNN = serviceComponentFactory.createNew(s, "NAMENODE");
+    s.addServiceComponent(scNN);
+    scNN.persist();
+    ServiceComponentHost schNNH1 = serviceComponentHostFactory.createNew(scNN, "h1");
+    scNN.addServiceComponentHost(schNNH1);
+    schNNH1.persist();
+
+    ServiceComponent scDN = serviceComponentFactory.createNew(s, "DATANODE");
+    s.addServiceComponent(scDN);
+    scDN.persist();
+    ServiceComponentHost scDNH1 = serviceComponentHostFactory.createNew(scDN, "h1");
+    scDN.addServiceComponentHost(scDNH1);
+    scDNH1.persist();
+    ServiceComponentHost scDNH2 = serviceComponentHostFactory.createNew(scDN, "h2");
+    scDN.addServiceComponentHost(scDNH2);
+    scDNH2.persist();
+
+    List<ServiceComponentHost> scHosts;
+
+    scHosts = c1.getServiceComponentHosts("HDFS", null);
+    Assert.assertEquals(3, scHosts.size());
+
+    scHosts = c1.getServiceComponentHosts("UNKNOWN SERVICE", null);
+    Assert.assertEquals(0, scHosts.size());
+  }
+
+  @Test
+  public void testGetServiceComponentHosts_ForServiceComponent() throws Exception {
+    createDefaultCluster();
+
+    Service s = serviceFactory.createNew(c1, "HDFS");
+    c1.addService(s);
+    s.persist();
+
+    ServiceComponent scNN = serviceComponentFactory.createNew(s, "NAMENODE");
+    s.addServiceComponent(scNN);
+    scNN.persist();
+    ServiceComponentHost schNNH1 = serviceComponentHostFactory.createNew(scNN, "h1");
+    scNN.addServiceComponentHost(schNNH1);
+    schNNH1.persist();
+
+    ServiceComponent scDN = serviceComponentFactory.createNew(s, "DATANODE");
+    s.addServiceComponent(scDN);
+    scDN.persist();
+    ServiceComponentHost scDNH1 = serviceComponentHostFactory.createNew(scDN, "h1");
+    scDN.addServiceComponentHost(scDNH1);
+    scDNH1.persist();
+    ServiceComponentHost scDNH2 = serviceComponentHostFactory.createNew(scDN, "h2");
+    scDN.addServiceComponentHost(scDNH2);
+    scDNH2.persist();
+
+    List<ServiceComponentHost> scHosts;
+
+    scHosts = c1.getServiceComponentHosts("HDFS", "DATANODE");
+    Assert.assertEquals(2, scHosts.size());
+
+    scHosts = c1.getServiceComponentHosts("HDFS", "UNKNOWN COMPONENT");
+    Assert.assertEquals(0, scHosts.size());
+
+    scHosts = c1.getServiceComponentHosts("UNKNOWN SERVICE", "DATANODE");
+    Assert.assertEquals(0, scHosts.size());
+
+    scHosts = c1.getServiceComponentHosts("UNKNOWN SERVICE", "UNKNOWN COMPONENT");
+    Assert.assertEquals(0, scHosts.size());
   }
 
   @Test
@@ -1747,6 +1830,69 @@ public class ClusterTest {
   }
 
   @Test
+  public void testBootstrapHostVersion() throws Exception {
+    String clusterName = "c1";
+    String v1 = "2.2.0-123";
+    StackId stackId = new StackId("HDP-2.2.0");
+
+    Map<String, String> hostAttributes = new HashMap<String, String>();
+    hostAttributes.put("os_family", "redhat");
+    hostAttributes.put("os_release_version", "5.9");
+
+    Cluster cluster = createClusterForRU(clusterName, stackId, hostAttributes);
+
+    // Make one host unhealthy
+    Host deadHost = cluster.getHosts().iterator().next();
+    deadHost.setState(HostState.UNHEALTHY);
+
+    // Begin bootstrap by starting to advertise versions
+    // Set the version for the HostComponentState objects
+    int versionedComponentCount = 0;
+    List<HostComponentStateEntity> hostComponentStates = hostComponentStateDAO.findAll();
+    for(int i = 0; i < hostComponentStates.size(); i++) {
+      HostComponentStateEntity hce = hostComponentStates.get(i);
+      ComponentInfo compInfo = metaInfo.getComponent(
+              stackId.getStackName(), stackId.getStackVersion(),
+              hce.getServiceName(),
+              hce.getComponentName());
+
+      if (hce.getHostName().equals(deadHost.getHostName())) {
+        continue; // Skip setting version
+      }
+
+      if (compInfo.isVersionAdvertised()) {
+        hce.setVersion(v1);
+        hostComponentStateDAO.merge(hce);
+        versionedComponentCount++;
+      }
+
+      // Simulate the StackVersionListener during the installation of the first Stack Version
+      Service svc = cluster.getService(hce.getServiceName());
+      ServiceComponent svcComp = svc.getServiceComponent(hce.getComponentName());
+      ServiceComponentHost scHost = svcComp.getServiceComponentHost(hce.getHostName());
+
+      scHost.recalculateHostVersionState();
+      cluster.recalculateClusterVersionState(cluster.getDesiredStackVersion(),
+              v1);
+
+      Collection<ClusterVersionEntity> clusterVersions = cluster.getAllClusterVersions();
+
+      if (versionedComponentCount > 0) {
+        // On the first component with a version, a RepoVersion should have been created
+        RepositoryVersionEntity repositoryVersion = repositoryVersionDAO.findByStackAndVersion(stackId, v1);
+        Assert.assertNotNull(repositoryVersion);
+        Assert.assertTrue(clusterVersions != null && clusterVersions.size() == 1);
+
+        // Since host 2 is dead, and host 3 contains only components that dont report a version,
+        // cluster version transitions to CURRENT after first component on host 1 reports it's version
+        if (versionedComponentCount == 1 && i < (hostComponentStates.size() - 1)) {
+          Assert.assertEquals(clusterVersions.iterator().next().getState(), RepositoryVersionState.CURRENT);
+        }
+      }
+    }
+  }
+
+  @Test
   public void testTransitionNonReportableHost() throws Exception {
     StackId stackId = new StackId("HDP-2.0.5");
 
@@ -1901,5 +2047,72 @@ public class ClusterTest {
 
     verify(hostVersionDAOMock).merge(hostVersionCaptor.capture());
     assertEquals(hostVersionCaptor.getValue().getState(), RepositoryVersionState.CURRENT);
+  }
+
+  /**
+   * Tests that an existing configuration can be successfully updated without
+   * creating a new version.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testClusterConfigMergingWithoutNewVersion() throws Exception {
+    createDefaultCluster();
+
+    Cluster cluster = clusters.getCluster("c1");
+    ClusterEntity clusterEntity = clusterDAO.findByName("c1");
+    assertEquals(0, clusterEntity.getClusterConfigEntities().size());
+
+    final Config originalConfig = configFactory.createNew(cluster, "foo-site",
+        new HashMap<String, String>() {
+          {
+            put("one", "two");
+          }
+        }, new HashMap<String, Map<String, String>>());
+
+    originalConfig.setTag("version3");
+    originalConfig.persist();
+    cluster.addConfig(originalConfig);
+
+    ConfigGroup configGroup = configGroupFactory.createNew(cluster, "g1", "t1", "",
+        new HashMap<String, Config>() {
+          {
+            put("foo-site", originalConfig);
+          }
+        }, Collections.<Long, Host> emptyMap());
+
+    configGroup.persist();
+    cluster.addConfigGroup(configGroup);
+
+    clusterEntity = clusterDAO.findByName("c1");
+    assertEquals(1, clusterEntity.getClusterConfigEntities().size());
+
+    Map<String, Config> configsByType = cluster.getConfigsByType("foo-site");
+    Config config = configsByType.entrySet().iterator().next().getValue();
+
+    Map<String, String> properties = config.getProperties();
+    properties.put("three", "four");
+    config.setProperties(properties);
+
+    config.persist(false);
+
+    clusterEntity = clusterDAO.findByName("c1");
+    assertEquals(1, clusterEntity.getClusterConfigEntities().size());
+    ClusterConfigEntity clusterConfigEntity = clusterEntity.getClusterConfigEntities().iterator().next();
+    assertTrue(clusterConfigEntity.getData().contains("one"));
+    assertTrue(clusterConfigEntity.getData().contains("two"));
+    assertTrue(clusterConfigEntity.getData().contains("three"));
+    assertTrue(clusterConfigEntity.getData().contains("four"));
+
+    cluster.refresh();
+
+    clusterEntity = clusterDAO.findByName("c1");
+    assertEquals(1, clusterEntity.getClusterConfigEntities().size());
+    clusterConfigEntity = clusterEntity.getClusterConfigEntities().iterator().next();
+    assertTrue(clusterConfigEntity.getData().contains("one"));
+    assertTrue(clusterConfigEntity.getData().contains("two"));
+    assertTrue(clusterConfigEntity.getData().contains("three"));
+    assertTrue(clusterConfigEntity.getData().contains("four"));
+
   }
 }

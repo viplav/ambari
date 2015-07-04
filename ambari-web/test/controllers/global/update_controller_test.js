@@ -147,11 +147,11 @@ describe('App.UpdateController', function () {
           }
         ],
         result: ["host_components/metrics/yarn/Queue," +
-          "ServiceComponentInfo/rm_metrics/cluster/activeNMcount," +
-          "ServiceComponentInfo/rm_metrics/cluster/lostNMcount," +
-          "ServiceComponentInfo/rm_metrics/cluster/unhealthyNMcount," +
-          "ServiceComponentInfo/rm_metrics/cluster/rebootedNMcount," +
-          "ServiceComponentInfo/rm_metrics/cluster/decommissionedNMcount"]
+        "host_components/metrics/yarn/ClusterMetrics/NumActiveNMs," +
+        "host_components/metrics/yarn/ClusterMetrics/NumLostNMs," +
+        "host_components/metrics/yarn/ClusterMetrics/NumUnhealthyNMs," +
+        "host_components/metrics/yarn/ClusterMetrics/NumRebootedNMs," +
+        "host_components/metrics/yarn/ClusterMetrics/NumDecommissionedNMs"]
       },
       {
         title: 'HBASE service',
@@ -163,11 +163,10 @@ describe('App.UpdateController', function () {
           }
         ],
         result: ["host_components/metrics/hbase/master/IsActiveMaster," +
-          "ServiceComponentInfo/MasterStartTime," +
-          "ServiceComponentInfo/MasterActiveTime," +
-          "ServiceComponentInfo/AverageLoad," +
-          "ServiceComponentInfo/Revision," +
-          "ServiceComponentInfo/RegionsInTransition"]
+        "host_components/metrics/hbase/master/MasterStartTime," +
+        "host_components/metrics/hbase/master/MasterActiveTime," +
+        "host_components/metrics/hbase/master/AverageLoad," +
+        "host_components/metrics/master/AssignmentManger/ritCount"]
       },
       {
         title: 'STORM service',
@@ -227,6 +226,82 @@ describe('App.UpdateController', function () {
         expect(controller.getConditionalFields()).to.eql(test.result);
         App.get.restore();
       });
+    });
+  });
+
+  describe("#getComplexUrl()", function () {
+    beforeEach(function () {
+      sinon.stub(App, 'get').returns('mock');
+      sinon.stub(controller, 'computeParameters').returns('params');
+    });
+    afterEach(function () {
+      App.get.restore();
+      controller.computeParameters.restore();
+    });
+    it("queryParams is empty", function () {
+      expect(controller.getComplexUrl('<parameters>')).to.equal('mock/clusters/mock');
+    });
+    it("queryParams is present", function () {
+      var queryParams = [
+        {
+          type: "EQUAL",
+          key: "key",
+          value: "value"
+        }
+      ];
+      expect(controller.getComplexUrl('<parameters>', queryParams)).to.equal('mock/clusters/mockparams&');
+    });
+  });
+
+  describe("#addParamsToHostsUrl()", function () {
+    beforeEach(function () {
+      sinon.stub(App, 'get').returns('mock');
+      sinon.stub(controller, 'computeParameters').returns('params');
+    });
+    afterEach(function () {
+      App.get.restore();
+      controller.computeParameters.restore();
+    });
+    it("", function () {
+      expect(controller.addParamsToHostsUrl([], [], 'url')).to.equal('mock/clusters/mockurl&params&params');
+    });
+  });
+
+  describe("#loadHostsMetric()", function () {
+    beforeEach(function () {
+      this.mock = sinon.stub(App.Service, 'find');
+      sinon.stub(controller, 'computeParameters');
+      sinon.stub(controller, 'addParamsToHostsUrl');
+      sinon.stub(App.ajax, 'send');
+    });
+    afterEach(function () {
+      App.Service.find.restore();
+      controller.computeParameters.restore();
+      controller.addParamsToHostsUrl.restore();
+      App.ajax.send.restore();
+    });
+    it("AMBARI_METRICS is not started", function () {
+      this.mock.returns(Em.Object.create({isStarted: false}));
+      expect(controller.loadHostsMetric([])).to.be.null;
+      expect(App.ajax.send.called).to.be.false;
+    });
+    it("AMBARI_METRICS is started", function () {
+      this.mock.returns(Em.Object.create({isStarted: true}));
+      expect(controller.loadHostsMetric([])).to.be.object;
+      expect(App.ajax.send.calledOnce).to.be.true;
+    });
+  });
+
+  describe("#loadHostsMetricSuccessCallback()", function () {
+    beforeEach(function () {
+      sinon.stub(App.hostsMapper, 'setMetrics');
+    });
+    afterEach(function () {
+      App.hostsMapper.setMetrics.restore();
+    });
+    it("", function () {
+      controller.loadHostsMetricSuccessCallback({});
+      expect(App.hostsMapper.setMetrics.calledWith({})).to.be.true;
     });
   });
 });

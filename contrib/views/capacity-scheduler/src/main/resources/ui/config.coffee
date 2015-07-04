@@ -29,6 +29,7 @@ exports.config =
       joinTo:
         'javascripts/app.js': /^app/
         'javascripts/vendor.js': /^bower_components|vendor/
+        'javascripts/test.js': /^test(\/|\\)(?!vendor)/
       order:
         before: [
           'bower_components/jquery/dist/jquery.js',
@@ -66,5 +67,5 @@ exports.config =
   overrides:
     development:
       paths:
-        public: '/usr/lib/ambari-server/web/views-debug/CAPACITY-SCHEDULER/0.3.0/CS_1/'
+        public: '/usr/lib/ambari-server/web/views-debug/CAPACITY-SCHEDULER/0.4.0/AUTO_CS_INSTANCE/'
 

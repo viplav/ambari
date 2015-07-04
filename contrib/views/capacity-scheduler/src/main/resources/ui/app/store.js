@@ -89,7 +89,16 @@ function _fetchTagged(adapter, store, type, sinceToken) {
       store.didUpdateAll(type);
       return store.recordForId('scheduler','scheduler');
     }).then(function (scheduler) {
-      scheduler.setProperties(config.scheduler.objectAt(0));
+      var props = config.scheduler.objectAt(0);
+
+      scheduler.eachAttribute(function (attr,meta) {
+        if (meta.type === 'boolean') {
+          this.set(attr, (props[attr] === 'false' || !props[attr])?false:true);
+        } else {
+          this.set(attr, props[attr]);
+        }
+      },scheduler);
+
       scheduler.set('version',v);
     });
 
@@ -141,12 +150,14 @@ App.ApplicationStore = DS.Store.extend({
   recurceRemoveQueue: function (queue) {
     if (Em.isEmpty(queue)) {
       return;
-    } else if (!queue.get('isNewQueue') && !queue.get('isNew')) {
+    } else {
       queue.get('queuesArray').forEach(function (queueName) {
         this.recurceRemoveQueue(this.getById('queue',[queue.get('path'),queueName].join('.').toLowerCase()));
       }.bind(this));
 
-      this.get('deletedQueues').pushObject(this.buildDeletedQueue(queue));
+      if (!queue.get('isNewQueue')){
+        this.get('deletedQueues').pushObject(this.buildDeletedQueue(queue));
+      }
 
     }
     this.all('queue').findBy('path',queue.get('parentPath')).set('queuesArray',{'exclude':queue.get('name')});
@@ -271,20 +282,29 @@ App.ApplicationStore = DS.Store.extend({
   },
 
   nodeLabels: function () {
-    var adapter = this.get('defaultAdapter');
+    var adapter = this.get('defaultAdapter'),
+        store = this,
+        promise = new Ember.RSVP.Promise(function(resolve, reject) {
+          adapter.getNodeLabels().then(function(data) {
+            store.set('isRmOffline',false);
+            resolve(data);
+          }, function() {
+            store.set('isRmOffline',true);
+            resolve([]);
+          });
+        });
+
     return Ember.ArrayProxy.extend(Ember.PromiseProxyMixin).create({
-      promise: adapter.getNodeLabels()
+      promise: promise
     });
   }.property(),
 
+  isRmOffline:false,
+
   isInitialized: Ember.computed.and('tag', 'clusterName'),
 
-  markForRefresh:function () {
-    this.set('defaultAdapter.saveMark','saveAndRefresh');
-  },
-
-  markForRestart:function () {
-    this.set('defaultAdapter.saveMark','saveAndRestart');
+  relaunchCapSched: function (opt) {
+    return this.get('defaultAdapter').relaunchCapSched(opt);
   },
 
   flushPendingSave: function() {
@@ -293,7 +313,8 @@ App.ApplicationStore = DS.Store.extend({
         notLabel = false,
         isDeleteOperation = false;
 
-    if (pending.length == 1) {
+
+    if (pending.length == 1 || pending.isEvery('firstObject.isNew',true)) {
       this._super();
       return;
     }

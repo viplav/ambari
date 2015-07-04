@@ -18,7 +18,7 @@ limitations under the License.
 """
 from resource_management import *
 from ambari_commons.os_check import OSCheck
-import json
+import ambari_simplejson as json # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
 
 # components_lits = repoName + postfix
 _UBUNTU_REPO_COMPONENTS_POSTFIX = ["main"]
@@ -55,7 +55,7 @@ def install_repos():
   if params.host_sys_prepped:
     return
 
-  template = "repo_suse_rhel.j2" if OSCheck.is_suse_family() or OSCheck.is_redhat_family() else "repo_ubuntu.j2"
+  template = params.repo_rhel_suse if OSCheck.is_suse_family() or OSCheck.is_redhat_family() else params.repo_ubuntu
   _alter_repo("create", params.repo_info, template)
   if params.service_repo_info:
     _alter_repo("create", params.service_repo_info, template)

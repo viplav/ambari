@@ -69,6 +69,10 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
    */
   requestInProgress: false,
   /**
+   * @type {boolean} true while no updated upgrade info is loaded after retry
+   */
+  isRetryPending: false,
+  /**
    * properties that stored to localStorage to resume wizard progress
    */
   wizardStorageProperties: ['upgradeId', 'upgradeVersion', 'currentVersion', 'isDowngrade'],
@@ -116,6 +120,18 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
   realUpdateUrl: function () {
     return App.get('apiPrefix') + '/clusters/' + App.get('clusterName') + '/stack_versions?fields=ClusterStackVersions/*';
   }.property('App.clusterName'),
+
+  /**
+   * Determines if list of services with checks that failed and were skipped by user during the upgrade is loaded
+   * @type {boolean}
+   */
+  areSkippedServiceChecksLoaded: false,
+
+  /**
+   * List of services with checks that failed and were skipped by user during the upgrade
+   * @type {array}
+   */
+  skippedServiceChecks: [],
 
   init: function () {
     this.initDBProperties();
@@ -194,6 +210,12 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
     this.setDBProperty('upgradeState', data.Upgrade.request_status);
     if (data.upgrade_groups) {
       this.updateUpgradeData(data);
+    }
+    if (this.get('isRetryPending') && data.Upgrade.request_status != 'ABORTED') {
+      this.setProperties({
+        requestInProgress: false,
+        isRetryPending: false
+      });
     }
   },
 
@@ -338,6 +360,7 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
       name: 'admin.downgrade.start',
       sender: this,
       data: {
+        from: App.RepositoryVersion.find().findProperty('displayName', this.get('upgradeVersion')).get('repositoryVersion'),
         value: currentVersion.repository_version,
         label: currentVersion.repository_name,
         isDowngrade: true
@@ -355,6 +378,20 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
   abortUpgrade: function () {
     return App.ajax.send({
       name: 'admin.upgrade.abort',
+      sender: this,
+      data: {
+        upgradeId: this.get('upgradeId')
+      }
+    });
+  },
+
+  retryUpgrade: function () {
+    this.setProperties({
+      requestInProgress: true,
+      isRetryPending: true
+    });
+    return App.ajax.send({
+      name: 'admin.upgrade.retry',
       sender: this,
       data: {
         upgradeId: this.get('upgradeId')
@@ -453,12 +490,38 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
    * @returns {App.ModalPopup|undefined}
    */
   runPreUpgradeCheckSuccess: function (data, opt, params) {
-    if (data.items.someProperty('UpgradeChecks.status', "FAIL")) {
+    var self = this;
+    if (data.items.someProperty('UpgradeChecks.status', 'FAIL') || data.items.someProperty('UpgradeChecks.status', 'WARNING')) {
       this.set('requestInProgress', false);
-      var header = Em.I18n.t('popup.clusterCheck.Upgrade.header').format(params.label);
-      var title = Em.I18n.t('popup.clusterCheck.Upgrade.title');
-      var alert = Em.I18n.t('popup.clusterCheck.Upgrade.alert');
-      App.showClusterCheckPopup(data, header, title, alert);
+      var header = Em.I18n.t('popup.clusterCheck.Upgrade.header').format(params.label),
+        failTitle = Em.I18n.t('popup.clusterCheck.Upgrade.fail.title'),
+        failAlert = new Em.Handlebars.SafeString(Em.I18n.t('popup.clusterCheck.Upgrade.fail.alert')),
+        warningTitle = Em.I18n.t('popup.clusterCheck.Upgrade.warning.title'),
+        warningAlert = new Em.Handlebars.SafeString(Em.I18n.t('popup.clusterCheck.Upgrade.warning.alert')),
+        configsMergeWarning = data.items.findProperty('UpgradeChecks.id', "CONFIG_MERGE"),
+        configs = [];
+      if (configsMergeWarning && Em.get(configsMergeWarning, 'UpgradeChecks.status') === 'WARNING') {
+        data.items = data.items.rejectProperty('UpgradeChecks.id', 'CONFIG_MERGE');
+        var configsMergeCheckData = Em.get(configsMergeWarning, 'UpgradeChecks.failed_detail');
+        if (configsMergeCheckData) {
+          configs = configsMergeCheckData.map(function (item) {
+            var isDeprecated = Em.isNone(item.new_stack_value),
+              willBeRemoved = Em.isNone(item.result_value);
+            return {
+              type: item.type,
+              name: item.property,
+              currentValue: item.current,
+              recommendedValue: isDeprecated ? Em.I18n.t('popup.clusterCheck.Upgrade.configsMerge.deprecated') : item.new_stack_value,
+              isDeprecated: isDeprecated,
+              resultingValue: willBeRemoved ? Em.I18n.t('popup.clusterCheck.Upgrade.configsMerge.willBeRemoved') : item.result_value,
+              willBeRemoved: willBeRemoved
+            };
+          });
+        }
+      }
+      App.showClusterCheckPopup(data, header, failTitle, failAlert, warningTitle, warningAlert, function () {
+        self.upgrade(params);
+      }, configs, params.label);
     } else {
       this.upgrade(params);
     }
@@ -466,6 +529,32 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
 
   runPreUpgradeCheckError: function() {
     this.set('requestInProgress', false);
+  },
+
+  confirmRetryUpgrade: function (version) {
+    var self = this;
+    return App.showConfirmationPopup(
+      function () {
+        self.retryUpgrade();
+      },
+      Em.I18n.t('admin.stackUpgrade.upgrade.retry.confirm.body').format(version.get('displayName')),
+      null,
+      Em.I18n.t('admin.stackUpgrade.dialog.header').format(version.get('displayName'))
+    );
+  },
+
+  confirmRetryDowngrade: function () {
+    var self = this,
+      currentVersion = this.get('currentVersion');
+    return App.showConfirmationPopup(
+      function() {
+        self.retryUpgrade();
+      },
+      Em.I18n.t('admin.stackUpgrade.downgrade.retry.body').format(currentVersion.repository_name),
+      null,
+      Em.I18n.t('admin.stackUpgrade.dialog.downgrade.header').format(currentVersion.repository_name),
+      Em.I18n.t('admin.stackUpgrade.downgrade.proceed')
+    );
   },
 
   /**
@@ -538,6 +627,17 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
   },
 
   /**
+   * Return stack version for the repo object
+   * @param {Em.Object} repo
+   * */
+  getStackVersionNumber: function(repo){
+    var stackVersionNumber = repo.get('stackVersion');
+    if(null == stackVersionNumber)
+      stackVersionNumber = App.get('currentStackVersion');
+    return stackVersionNumber;
+  },
+  
+  /**
    * perform validation if <code>skip<code> is  false and run save if
    * validation successfull or run save without validation is <code>skip<code> is true
    * @param {Em.Object} repo
@@ -552,13 +652,15 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
         deferred.resolve(data);
       } else {
         var repoVersion = self.prepareRepoForSaving(repo);
-
+        var stackVersionNumber = self.getStackVersionNumber(repo);
+        console.log("Repository stack version:"+stackVersionNumber);
+        
         App.ajax.send({
           name: 'admin.stack_versions.edit.repo',
           sender: this,
           data: {
             stackName: App.get('currentStackName'),
-            stackVersion: App.get('currentStackVersionNumber'),
+            stackVersion: stackVersionNumber,
             repoVersionId: repo.get('repoVersionId'),
             repoVersion: repoVersion
           }
@@ -569,7 +671,7 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
     });
     return deferred.promise();
   },
-
+  
   /**
    * send request for validation for each repository
    * @param {Em.Object} repo
@@ -580,10 +682,11 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
     var deferred = $.Deferred(),
       totalCalls = 0,
       invalidUrls = [];
-
+    
     if (skip) {
       deferred.resolve(invalidUrls);
     } else {
+      var stackVersionNumber = this.getStackVersionNumber(repo);
       repo.get('operatingSystems').forEach(function (os) {
         if (os.get('isSelected')) {
           os.get('repositories').forEach(function (repo) {
@@ -597,7 +700,7 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
                 baseUrl: repo.get('baseUrl'),
                 osType: os.get('osType'),
                 stackName: App.get('currentStackName'),
-                stackVersion: App.get('currentStackVersionNumber')
+                stackVersion: stackVersionNumber
               }
             })
               .success(function () {

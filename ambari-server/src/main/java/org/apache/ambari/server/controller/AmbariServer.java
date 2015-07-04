@@ -23,12 +23,15 @@ import java.io.File;
 import java.net.Authenticator;
 import java.net.BindException;
 import java.net.PasswordAuthentication;
+import java.util.EnumSet;
 import java.util.Map;
 
 import javax.crypto.BadPaddingException;
+import javax.servlet.DispatcherType;
 
 import org.apache.ambari.eventdb.webservice.WorkflowJsonService;
 import org.apache.ambari.server.AmbariException;
+import org.apache.ambari.server.StateRecoveryManager;
 import org.apache.ambari.server.StaticallyInject;
 import org.apache.ambari.server.actionmanager.ActionManager;
 import org.apache.ambari.server.actionmanager.HostRoleCommandFactory;
@@ -105,6 +108,7 @@ import org.eclipse.jetty.server.ssl.SslSelectChannelConnector;
 import org.eclipse.jetty.servlet.DefaultServlet;
 import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.ServletContextHandler;
+import org.eclipse.jetty.servlets.GzipFilter;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
@@ -136,6 +140,11 @@ public class AmbariServer {
 
   // Set velocity logger
   protected static final String VELOCITY_LOG_CATEGORY = "VelocityLogger";
+
+  /**
+   * Dispatcher types for webAppContext.addFilter.
+   */
+  public static final EnumSet<DispatcherType> DISPATCHER_TYPES = EnumSet.of(DispatcherType.REQUEST);
 
   static {
     Velocity.setProperty("runtime.log.logsystem.log4j.logger", VELOCITY_LOG_CATEGORY);
@@ -267,6 +276,9 @@ public class AmbariServer {
       // and does not use sessions.
       ServletContextHandler agentroot = new ServletContextHandler(
           serverForAgent, "/", ServletContextHandler.NO_SESSIONS);
+      if (configs.isAgentApiGzipped()) {
+        configureHandlerCompression(agentroot);
+      }
 
       ServletHolder rootServlet = root.addServlet(DefaultServlet.class, "/");
       rootServlet.setInitParameter("dirAllowed", "false");
@@ -277,20 +289,20 @@ public class AmbariServer {
       rootServlet.setInitOrder(1);
 
       //session-per-request strategy for api and agents
-      root.addFilter(new FilterHolder(injector.getInstance(AmbariPersistFilter.class)), "/api/*", 1);
-      root.addFilter(new FilterHolder(injector.getInstance(AmbariPersistFilter.class)), "/proxy/*", 1);
-      root.addFilter(new FilterHolder(new MethodOverrideFilter()), "/api/*", 1);
-      root.addFilter(new FilterHolder(new MethodOverrideFilter()), "/proxy/*", 1);
+      root.addFilter(new FilterHolder(injector.getInstance(AmbariPersistFilter.class)), "/api/*", DISPATCHER_TYPES);
+      // root.addFilter(new FilterHolder(injector.getInstance(AmbariPersistFilter.class)), "/proxy/*", DISPATCHER_TYPES);
+      root.addFilter(new FilterHolder(new MethodOverrideFilter()), "/api/*", DISPATCHER_TYPES);
+      // root.addFilter(new FilterHolder(new MethodOverrideFilter()), "/proxy/*", DISPATCHER_TYPES);
 
       // register listener to capture request context
       root.addEventListener(new RequestContextListener());
 
-      agentroot.addFilter(new FilterHolder(injector.getInstance(AmbariPersistFilter.class)), "/agent/*", 1);
-      agentroot.addFilter(SecurityFilter.class, "/*", 1);
+      agentroot.addFilter(new FilterHolder(injector.getInstance(AmbariPersistFilter.class)), "/agent/*", DISPATCHER_TYPES);
+      agentroot.addFilter(SecurityFilter.class, "/*", DISPATCHER_TYPES);
 
       if (configs.getApiAuthentication()) {
-        root.addFilter(new FilterHolder(springSecurityFilter), "/api/*", 1);
-        root.addFilter(new FilterHolder(springSecurityFilter), "/proxy/*", 1);
+        root.addFilter(new FilterHolder(springSecurityFilter), "/api/*", DISPATCHER_TYPES);
+      // root.addFilter(new FilterHolder(springSecurityFilter), "/proxy/*", DISPATCHER_TYPES);
       }
 
 
@@ -374,6 +386,7 @@ public class AmbariServer {
       agentroot.addServlet(cert, "/*");
       cert.setInitOrder(4);
 
+      /*
       ServletHolder proxy = new ServletHolder(ServletContainer.class);
       proxy.setInitParameter("com.sun.jersey.config.property.resourceConfigClass",
                              "com.sun.jersey.api.core.PackagesResourceConfig");
@@ -382,6 +395,7 @@ public class AmbariServer {
       proxy.setInitParameter("com.sun.jersey.api.json.POJOMappingFeature", "true");
       root.addServlet(proxy, "/proxy/*");
       proxy.setInitOrder(5);
+      */
 
       ServletHolder resources = new ServletHolder(ServletContainer.class);
       resources.setInitParameter("com.sun.jersey.config.property.resourceConfigClass",
@@ -389,13 +403,13 @@ public class AmbariServer {
       resources.setInitParameter("com.sun.jersey.config.property.packages",
           "org.apache.ambari.server.resources.api.rest;");
       root.addServlet(resources, "/resources/*");
-      resources.setInitOrder(6);
+      resources.setInitOrder(5);
 
       if (configs.csrfProtectionEnabled()) {
         sh.setInitParameter("com.sun.jersey.spi.container.ContainerRequestFilters",
                     "org.apache.ambari.server.api.AmbariCsrfProtectionFilter");
-        proxy.setInitParameter("com.sun.jersey.spi.container.ContainerRequestFilters",
-                    "org.apache.ambari.server.api.AmbariCsrfProtectionFilter");
+        /* proxy.setInitParameter("com.sun.jersey.spi.container.ContainerRequestFilters",
+                    "org.apache.ambari.server.api.AmbariCsrfProtectionFilter"); */
       }
 
       // Set jetty thread pool
@@ -473,8 +487,9 @@ public class AmbariServer {
 
       clusterController = controller;
 
-      // FIXME need to figure out correct order of starting things to
-      // handle restart-recovery correctly
+      StateRecoveryManager recoveryManager = injector.getInstance(
+              StateRecoveryManager.class);
+      recoveryManager.doWork();
 
       /*
        * Start the server after controller state is recovered.
@@ -522,18 +537,39 @@ public class AmbariServer {
   }
 
   /**
-   * Performs basic configuration of root handler with static values and values from
-   * configuration file.
+   * Performs basic configuration of root handler with static values and values
+   * from configuration file.
    *
    * @param root root handler
    */
   protected void configureRootHandler(ServletContextHandler root) {
+    configureHandlerCompression(root);
     root.setContextPath(CONTEXT_PATH);
     root.setErrorHandler(injector.getInstance(AmbariErrorHandler.class));
     root.setMaxFormContentSize(-1);
 
     /* Configure web app context */
     root.setResourceBase(configs.getWebAppDir());
+  }
+
+  /**
+   * Performs GZIP compression configuration of the context handler
+   * with static values and values from configuration file
+   *
+   * @param context handler
+   */
+  protected void configureHandlerCompression(ServletContextHandler context) {
+    if (configs.isApiGzipped()) {
+      FilterHolder gzipFilter = context.addFilter(GzipFilter.class, "/*",
+          EnumSet.of(DispatcherType.REQUEST));
+
+      gzipFilter.setInitParameter("methods","GET,POST,PUT,DELETE");
+      gzipFilter.setInitParameter("mimeTypes",
+          "text/html,text/plain,text/xml,text/css,application/x-javascript," +
+          "application/xml,application/x-www-form-urlencoded," +
+          "application/javascript,application/json");
+      gzipFilter.setInitParameter("minGzipSize", configs.getApiGzipMinSize());
+    }
   }
 
   /**
@@ -546,7 +582,12 @@ public class AmbariServer {
     // use AMBARISESSIONID instead of JSESSIONID to avoid conflicts with
     // other services (like HDFS) that run on the same context but a different
     // port
-    sessionManager.setSessionCookie("AMBARISESSIONID");
+    sessionManager.getSessionCookieConfig().setName("AMBARISESSIONID");
+
+    sessionManager.getSessionCookieConfig().setHttpOnly(true);
+    if (configs.getApiSSLAuthentication()) {
+      sessionManager.getSessionCookieConfig().setSecure(true);
+    }
 
     // each request that does not use AMBARISESSIONID will create a new
     // HashedSession in Jetty; these MUST be reaped after inactivity in order

@@ -58,6 +58,9 @@ describe('App.KerberosWizardStep4Controller', function() {
             return Em.A([
               Em.Object.create({ name: 'realm', value: 'realm_value' })
             ]);
+          },
+          loadCachedStepConfigValues: function() {
+            return null;
           }
         }
       });
@@ -70,12 +73,14 @@ describe('App.KerberosWizardStep4Controller', function() {
           displayType: 'multiLine'
         }
       ]);
+      sinon.stub(App.router, 'get').withArgs('mainAdminKerberosController.isManualKerberos').returns(false);
       this.result = controller.prepareConfigProperties(properties);
     });
 
     after(function() {
       App.Service.find.restore();
       App.config.get.restore();
+      App.router.get.restore();
     });
 
     var properties = Em.A([
@@ -172,7 +177,7 @@ describe('App.KerberosWizardStep4Controller', function() {
             serviceName: 'KERBEROS'
           })
         ]);
-        var controller = App.KerberosWizardStep4Controller.create({
+        this.controller = App.KerberosWizardStep4Controller.create({
           selectedServiceNames: ['FALCON', 'MAPREDUCE2'],
           installedServiceNames: ['HDFS', 'KERBEROS'],
           wizardController: Em.Object.create({
@@ -180,19 +185,26 @@ describe('App.KerberosWizardStep4Controller', function() {
             getDBProperty: function() {
               return Em.A([
                 Em.Object.create({ name: 'realm', value: 'realm_value' }),
-                Em.Object.create({ name: 'admin_principal', value: 'some_val1', defaultValue: 'some_val1', filename: 'krb5-conf.xml' }),
-                Em.Object.create({ name: 'admin_password', value: 'some_password', defaultValue: 'some_password', filename: 'krb5-conf.xml' })
+                Em.Object.create({ name: 'admin_principal', value: 'some_val1', recommendedValue: 'some_val1', filename: 'krb5-conf.xml' }),
+                Em.Object.create({ name: 'admin_password', value: 'some_password', recommendedValue: 'some_password', filename: 'krb5-conf.xml' })
               ]);
+            },
+            loadCachedStepConfigValues : function() {
+              return null;
             }
           })
         });
-        controller.setStepConfigs(properties);
-        this.result = controller.get('stepConfigs')[0].get('configs').concat(controller.get('stepConfigs')[1].get('configs'));
+        sinon.stub(App.router, 'get').withArgs('mainAdminKerberosController.isManualKerberos').returns(false);
+        this.controller.setStepConfigs(properties);
+        this.result = this.controller.get('stepConfigs')[0].get('configs').concat(this.controller.get('stepConfigs')[1].get('configs'));
       });
 
       after(function() {
+        this.controller.destroy();
+        this.controller = null;
         App.StackService.find.restore();
         App.Service.find.restore();
+        App.router.get.restore();
       });
 
       var properties = Em.A([

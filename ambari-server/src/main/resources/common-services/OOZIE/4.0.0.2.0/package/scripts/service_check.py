@@ -17,16 +17,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 """
+import os
+import glob
+
 from resource_management.core.resources.system import Execute
 from resource_management.core.resources import File
 from resource_management.core.source import StaticFile
 from resource_management.core.system import System
 from resource_management.libraries.functions import format
 from resource_management.libraries.script import Script
+from resource_management.libraries.resources.xml_config import XmlConfig
+from resource_management.core.exceptions import Fail
 from ambari_commons.os_family_impl import OsFamilyImpl
 from ambari_commons import OSConst
-import os
-import glob
+
+from resource_management.core.logger import Logger
 
 class OozieServiceCheck(Script):
   pass
@@ -41,6 +46,17 @@ class OozieServiceCheckDefault(OozieServiceCheck):
     # on HDP1 this file is different
     prepare_hdfs_file_name = 'prepareOozieHdfsDirectories.sh'
     smoke_test_file_name = 'oozieSmoke2.sh'
+
+    if 'yarn-site' in params.config['configurations']:
+      XmlConfig("yarn-site.xml",
+                conf_dir=params.hadoop_conf_dir,
+                configurations=params.config['configurations']['yarn-site'],
+                owner=params.hdfs_user,
+                group=params.user_group,
+                mode=0644
+      )
+    else:
+      raise Fail("yarn-site.xml was not present in config parameters.")
 
     OozieServiceCheckDefault.oozie_smoke_shell_file(smoke_test_file_name, prepare_hdfs_file_name)
 
@@ -59,22 +75,37 @@ class OozieServiceCheckDefault(OozieServiceCheck):
 
     os_family = System.get_instance().os_family
     oozie_examples_dir = glob.glob(params.oozie_examples_regex)[0]
-    
+
     Execute(format("{tmp_dir}/{prepare_hdfs_file_name} {conf_dir} {oozie_examples_dir} {hadoop_conf_dir} "),
             tries=3,
             try_sleep=5,
             logoutput=True
     )
-    
-    params.HdfsResource(format('/user/{smokeuser}/examples'),
+
+    examples_dir = format('/user/{smokeuser}/examples')
+    params.HdfsResource(examples_dir,
+                        action = "delete_on_execute",
+                        type = "directory"
+    )
+    params.HdfsResource(examples_dir,
       action = "create_on_execute",
       type = "directory",
       source = format("{oozie_examples_dir}/examples"),
+      owner = params.smokeuser,
+      group = params.user_group
     )
-    params.HdfsResource(format('/user/{smokeuser}/input-data'),
+
+    input_data_dir = format('/user/{smokeuser}/input-data')
+    params.HdfsResource(input_data_dir,
+                        action = "delete_on_execute",
+                        type = "directory"
+    )
+    params.HdfsResource(input_data_dir,
       action = "create_on_execute",
       type = "directory",
       source = format("{oozie_examples_dir}/examples/input-data"),
+      owner = params.smokeuser,
+      group = params.user_group
     )
     params.HdfsResource(None, action="execute")
 
@@ -84,7 +115,7 @@ class OozieServiceCheckDefault(OozieServiceCheck):
     else:
       sh_cmd = format(
         "{tmp_dir}/{file_name} {os_family} {oozie_lib_dir} {conf_dir} {oozie_bin_dir} {oozie_examples_dir} {hadoop_conf_dir} {hadoop_bin_dir} {smokeuser} {security_enabled}")
-    
+
     Execute(sh_cmd,
             path=params.execute_path,
             tries=3,

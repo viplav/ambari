@@ -17,12 +17,17 @@ limitations under the License.
 
 """
 
+import os
+
 from resource_management.libraries.functions import conf_select
+from resource_management.libraries.functions import hdp_select
+from resource_management.libraries.functions import default
+from resource_management.libraries.functions import format_jvm_option
+from resource_management.libraries.functions import format
 from resource_management.libraries.functions.version import format_hdp_stack_version, compare_versions
 from ambari_commons.os_check import OSCheck
-from resource_management import *
-from resource_management.core.system import System
-import os
+from resource_management.libraries.script.script import Script
+
 
 config = Script.get_config()
 
@@ -32,18 +37,18 @@ hdp_stack_version = format_hdp_stack_version(stack_version_unformatted)
 # hadoop default params
 mapreduce_libs_path = "/usr/lib/hadoop-mapreduce/*"
 
-hadoop_libexec_dir = conf_select.get_hadoop_dir("libexec")
-hadoop_lib_home = conf_select.get_hadoop_dir("lib")
-hadoop_bin = conf_select.get_hadoop_dir("sbin")
+hadoop_libexec_dir = hdp_select.get_hadoop_dir("libexec")
+hadoop_lib_home = hdp_select.get_hadoop_dir("lib")
+hadoop_bin = hdp_select.get_hadoop_dir("sbin")
 hadoop_home = '/usr'
 create_lib_snappy_symlinks = True
-hadoop_conf_dir = conf_select.get_hadoop_conf_dir()
+hadoop_conf_dir = conf_select.get_hadoop_conf_dir(force_latest_on_upgrade=True)
 default_topology_script_file_path = "/etc/hadoop/conf/topology_script.py"
 
 # HDP 2.2+ params
 if Script.is_hdp_stack_greater_or_equal("2.2"):
   mapreduce_libs_path = "/usr/hdp/current/hadoop-mapreduce-client/*"
-  hadoop_home = '/usr/hdp/current/hadoop-client'
+  hadoop_home = hdp_select.get_hadoop_dir("home")
   create_lib_snappy_symlinks = False
   
 current_service = config['serviceName']
@@ -109,7 +114,7 @@ hadoop_pid_dir_prefix = config['configurations']['hadoop-env']['hadoop_pid_dir_p
 task_log4j_properties_location = os.path.join(hadoop_conf_dir, "task-log4j.properties")
 
 hdfs_log_dir_prefix = config['configurations']['hadoop-env']['hdfs_log_dir_prefix']
-hbase_tmp_dir = config['configurations']['hbase-site']['hbase.tmp.dir']
+hbase_tmp_dir = "/tmp/hbase-hbase"
 #db params
 server_db_name = config['hostLevelParams']['db_name']
 db_driver_filename = config['hostLevelParams']['db_driver_filename']
@@ -177,6 +182,10 @@ refresh_topology = False
 command_params = config["commandParams"] if "commandParams" in config else None
 if command_params is not None:
   refresh_topology = bool(command_params["refresh_topology"]) if "refresh_topology" in command_params else False
+  
+ambari_libs_dir = "/var/lib/ambari-agent/lib"
+is_webhdfs_enabled = config['configurations']['hdfs-site']['dfs.webhdfs.enabled']
+default_fs = config['configurations']['core-site']['fs.defaultFS']
 
 #host info
 all_hosts = default("/clusterHostInfo/all_hosts", [])

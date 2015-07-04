@@ -19,10 +19,8 @@ limitations under the License.
 '''
 
 import logging
-import signal
-import json
+import ambari_simplejson as json
 import sys
-import platform
 import os
 import socket
 import time
@@ -46,8 +44,8 @@ from ambari_agent.AlertSchedulerHandler import AlertSchedulerHandler
 from ambari_agent.ClusterConfiguration import  ClusterConfiguration
 from ambari_agent.RecoveryManager import  RecoveryManager
 from ambari_agent.HeartbeatHandlers import HeartbeatStopHandlers, bind_signal_handlers
-
-logger = logging.getLogger()
+from ambari_agent.ExitHelper import ExitHelper
+logger = logging.getLogger(__name__)
 
 AGENT_AUTO_RESTART_EXIT_CODE = 77
 
@@ -59,6 +57,7 @@ class Controller(threading.Thread):
     if heartbeat_stop_callback is None:
       heartbeat_stop_callback = HeartbeatStopHandlers()
 
+    self.version = self.read_agent_version(config)
     self.lock = threading.Lock()
     self.safeMode = True
     self.credential = None
@@ -104,6 +103,15 @@ class Controller(threading.Thread):
     self.alert_scheduler_handler.start()
 
 
+  def read_agent_version(self, config):
+    data_dir = config.get('agent', 'prefix')
+    ver_file = os.path.join(data_dir, 'version')
+    f = open(ver_file, "r")
+    version = f.read().strip()
+    f.close()
+    return version
+
+
   def __del__(self):
     logger.info("Server connection disconnected.")
 
@@ -119,7 +127,7 @@ class Controller(threading.Thread):
 
     while not self.isRegistered:
       try:
-        data = json.dumps(self.register.build())
+        data = json.dumps(self.register.build(self.version))
         prettyData = pprint.pformat(data)
 
         try:
@@ -154,7 +162,7 @@ class Controller(threading.Thread):
 
         self.isRegistered = True
         if 'statusCommands' in ret.keys():
-          logger.info("Got status commands on registration.")
+          logger.debug("Got status commands on registration.")
           self.addToStatusQueue(ret['statusCommands'])
         else:
           self.hasMappedComponents = False
@@ -163,7 +171,8 @@ class Controller(threading.Thread):
         self.cluster_configuration.update_configurations_from_heartbeat(ret)
 
         self.recovery_manager.update_configuration_from_registration(ret)
-
+        self.config.update_configuration_from_registration(ret)
+        logger.debug("Updated config:" + str(self.config))
         # always update alert definitions on registration
         self.alert_scheduler_handler.update_definitions(ret)
       except ssl.SSLError:
@@ -300,7 +309,7 @@ class Controller(threading.Thread):
           logger.error("Received the restartAgent command")
           self.restartAgent()
         else:
-          logger.info("No commands sent from %s", self.serverHostname)
+          logger.debug("No commands sent from %s", self.serverHostname)
 
         if retry:
           logger.info("Reconnected to %s", self.heartbeatUrl)
@@ -366,24 +375,26 @@ class Controller(threading.Thread):
 
   def registerAndHeartbeat(self):
     registerResponse = self.registerWithServer()
-    message = registerResponse['response']
-    logger.info("Registration response from %s was %s", self.serverHostname, message)
 
-    if self.isRegistered:
-      # Clearing command queue to stop executing "stale" commands
-      # after registration
-      logger.info('Resetting ActionQueue...')
-      self.actionQueue.reset()
+    if "response" in registerResponse:
+      message = registerResponse["response"]
+      logger.info("Registration response from %s was %s", self.serverHostname, message)
 
-      # Process callbacks
-      for callback in self.registration_listeners:
-        callback()
+      if self.isRegistered:
+        # Clearing command queue to stop executing "stale" commands
+        # after registration
+        logger.info('Resetting ActionQueue...')
+        self.actionQueue.reset()
 
-      time.sleep(self.netutil.HEARTBEAT_IDDLE_INTERVAL_SEC)
-      self.heartbeatWithServer()
+        # Process callbacks
+        for callback in self.registration_listeners:
+          callback()
+
+        time.sleep(self.netutil.HEARTBEAT_IDDLE_INTERVAL_SEC)
+        self.heartbeatWithServer()
 
   def restartAgent(self):
-    sys.exit(AGENT_AUTO_RESTART_EXIT_CODE)
+    ExitHelper().exit(AGENT_AUTO_RESTART_EXIT_CODE)
 
 
   def sendRequest(self, url, data):
@@ -392,7 +403,8 @@ class Controller(threading.Thread):
     try:
       if self.cachedconnect is None: # Lazy initialization
         self.cachedconnect = security.CachedHTTPSConnection(self.config)
-      req = urllib2.Request(url, data, {'Content-Type': 'application/json'})
+      req = urllib2.Request(url, data, {'Content-Type': 'application/json',
+                                        'Accept-encoding': 'gzip'})
       response = self.cachedconnect.request(req)
       return json.loads(response)
     except Exception, exception:
@@ -404,7 +416,7 @@ class Controller(threading.Thread):
 
 
   def updateComponents(self, cluster_name):
-    logger.info("Updating components map of cluster " + cluster_name)
+    logger.debug("Updating components map of cluster " + cluster_name)
 
     # May throw IOError on server connection error
     response = self.sendRequest(self.componentsUrl + cluster_name, None)
@@ -417,7 +429,7 @@ class Controller(threading.Thread):
           LiveStatus.CLIENT_COMPONENTS.append({"serviceName": service, "componentName": component})
         else:
           LiveStatus.COMPONENTS.append({"serviceName": service, "componentName": component})
-    logger.info("Components map updated")
+    logger.debug("Components map updated")
     logger.debug("LiveStatus.SERVICES" + str(LiveStatus.SERVICES))
     logger.debug("LiveStatus.CLIENT_COMPONENTS" + str(LiveStatus.CLIENT_COMPONENTS))
     logger.debug("LiveStatus.COMPONENTS" + str(LiveStatus.COMPONENTS))
@@ -425,7 +437,6 @@ class Controller(threading.Thread):
 def main(argv=None):
   # Allow Ctrl-C
 
-  logger.setLevel(logging.INFO)
   formatter = logging.Formatter("%(asctime)s %(filename)s:%(lineno)d - \
     %(message)s")
   stream_handler = logging.StreamHandler()

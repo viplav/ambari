@@ -18,7 +18,7 @@ limitations under the License.
 
 """
 from resource_management import Directory, Fail, Logger, File, \
-    InlineTemplate, StaticFile
+    InlineTemplate, PropertiesFile, StaticFile
 from resource_management.libraries.functions import format
 
 
@@ -65,14 +65,18 @@ def metadata():
               recursive=True
     )
 
-    File(format('{conf_dir}/application.properties'),
-         content=InlineTemplate(params.application_properties_content),
+    File(format("{expanded_war_dir}/atlas.war"),
+         content = StaticFile(format('{metadata_home}/server/webapp/atlas.war'))
+    )
+
+    PropertiesFile(format('{conf_dir}/application.properties'),
+         properties = params.application_properties,
          mode=0644,
          owner=params.metadata_user,
          group=params.user_group
     )
 
-    File(format("{conf_dir}/metadata-env.sh"),
+    File(format("{conf_dir}/atlas-env.sh"),
          owner=params.metadata_user,
          group=params.user_group,
          mode=0755,

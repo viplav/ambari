@@ -163,6 +163,7 @@ App.ToggleConfigWidgetView = App.ConfigWidgetView.extend({
    * @method setRecommendedValue
    */
   setRecommendedValue: function () {
+    this._super();
     this.setValue(this.get('config.recommendedValue'));
   },
 
@@ -184,7 +185,13 @@ App.ToggleConfigWidgetView = App.ConfigWidgetView.extend({
    */
   isValueCompatibleWithWidget: function () {
     if (this._super()) {
-      return this.get('config.stackConfigProperty.valueAttributes.entries').mapProperty('value').contains(this.get('config.value'));
+      var res = this.get('config.stackConfigProperty.valueAttributes.entries').mapProperty('value').contains(this.get('config.value'));
+      if (!res) {
+        this.updateWarningsForCompatibilityWithWidget(Em.I18n.t('config.infoMessage.wrong.value.for.widget'));
+        return false;
+      }
+      this.updateWarningsForCompatibilityWithWidget('');
+      return true;
     }
     return false;
   }

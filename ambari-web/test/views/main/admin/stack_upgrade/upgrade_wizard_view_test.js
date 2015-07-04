@@ -292,6 +292,15 @@ describe('App.upgradeWizardView', function () {
           failedItem: null,
           runningItem: null,
           manualItem: null,
+          upgradeState: 'ABORTED'
+        },
+        result: false
+      },
+      {
+        data: {
+          failedItem: null,
+          runningItem: null,
+          manualItem: null,
           upgradeState: 'IN_PROGRESS'
         },
         result: true
@@ -472,7 +481,7 @@ describe('App.upgradeWizardView', function () {
           status: 'ABORTED',
           isDowngrade: false
         },
-        result: Em.I18n.t('admin.stackUpgrade.state.paused')
+        result: Em.I18n.t('admin.stackUpgrade.state.aborted')
       },
       {
         data: {
@@ -549,7 +558,7 @@ describe('App.upgradeWizardView', function () {
           status: 'ABORTED',
           isDowngrade: true
         },
-        result: Em.I18n.t('admin.stackUpgrade.state.paused.downgrade')
+        result: Em.I18n.t('admin.stackUpgrade.state.aborted.downgrade')
       },
       {
         data: {
@@ -642,6 +651,150 @@ describe('App.upgradeWizardView', function () {
       this.clock.tick(App.bgOperationsUpdateInterval);
       expect(view.doUpgradeItemPolling.calledOnce).to.be.true;
     });
+  });
+
+  describe('#getSkippedServiceChecks()', function () {
+
+    var cases = [
+      {
+        isFinalizeItem: false,
+        areSkippedServiceChecksLoaded: true,
+        ajaxSendCallCount: 0,
+        areSkippedServiceChecksLoadedResult: false,
+        title: 'no ajax request should be sent away from Finalize step'
+      },
+      {
+        isFinalizeItem: true,
+        areSkippedServiceChecksLoaded: true,
+        ajaxSendCallCount: 0,
+        areSkippedServiceChecksLoadedResult: true,
+        title: 'no ajax request should be sent if data is already loaded'
+      },
+      {
+        isFinalizeItem: true,
+        areSkippedServiceChecksLoaded: false,
+        ajaxSendCallCount: 1,
+        areSkippedServiceChecksLoadedResult: true,
+        title: 'ajax request should be sent on Finalize step'
+      }
+    ];
+
+    beforeEach(function () {
+      view.set('controller.upgradeId', 1);
+      sinon.stub(App.ajax, 'send').returns({
+        complete: function (callback) {
+          callback();
+        }
+      });
+    });
+
+    afterEach(function () {
+      App.ajax.send.restore();
+    });
+
+    cases.forEach(function (item) {
+      it(item.title, function () {
+        view.set('controller.areSkippedServiceChecksLoaded', item.areSkippedServiceChecksLoaded);
+        view.reopen({
+          isFinalizeItem: item.isFinalizeItem
+        });
+        view.propertyDidChange('isFinalizeItem');
+        expect(App.ajax.send.callCount).to.equal(item.ajaxSendCallCount);
+        expect(view.get('controller.areSkippedServiceChecksLoaded')).to.equal(item.areSkippedServiceChecksLoadedResult);
+        if (item.ajaxSendCallCount) {
+          expect(App.ajax.send.firstCall.args[0].data.upgradeId).to.equal(1);
+        }
+      });
+    });
+
+  });
+
+  describe('#getSkippedServiceChecksSuccessCallback()', function () {
+
+    var data = {
+      items: [
+        {
+          upgrade_items: [
+            {
+              tasks: [
+                {
+                  Tasks: {
+                    command_detail: 'SERVICE_CHECK HDFS'
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          upgrade_items: [
+            {
+              tasks: [
+                {
+                  Tasks: {
+                    command_detail: 'SERVICE_CHECK ZOOKEEPER'
+                  }
+                }
+              ]
+            },
+            {
+              tasks: [
+                {
+                  Tasks: {
+                    command_detail: 'SERVICE_CHECK YARN'
+                  }
+                }
+              ]
+            },
+            {},
+            {
+              tasks: []
+            },
+            {
+              tasks: [
+                {
+                  Tasks: null
+                },
+                {
+                  Tasks: {
+                    command_detail: 'SERVICE_CHECK HIVE'
+                  }
+                }
+              ]
+            },
+            {
+              tasks: [
+                {
+                  Tasks: {
+                    command_detail: null
+                  }
+                },
+                {
+                  Tasks: {
+                    command_detail: 'SERVICE_CHECK YARN'
+                  }
+                }
+              ]
+            },
+            {
+              tasks: [
+                {
+                  Tasks: {
+                    command_detail: 'RESTART HDFS'
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    it('should set an array of service names from tha latest service checks step', function () {
+      view.getSkippedServiceChecksSuccessCallback(data);
+      expect(view.get('controller.skippedServiceChecks')).to.eql(['ZooKeeper', 'YARN', 'Hive']);
+    });
+
   });
 
 });

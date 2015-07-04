@@ -121,11 +121,17 @@ describe('App.UpgradeVersionBoxView', function () {
   });
 
   describe("#runAction()", function () {
+    var hasClass = function () {
+        return true;
+      },
+      jQueryMock;
     beforeEach(function () {
       sinon.stub(view.get('controller'), 'upgrade').returns(1);
+      jQueryMock = sinon.stub(window, '$');
     });
     afterEach(function () {
       view.get('controller').upgrade.restore();
+      jQueryMock.restore();
     });
     it("action = null", function () {
       view.set('stateElement.action', null);
@@ -145,8 +151,66 @@ describe('App.UpgradeVersionBoxView', function () {
       view.runAction();
       expect(view.get('controller').upgrade.calledWith('content')).to.be.true;
     });
+    it("link is disabled", function () {
+      jQueryMock.returns({
+        hasClass: hasClass,
+        parent: function () {
+          return {
+            hasClass: Em.K
+          };
+        }
+      });
+      view.runAction({
+        context: 'upgrade',
+        target: {}
+      });
+      expect(view.get('controller').upgrade.called).to.be.false;
+    });
+    it("link parent element is disabled", function () {
+      jQueryMock.returns({
+        hasClass: Em.K,
+        parent: function () {
+          return {
+            hasClass: hasClass
+          };
+        }
+      });
+      view.runAction({
+        context: 'upgrade',
+        target: {}
+      });
+      expect(view.get('controller').upgrade.called).to.be.false;
+    });
   });
-
+  
+  describe("#getStackVersionNumber()", function(){
+    it("get stack version number", function(){
+      var repoRecord = Em.Object.create({
+        operatingSystems: [
+          Em.Object.create({
+            osType: "redhat6",
+            repositories: [Em.Object.create({
+                "baseUrl": "111121",
+                "repoId": "HDP-2.3",
+                "repoName": "HDP",
+                "stackVersion": "2.3",
+                hasError: false
+            }), Em.Object.create({
+                "baseUrl": "1",
+                "repoId": "HDP-UTILS-1.1.0.20",
+                "repoName": "HDP-UTILS",
+                "stackVersion": "2.3",
+                hasError: false
+              })]
+           })
+        ]
+      });
+      
+      var stackVersionNumber = view.getStackVersionNumber(repoRecord);
+      expect(stackVersionNumber).to.equal('2.3');
+    });
+  });
+  
   describe("#editRepositories()", function () {
     beforeEach(function () {
       sinon.stub(App.RepositoryVersion, 'find').returns(Em.Object.create({
@@ -239,7 +303,7 @@ describe('App.UpgradeVersionBoxView', function () {
     });
   });
 
-  describe('stateElement', function () {
+  describe('#stateElement', function () {
 
     var cases = [
       {
@@ -250,8 +314,7 @@ describe('App.UpgradeVersionBoxView', function () {
           status: 'CURRENT',
           isLabel: true,
           text: Em.I18n.t('common.current'),
-          class: 'label label-success',
-          hasMultipleButtons: false
+          class: 'label label-success'
         },
         title: 'current version'
       },
@@ -271,14 +334,8 @@ describe('App.UpgradeVersionBoxView', function () {
         expected: {
           status: 'INIT',
           isButton: true,
-          buttons: [
-            {
-              text: Em.I18n.t('admin.stackVersions.version.installNow'),
-              action: 'installRepoVersionConfirmation'
-            }
-          ],
-          isDisabled: true,
-          hasMultipleButtons: false
+          buttons: [],
+          isDisabled: true
         },
         title: 'INIT state, no admin access, no requests in progress'
       },
@@ -298,14 +355,8 @@ describe('App.UpgradeVersionBoxView', function () {
         expected: {
           status: 'INIT',
           isButton: true,
-          buttons: [
-            {
-              text: Em.I18n.t('admin.stackVersions.version.installNow'),
-              action: 'installRepoVersionConfirmation'
-            }
-          ],
-          isDisabled: true,
-          hasMultipleButtons: false
+          buttons: [],
+          isDisabled: true
         },
         title: 'INIT state, no admin access, request in progress, not installation'
       },
@@ -328,14 +379,8 @@ describe('App.UpgradeVersionBoxView', function () {
         expected: {
           status: 'INSTALL_FAILED',
           isButton: true,
-          buttons: [
-            {
-              text: Em.I18n.t('admin.stackVersions.version.installNow'),
-              action: 'installRepoVersionConfirmation'
-            }
-          ],
-          isDisabled: true,
-          hasMultipleButtons: false
+          buttons: [],
+          isDisabled: true
         },
         title: 'install failed, no admin access, request in progress, another installation running'
       },
@@ -358,14 +403,8 @@ describe('App.UpgradeVersionBoxView', function () {
         expected: {
           status: 'INSTALL_FAILED',
           isButton: true,
-          buttons: [
-            {
-              text: Em.I18n.t('admin.stackVersions.version.installNow'),
-              action: 'installRepoVersionConfirmation'
-            }
-          ],
-          isDisabled: true,
-          hasMultipleButtons: false
+          buttons: [],
+          isDisabled: true
         },
         title: 'install failed, no admin access, no requests in progress, another installation running'
       },
@@ -385,14 +424,8 @@ describe('App.UpgradeVersionBoxView', function () {
         expected: {
           status: 'OUT_OF_SYNC',
           isButton: true,
-          buttons: [
-            {
-              text: Em.I18n.t('admin.stackVersions.version.installNow'),
-              action: 'installRepoVersionConfirmation'
-            }
-          ],
-          isDisabled: false,
-          hasMultipleButtons: false
+          buttons: [],
+          isDisabled: false
         },
         title: 'version out of sync, admin access, no requests in progress, no installation'
       },
@@ -412,14 +445,8 @@ describe('App.UpgradeVersionBoxView', function () {
         expected: {
           status: 'OUT_OF_SYNC',
           isButton: true,
-          buttons: [
-            {
-              text: Em.I18n.t('admin.stackVersions.version.installNow'),
-              action: 'installRepoVersionConfirmation'
-            }
-          ],
-          isDisabled: true,
-          hasMultipleButtons: false
+          buttons: [],
+          isDisabled: true
         },
         title: 'version out of sync, admin access, request in progress, no installation'
       },
@@ -438,8 +465,7 @@ describe('App.UpgradeVersionBoxView', function () {
           isLink: true,
           iconClass: 'icon-ok',
           text: Em.I18n.t('common.installed'),
-          action: null,
-          hasMultipleButtons: false
+          action: null
         },
         title: 'installed version, earlier than current one'
       },
@@ -467,19 +493,15 @@ describe('App.UpgradeVersionBoxView', function () {
         },
         expected: {
           status: 'INSTALLED',
-          isButton: true,
+          isButtonGroup: true,
           buttons: [
             {
-              text: Em.I18n.t('admin.stackVersions.version.performUpgrade'),
-              action: 'confirmUpgrade'
-            },
-            {
               text: Em.I18n.t('admin.stackVersions.version.reinstall'),
-              action: 'installRepoVersionConfirmation'
+              action: 'installRepoVersionConfirmation',
+              isDisabled: true
             }
           ],
-          isDisabled: true,
-          hasMultipleButtons: true
+          isDisabled: true
         },
         title: 'installed version, later than current one, admin access, request in progress, another installation running'
       },
@@ -507,19 +529,15 @@ describe('App.UpgradeVersionBoxView', function () {
         },
         expected: {
           status: 'INSTALLED',
-          isButton: true,
+          isButtonGroup: true,
           buttons: [
             {
-              text: Em.I18n.t('admin.stackVersions.version.performUpgrade'),
-              action: 'confirmUpgrade'
-            },
-            {
               text: Em.I18n.t('admin.stackVersions.version.reinstall'),
-              action: 'installRepoVersionConfirmation'
+              action: 'installRepoVersionConfirmation',
+              isDisabled: true
             }
           ],
-          isDisabled: true,
-          hasMultipleButtons: true
+          isDisabled: true
         },
         title: 'installed version, later than current one, admin access, no requests in progress, another installation running'
       },
@@ -538,8 +556,7 @@ describe('App.UpgradeVersionBoxView', function () {
           isLink: true,
           action: 'openUpgradeDialog',
           iconClass: 'icon-cog',
-          text: Em.I18n.t('admin.stackVersions.version.downgrade.running'),
-          hasMultipleButtons: false
+          text: Em.I18n.t('admin.stackVersions.version.downgrade.running')
         },
         title: 'downgrading'
       },
@@ -559,8 +576,7 @@ describe('App.UpgradeVersionBoxView', function () {
           isLink: true,
           action: 'openUpgradeDialog',
           iconClass: 'icon-cog',
-          text: Em.I18n.t('admin.stackVersions.version.upgrade.running'),
-          hasMultipleButtons: false
+          text: Em.I18n.t('admin.stackVersions.version.upgrade.running')
         },
         title: 'upgrading'
       },
@@ -580,8 +596,7 @@ describe('App.UpgradeVersionBoxView', function () {
           isLink: true,
           action: 'openUpgradeDialog',
           iconClass: 'icon-pause',
-          text: Em.I18n.t('admin.stackVersions.version.upgrade.pause'),
-          hasMultipleButtons: false
+          text: Em.I18n.t('admin.stackVersions.version.upgrade.pause')
         },
         title: 'upgrading, holding'
       },
@@ -601,8 +616,7 @@ describe('App.UpgradeVersionBoxView', function () {
           isLink: true,
           action: 'openUpgradeDialog',
           iconClass: 'icon-pause',
-          text: Em.I18n.t('admin.stackVersions.version.upgrade.pause'),
-          hasMultipleButtons: false
+          text: Em.I18n.t('admin.stackVersions.version.upgrade.pause')
         },
         title: 'upgrading, holding failed'
       },
@@ -622,8 +636,7 @@ describe('App.UpgradeVersionBoxView', function () {
           isLink: true,
           action: 'openUpgradeDialog',
           iconClass: 'icon-pause',
-          text: Em.I18n.t('admin.stackVersions.version.upgrade.pause'),
-          hasMultipleButtons: false
+          text: Em.I18n.t('admin.stackVersions.version.upgrade.pause')
         },
         title: 'upgrade failed, holding finished on timeout'
       },
@@ -643,8 +656,7 @@ describe('App.UpgradeVersionBoxView', function () {
           isLink: true,
           action: 'openUpgradeDialog',
           iconClass: 'icon-pause',
-          text: Em.I18n.t('admin.stackVersions.version.downgrade.pause'),
-          hasMultipleButtons: false
+          text: Em.I18n.t('admin.stackVersions.version.downgrade.pause')
         },
         title: 'downgrading, holding'
       },
@@ -664,8 +676,7 @@ describe('App.UpgradeVersionBoxView', function () {
           isLink: true,
           action: 'openUpgradeDialog',
           iconClass: 'icon-pause',
-          text: Em.I18n.t('admin.stackVersions.version.downgrade.pause'),
-          hasMultipleButtons: false
+          text: Em.I18n.t('admin.stackVersions.version.downgrade.pause')
         },
         title: 'downgrading, holding failed'
       },
@@ -685,10 +696,49 @@ describe('App.UpgradeVersionBoxView', function () {
           isLink: true,
           action: 'openUpgradeDialog',
           iconClass: 'icon-pause',
-          text: Em.I18n.t('admin.stackVersions.version.downgrade.pause'),
-          hasMultipleButtons: false
+          text: Em.I18n.t('admin.stackVersions.version.downgrade.pause')
         },
         title: 'downgrading, holding finished on timeout'
+      },
+      {
+        inputData: {
+          'content.status': 'UPGRADING',
+          'isUpgrading': true,
+          'controller.isDowngrade': false,
+          'controller.requestInProgress': false,
+          'parentView.repoVersions': []
+        },
+        setup: function () {
+          this.getMock.withArgs('upgradeState').returns('ABORTED');
+        },
+        expected: {
+          status: 'UPGRADING',
+          isButton: true,
+          action: 'confirmRetryUpgrade',
+          text: Em.I18n.t('common.reUpgrade'),
+          isDisabled: false
+        },
+        title: 'upgrade aborted'
+      },
+      {
+        inputData: {
+          'content.status': 'UPGRADE_FAILED',
+          'isUpgrading': true,
+          'controller.isDowngrade': true,
+          'controller.requestInProgress': true,
+          'parentView.repoVersions': []
+        },
+        setup: function () {
+          this.getMock.withArgs('upgradeState').returns('ABORTED');
+        },
+        expected: {
+          status: 'UPGRADE_FAILED',
+          isButton: true,
+          action: 'confirmRetryDowngrade',
+          text: Em.I18n.t('common.reDowngrade'),
+          isDisabled: true
+        },
+        title: 'downgrade aborted, request in progress'
       }
     ];
 

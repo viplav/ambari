@@ -38,22 +38,23 @@ class TestHookBeforeInstall(RMFTestCase):
         components=['HDP', 'main'],
         mirror_list=None,
         repo_file_name='HDP',
-        repo_template='repo_suse_rhel.j2'
+        repo_template='[{{repo_id}}]\nname={{repo_id}}\n{% if mirror_list %}mirrorlist={{mirror_list}}{% else %}baseurl={{base_url}}{% endif %}\n\npath=/\nenabled=1\ngpgcheck=0'
     )
     self.assertResourceCalled('Package', 'unzip',)
     self.assertResourceCalled('Package', 'curl',)
     self.assertResourceCalled('Directory', '/tmp/AMBARI-artifacts/',
         recursive = True,
     )
-    self.assertResourceCalled('File', '/tmp/AMBARI-artifacts//jdk-7u67-linux-x64.tar.gz',
+    self.assertResourceCalled('File', '/tmp/jdk-7u67-linux-x64.tar.gz',
         content = DownloadSource('http://c6401.ambari.apache.org:8080/resources//jdk-7u67-linux-x64.tar.gz'),
+        not_if = 'test -f /tmp/jdk-7u67-linux-x64.tar.gz',
     )
     self.assertResourceCalled('Directory', '/usr/jdk64',)
     self.assertResourceCalled('Execute', ('chmod', 'a+x', u'/usr/jdk64'),
         not_if = 'test -e /usr/jdk64/jdk1.7.0_45/bin/java',
         sudo = True,
     )
-    self.assertResourceCalled('Execute', 'mkdir -p /tmp/jdk && cd /tmp/jdk && tar -xf /tmp/AMBARI-artifacts//jdk-7u67-linux-x64.tar.gz && ambari-sudo.sh cp -rp /tmp/jdk/* /usr/jdk64',
+    self.assertResourceCalled('Execute', 'mkdir -p /tmp/jdk && cd /tmp/jdk && tar -xf /tmp/jdk-7u67-linux-x64.tar.gz && ambari-sudo.sh cp -rp /tmp/jdk/* /usr/jdk64',
         not_if = 'test -e /usr/jdk64/jdk1.7.0_45/bin/java',
     )
     self.assertResourceCalled('File', '/usr/jdk64/jdk1.7.0_45/bin/java',

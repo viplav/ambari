@@ -114,8 +114,21 @@ App.ServerValidatorMixin = Em.Mixin.create({
    * @returns {*}
    */
   loadServerSideConfigsRecommendations: function() {
-    if (this.get('recommendationsConfigs')) {
-      return $.Deferred().resolve();
+    var self = this;
+    // if extended controller doesn't support recommendations ignore this call but keep promise chain
+    if (!this.get('isControllerSupportsEnhancedConfigs')) {
+      return $.Deferred().resolve().promise();
+    }
+    var recommendations = this.get('hostGroups');
+    // send user's input based on stored configurations
+    if (this.get('content.serviceConfigProperties.length')) {
+      recommendations.blueprint.configurations = blueprintUtils.buildConfigsJSON(this.get('services'), this.get('stepConfigs'));
+    }
+    // for add service send configurations for installed services on first transition to Customize Services step
+    if (!this.get('content.serviceConfigProperties.length') && this.get('wizardController.name') === 'addServiceController') {
+      recommendations.blueprint.configurations = blueprintUtils.buildConfigsJSON(this.get('services'), this.get('stepConfigs').filter(function(serviceConfigs) {
+        return self.get('installedServiceNames').contains(serviceConfigs.get('serviceName'));
+      }));
     }
     return App.ajax.send({
       'name': 'config.recommendations',
@@ -126,7 +139,7 @@ App.ServerValidatorMixin = Em.Mixin.create({
           recommend: 'configurations',
           hosts: this.get('hostNames'),
           services: this.get('serviceNames'),
-          recommendations: this.get('hostGroups')
+          recommendations: recommendations
         }
       },
       'success': 'loadRecommendationsSuccess',
@@ -145,6 +158,8 @@ App.ServerValidatorMixin = Em.Mixin.create({
       console.warn('error while loading default config values');
     }
     this._saveRecommendedValues(data);
+    var configObject = data.resources[0].recommendations.blueprint.configurations;
+    if (configObject) this.updateInitialValue(configObject);
     this.set("recommendationsConfigs", Em.get(data.resources[0] , "recommendations.blueprint.configurations"));
   },
 
@@ -155,14 +170,51 @@ App.ServerValidatorMixin = Em.Mixin.create({
 
   serverSideValidation: function () {
     var deferred = $.Deferred();
+    var self = this;
     this.set('configValidationFailed', false);
     this.set('configValidationGlobalMessage', []);
     if (this.get('configValidationFailed')) {
       this.warnUser(deferred);
     } else {
-      this.runServerSideValidation(deferred);
+      if (this.get('isInstaller')) {
+        this.runServerSideValidation(deferred);
+      } else {
+        // on Service Configs page we need to load all hosts with componnets
+        this.getAllHostsWithComponents().then(function(data) {
+          self.set('content.recommendationsHostGroups', blueprintUtils.generateHostGroups(App.get('allHostNames'), self.mapHostsToComponents(data.items)));
+          self.runServerSideValidation(deferred);
+        });
+      }
     }
     return deferred;
+  },
+
+  getAllHostsWithComponents: function() {
+    return App.ajax.send({
+      sender: this,
+      name: 'common.hosts.all',
+      data: {
+        urlParams: 'fields=HostRoles/component_name,HostRoles/host_name'
+      }
+    });
+  },
+
+  /**
+   * Generate array similar to App.HostComponent which will be used to
+   * create blueprint hostGroups object as well.
+   *
+   * @param {Object[]} jsonData
+   * @returns {Em.Object[]}
+   */
+  mapHostsToComponents: function(jsonData) {
+    var result = [];
+    jsonData.forEach(function(item) {
+      result.push(Em.Object.create({
+        componentName: Em.get(item, 'HostRoles.component_name'),
+        hostName: Em.get(item, 'HostRoles.host_name')
+      }));
+    });
+    return result;
   },
 
   /**

@@ -81,7 +81,7 @@ export default Ember.Controller.extend({
   },
 
   setTezViewURL: function (instance) {
-    var url = "%@/%@/%@".fmt(
+    var url = "%@/%@/%@/".fmt(
       this.get('tezURLPrefix'),
       instance.version,
       instance.instance_name
@@ -100,6 +100,7 @@ export default Ember.Controller.extend({
     // no instance created
     if (data.instances && !data.instances.length) {
       this.set('error', 'tez.errors.no.instance');
+      return;
     }
   }
 });

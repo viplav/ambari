@@ -21,15 +21,16 @@
 COMMON_DIR="/usr/lib/python2.6/site-packages/ambari_commons"
 RESOURCE_MANAGEMENT_DIR="/usr/lib/python2.6/site-packages/resource_management"
 JINJA_DIR="/usr/lib/python2.6/site-packages/ambari_jinja2"
+SIMPLEJSON_DIR="/usr/lib/python2.6/site-packages/ambari_simplejson"
 OLD_COMMON_DIR="/usr/lib/python2.6/site-packages/common_functions"
 INSTALL_HELPER_SERVER="/var/lib/ambari-server/install-helper.sh"
 COMMON_DIR_AGENT="/usr/lib/ambari-agent/lib/ambari_commons"
 RESOURCE_MANAGEMENT_DIR_AGENT="/usr/lib/ambari-agent/lib/resource_management"
 JINJA_AGENT_DIR="/usr/lib/ambari-agent/lib/ambari_jinja2"
+SIMPLEJSON_AGENT_DIR="/usr/lib/ambari-agent/lib/ambari_simplejson"
 
 PYTHON_WRAPER_TARGET="/usr/bin/ambari-python-wrap"
 PYTHON_WRAPER_SOURCE="/var/lib/ambari-agent/ambari-python-wrap"
-SUDOERS_FILE="/etc/sudoers.d/ambari-agent"
 
 do_install(){
   # setting ambari_commons shared resource
@@ -45,23 +46,20 @@ do_install(){
   if [ ! -d "$JINJA_DIR" ]; then
     ln -s "$JINJA_AGENT_DIR" "$JINJA_DIR"
   fi
+  # setting simplejson shared resource
+  if [ ! -d "$SIMPLEJSON_DIR" ]; then
+    ln -s "$SIMPLEJSON_AGENT_DIR" "$SIMPLEJSON_DIR"
+  fi
   # setting python-wrapper script
   if [ ! -f "$PYTHON_WRAPER_TARGET" ]; then
     ln -s "$PYTHON_WRAPER_SOURCE" "$PYTHON_WRAPER_TARGET"
-  fi
-  
-  chmod 440 "$SUDOERS_FILE"
-  
-  grep '^#includedir /etc/sudoers.d$' /etc/sudoers > /dev/null
-  if [ $? -ne 0 ] ; then
-    echo '#includedir /etc/sudoers.d' >> /etc/sudoers
   fi
   
   # on nano Ubuntu, when umask=027 those folders are created without 'x' bit for 'others'.
   # which causes failures when hadoop users try to access tmp_dir
   chmod a+x /var/lib/ambari-agent
   chmod a+x /var/lib/ambari-agent/data
-  chmod a+x /var/lib/ambari-agent/data/tmp
+  chmod 777 /var/lib/ambari-agent/data/tmp
 }
 
 do_remove(){

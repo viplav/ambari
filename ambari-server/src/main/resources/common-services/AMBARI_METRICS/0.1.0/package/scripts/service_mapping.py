@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -16,6 +17,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 """
-
-collector_win_service_name = "AmbariMetricsCollector"
-monitor_win_service_name = "AmbariMetricsHostMonitoring"
+ams_collector_win_service_name = "AmbariMetricsCollector"
+ams_monitor_win_service_name = "AmbariMetricsHostMonitoring"
+ams_embedded_hbase_win_service_name = "ams_hbase_master"

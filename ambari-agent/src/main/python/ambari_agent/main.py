@@ -19,6 +19,7 @@ limitations under the License.
 '''
 
 import logging.handlers
+import logging.config
 import signal
 from optparse import OptionParser
 import sys
@@ -29,12 +30,14 @@ import time
 import platform
 import ConfigParser
 import ProcessHelper
+from logging.handlers import SysLogHandler
 from Controller import Controller
 import AmbariConfig
 from NetUtil import NetUtil
 from PingPortListener import PingPortListener
 import hostname
 from DataCleaner import DataCleaner
+from ExitHelper import ExitHelper
 import socket
 from ambari_commons import OSConst, OSCheck
 from ambari_commons.shell import shellRunner
@@ -42,7 +45,7 @@ from ambari_commons import shell
 import HeartbeatHandlers
 from HeartbeatHandlers import bind_signal_handlers
 from ambari_commons.constants import AMBARI_SUDO_BINARY
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 formatstr = "%(levelname)s %(asctime)s %(filename)s:%(lineno)d - %(message)s"
 agentPid = os.getpid()
@@ -50,6 +53,9 @@ config = AmbariConfig.AmbariConfig()
 configFile = config.getConfigFile()
 two_way_ssl_property = config.TWO_WAY_SSL_PROPERTY
 
+IS_LINUX = platform.system() == "Linux"
+SYSLOG_FORMAT_STRING = ' ambari_agent - %(filename)s - [%(process)d] - %(name)s - %(levelname)s - %(message)s'
+SYSLOG_FORMATTER = logging.Formatter(SYSLOG_FORMAT_STRING)
 
 
 def setup_logging(verbose):
@@ -57,7 +63,7 @@ def setup_logging(verbose):
   rotateLog = logging.handlers.RotatingFileHandler(AmbariConfig.AmbariConfig.getLogFile(), "a", 10000000, 25)
   rotateLog.setFormatter(formatter)
   logger.addHandler(rotateLog)
-
+      
   if verbose:
     logging.basicConfig(format=formatstr, level=logging.DEBUG, filename=AmbariConfig.AmbariConfig.getLogFile())
     logger.setLevel(logging.DEBUG)
@@ -67,22 +73,42 @@ def setup_logging(verbose):
     logger.setLevel(logging.INFO)
     logger.info("loglevel=logging.INFO")
 
-
+def add_syslog_handler(logger):
+    
+  syslog_enabled = config.has_option("logging","syslog_enabled") and (int(config.get("logging","syslog_enabled")) == 1)
+      
+  #add syslog handler if we are on linux and syslog is enabled in ambari config
+  if syslog_enabled and IS_LINUX:
+    logger.info("Adding syslog handler to ambari agent logger")
+    syslog_handler = SysLogHandler(address="/dev/log",
+                                   facility=SysLogHandler.LOG_LOCAL1)
+        
+    syslog_handler.setFormatter(SYSLOG_FORMATTER)
+    logger.addHandler(syslog_handler)
+    
 def update_log_level(config):
   # Setting loglevel based on config file
-  try:
-    loglevel = config.get('agent', 'loglevel')
-    if loglevel is not None:
-      if loglevel == 'DEBUG':
-        logging.basicConfig(format=formatstr, level=logging.DEBUG, filename=AmbariConfig.AmbariConfig.getLogFile())
-        logger.setLevel(logging.DEBUG)
-        logger.info("Newloglevel=logging.DEBUG")
-      else:
-        logging.basicConfig(format=formatstr, level=logging.INFO, filename=AmbariConfig.AmbariConfig.getLogFile())
-        logger.setLevel(logging.INFO)
-        logger.debug("Newloglevel=logging.INFO")
-  except Exception, err:
-    logger.info("Default loglevel=DEBUG")
+  global logger
+  log_cfg_file = os.path.join(os.path.dirname(AmbariConfig.AmbariConfig.getConfigFile()), "logging.conf")
+  if os.path.exists(log_cfg_file):
+    logging.config.fileConfig(log_cfg_file)
+    # create logger
+    logger = logging.getLogger(__name__)
+    logger.info("Logging configured by " + log_cfg_file)
+  else:  
+    try:
+      loglevel = config.get('agent', 'loglevel')
+      if loglevel is not None:
+        if loglevel == 'DEBUG':
+          logging.basicConfig(format=formatstr, level=logging.DEBUG, filename=AmbariConfig.AmbariConfig.getLogFile())
+          logger.setLevel(logging.DEBUG)
+          logger.info("Newloglevel=logging.DEBUG")
+        else:
+          logging.basicConfig(format=formatstr, level=logging.INFO, filename=AmbariConfig.AmbariConfig.getLogFile())
+          logger.setLevel(logging.INFO)
+          logger.debug("Newloglevel=logging.INFO")
+    except Exception, err:
+      logger.info("Default loglevel=DEBUG")
 
 
 #  ToDo: move that function inside AmbariConfig
@@ -224,6 +250,9 @@ def main(heartbeat_stop_callback=None):
 
   # Check for ambari configuration file.
   resolve_ambari_config()
+  
+  # Add syslog hanlder based on ambari config file
+  add_syslog_handler(logger)
 
   # Starting data cleanup daemon
   data_cleaner = None
@@ -269,6 +298,7 @@ def main(heartbeat_stop_callback=None):
     controller.start()
     controller.join()
   if not OSCheck.get_os_family() == OSConst.WINSRV_FAMILY:
+    ExitHelper.execute_cleanup()
     stop_agent()
   logger.info("finished")
 

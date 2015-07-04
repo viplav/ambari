@@ -50,11 +50,31 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
    */
   canEdit: true,
 
+  canNotEdit: Em.computed.not('canEdit'),
+
   /**
    * Config label class attribute. Displays validation status of config.
    * @type {string}
    */
   configLabelClass: '',
+
+  /**
+   * defines if widget should be shown
+   * if not, text-field with config value or label "Undefined" should be shown
+   * @type {boolean}
+   */
+  doNotShowWidget: function() {
+    return this.get('isPropertyUndefined') || this.get('config.showAsTextBox');
+  }.property('isPropertyUndefined', 'config.showAsTextBox'),
+
+  /**
+   * defines if property in not defined in selected version
+   * in this case "Undefined" should be shown instead of widget
+   * @type {boolean}
+   */
+  isPropertyUndefined: function() {
+    return this.get('config.value') === "Undefined";
+  }.property('config.value'),
 
   /**
    * Tab where current widget placed
@@ -99,6 +119,15 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
   isOriginalSCPBinding: 'config.isOriginalSCP',
 
   /**
+   * Check if property validation failed for overridden property in case when its value is equal to parent
+   * config property.
+   * @type {boolean}
+   */
+  isOverrideEqualityError: function() {
+    return this.get('config.parentSCP') && this.get('config.parentSCP.value') == this.get('config.value');
+  }.property('config.isValid'),
+
+  /**
    * Alias to <code>config.isComparison</code>
    * Should be used in the templates
    * Don't use original <code>config.isComparison</code> in the widget-templates!!!
@@ -106,7 +135,9 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
    */
   isComparisonBinding: 'config.isComparison',
 
-  classNameBindings:['isComparison:compare-mode'],
+  classNameBindings:['isComparison:compare-mode', 'config.overrides.length:overridden-property'],
+
+  issueMessage: '',
 
   issueView: Em.View.extend({
 
@@ -138,11 +169,13 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
       this.errorLevelObserver();
       this.addObserver('issuedConfig.warnMessage', this, this.errorLevelObserver);
       this.addObserver('issuedConfig.errorMessage', this, this.errorLevelObserver);
+      this.addObserver('parentView.isPropertyUndefined', this, this.errorLevelObserver);
     },
 
     willDestroyElement: function() {
       this.removeObserver('issuedConfig.warnMessage', this, this.errorLevelObserver);
       this.removeObserver('issuedConfig.errorMessage', this, this.errorLevelObserver);
+      this.removeObserver('parentView.isPropertyUndefined', this, this.errorLevelObserver);
     },
 
     /**
@@ -151,6 +184,9 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
      */
     errorLevelObserver: function() {
       var messageLevel = this.get('issuedConfig.errorMessage') ? 'ERROR': this.get('issuedConfig.warnMessage') ? 'WARN' : 'NONE';
+      if (this.get('parentView.isPropertyUndefined')) {
+        messageLevel = 'NONE';
+      }
       var issue = {
         ERROR: {
           iconClass: '',
@@ -171,6 +207,7 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
       this.set('parentView.configLabelClass', issue.configLabelClass);
       this.set('issueIconClass', issue.iconClass);
       this.set('issueMessage', issue.message);
+      this.set('parentView.issueMessage', issue.message);
     },
 
     /**
@@ -178,9 +215,17 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
      */
     issuedConfig: function() {
       var config = this.get('config');
-      // check editable overrides
-      if (!config.get('isEditable') && config.get('overrides.length') && config.get('overrides').someProperty('isEditable', true)) {
+      // check editable override
+      if (!config.get('isEditable') && config.get('isOriginalSCP') && config.get('overrides.length') && config.get('overrides').someProperty('isEditable', true)) {
         config = config.get('overrides').findProperty('isEditable', true);
+      } else if (config.get('isOriginalSCP') && config.get('isEditable')) {
+        // use original config if it is not valid
+        if (!config.get('isValid')) {
+          return config;
+        // scan overrides for non valid values and use it
+        } else if (config.get('overrides.length') && config.get('overrides').someProperty('isValid', false)) {
+          return config.get('overrides').findProperty('isValid', false);
+        }
       }
       return config;
     }.property('config.isEditable', 'config.overrides.length')
@@ -207,8 +252,8 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
    * @type {boolean}
    */
   valueIsChanged: function () {
-    return this.get('config.value') != this.get('config.defaultValue');
-  }.property('config.value'),
+    return !Em.isNone(this.get('config.savedValue')) && this.get('config.value') != this.get('config.savedValue');
+  }.property('config.value', 'config.savedValue'),
 
   /**
    * Enable/disable widget state
@@ -224,13 +269,33 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
    */
   restoreValue: function () {
     var self = this;
-    this.set('config.value', this.get('config.defaultValue'));
+    this.set('config.value', this.get('config.savedValue'));
     this.sendRequestRorDependentConfigs(this.get('config')).done(function() {
       self.restoreDependentConfigs(self.get('config'));
     });
 
     if (this.get('config.supportsFinal')) {
-      this.get('config').set('isFinal', this.get('config.defaultIsFinal'));
+      this.get('config').set('isFinal', this.get('config.savedIsFinal'));
+    }
+    Em.$('body > .tooltip').remove();
+  },
+
+  /**
+   * set <code>recommendedValue<code> to config
+   * and send request to change dependent configs
+   * @method setRecommendedValue
+   */
+  setRecommendedValue: function() {
+    var self = this;
+    this.set('config.value', this.get('config.recommendedValue'));
+    this.sendRequestRorDependentConfigs(this.get('config')).done(function() {
+      if (self.get('config.value') === self.get('config.savedValue')) {
+        self.restoreDependentConfigs(self.get('config'));
+      }
+    });
+
+    if (this.get('config.supportsFinal')) {
+      this.get('config').set('isFinal', this.get('config.recommendedIsFinal'));
     }
     Em.$('body > .tooltip').remove();
   },
@@ -288,6 +353,7 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
   }.observes('controller.recommendationTimeStamp'),
 
   didInsertElement: function () {
+    App.tooltip($(this.get('element')).find('span'));
     var self = this;
     var element = this.$();
     if (element) {
@@ -297,6 +363,7 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
         self.set('isHover', false);
       });
     }
+    this.initIncompatibleWidgetAsTextBox();
   },
 
   /**
@@ -352,10 +419,18 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
 
   /**
    * check if config value can be converted to config widget value
+   * IMPORTANT! Each config-widget that override this method should use <code>updateWarningsForCompatibilityWithWidget</code>
    * @returns {boolean}
    */
   isValueCompatibleWithWidget: function() {
-    return this.get('config.isValid');
+    return (this.get('isOverrideEqualityError') && !this.get('config.isValid')) || this.get('config.isValid');
+  },
+
+  /**
+   * Initialize widget with incompatible value as textbox
+   */
+  initIncompatibleWidgetAsTextBox : function() {
+    this.get('config').set('showAsTextBox', !this.isValueCompatibleWithWidget());
   },
 
   /**
@@ -367,11 +442,21 @@ App.ConfigWidgetView = Em.View.extend(App.SupportsDependentConfigs, App.WidgetPo
       return true;
     }
     return this.isValueCompatibleWithWidget();
-  }.property('config.value', 'config.showAsTextBox'),
+  }.property('config.value', 'config.isFinal', 'config.showAsTextBox'),
 
   /**
-   * @method setRecommendedValue
+   * Used in <code>isValueCompatibleWithWidget</code>
+   * Updates issue-parameters if config is in the raw-mode
+   * @param {string} message empty string if value compatible with widget, error-message if value isn't compatible with widget
+   * @method updateWarningsForCompatibilityWithWidget
    */
-  setRecommendedValue: Em.required(Function)
+  updateWarningsForCompatibilityWithWidget: function (message) {
+    this.setProperties({
+      warnMessage: message,
+      'config.warnMessage': message,
+      issueMessage: message,
+      configLabelClass: message ? 'text-warning' : ''
+    });
+  }
 
 });

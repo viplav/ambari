@@ -65,11 +65,10 @@ export default Ember.Object.create({
     databases: 'databases',
     openQueries: 'open-queries',
     visualExplain: 'visual-explain',
+    notify: 'notify',
     tezUI: 'tez-ui',
     file: 'file',
     fileResource: 'file-resource',
-    fileResources: 'file-resources',
-    loadedFiles: 'loaded-files',
     alerts: 'alerts',
     logs: 'logs',
     results: 'results',
@@ -78,11 +77,10 @@ export default Ember.Object.create({
     jobExplain: 'index/history-query/explain',
     databaseTree: 'databases-tree',
     databaseSearch: 'databases-search-results',
-    tables: 'tables',
-    columns: 'columns',
     settings: 'settings',
     jobProgress: 'job-progress',
-    queryTabs: 'query-tabs'
+    queryTabs: 'query-tabs',
+    session: 'session'
   },
 
   hiveParameters: [
@@ -152,6 +150,13 @@ export default Ember.Object.create({
     }
   ],
 
+  jobReferrer: {
+    sample: 'sample',
+    explain: 'explain',
+    visualExplain: 'visualExplain',
+    job: 'job'
+  },
+
   statuses: {
     unknown: "UNKNOWN",
     initialized: "INITIALIZED",
@@ -160,6 +165,8 @@ export default Ember.Object.create({
     canceled: "CANCELED",
     closed: "CLOSED",
     error: "ERROR",
+    failed: 'FAILED',
+    killed: 'KILLED',
     pending: "PENDING"
   },
 
@@ -182,16 +189,13 @@ export default Ember.Object.create({
 
   //this can be replaced by a string.format implementation
   adapter: {
-    version: '0.2.0',
+    version: '1.0.0',
     instance: 'Hive',
     apiPrefix: '/api/v1/views/HIVE/versions/',
     instancePrefix: '/instances/',
     resourcePrefix: 'resources/'
   },
 
-  settings: {
-    executionEngine: 'hive.execution.engine'
-  },
   sampleDataQuery: 'SELECT * FROM %@ LIMIT 100;',
 
   notify: {
@@ -211,5 +215,9 @@ export default Ember.Object.create({
       typeClass : 'alert-info',
       typeIcon  : 'fa-info'
     }
+  },
+
+  globalSettings: {
+    comment: "--Global Settings--\n\n"
   }
 });

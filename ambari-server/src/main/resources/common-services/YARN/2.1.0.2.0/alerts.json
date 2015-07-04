@@ -16,7 +16,8 @@
             "https_property": "{{mapred-site/mapreduce.jobhistory.http.policy}}",
             "https_property_value": "HTTPS_ONLY",
             "kerberos_keytab": "{{mapred-site/mapreduce.jobhistory.webapp.spnego-keytab-file}}",
-            "kerberos_principal": "{{mapred-site/mapreduce.jobhistory.webapp.spnego-principal}}"
+            "kerberos_principal": "{{mapred-site/mapreduce.jobhistory.webapp.spnego-principal}}",
+            "connection_timeout": 5.0
           },
           "reporting": {
             "ok": {
@@ -42,9 +43,12 @@
           "type": "METRIC",
           "uri": {
             "http": "{{mapred-site/mapreduce.jobhistory.webapp.address}}",
+            "kerberos_keytab": "{{mapred-site/mapreduce.jobhistory.webapp.spnego-keytab-file}}",
+            "kerberos_principal": "{{mapred-site/mapreduce.jobhistory.webapp.spnego-principal}}",
             "https": "{{mapred-site/mapreduce.jobhistory.webapp.https.address}}",
             "https_property": "{{mapred-site/mapreduce.jobhistory.http.policy}}",
-            "https_property_value": "HTTPS_ONLY"
+            "https_property_value": "HTTPS_ONLY",
+            "connection_timeout": 5.0
           },
           "reporting": {
             "ok": {
@@ -81,8 +85,11 @@
           "uri": {
             "http": "{{mapred-site/mapreduce.jobhistory.webapp.address}}",
             "https": "{{mapred-site/mapreduce.jobhistory.webapp.https.address}}",
+            "kerberos_keytab": "{{mapred-site/mapreduce.jobhistory.webapp.spnego-keytab-file}}",
+            "kerberos_principal": "{{mapred-site/mapreduce.jobhistory.webapp.spnego-principal}}",
             "https_property": "{{mapred-site/mapreduce.jobhistory.http.policy}}",
-            "https_property_value": "HTTPS_ONLY"
+            "https_property_value": "HTTPS_ONLY",
+            "connection_timeout": 5.0
           },
           "reporting": {
             "ok": {
@@ -179,7 +186,8 @@
             "https_property_value": "HTTPS_ONLY",
             "default_port": 8042,
             "kerberos_keytab": "{{yarn-site/yarn.nodemanager.webapp.spnego-keytab-file}}",
-            "kerberos_principal": "{{yarn-site/yarn.nodemanager.webapp.spnego-principal}}"
+            "kerberos_principal": "{{yarn-site/yarn.nodemanager.webapp.spnego-principal}}",
+            "connection_timeout": 5.0
           },
           "reporting": {
             "ok": {
@@ -234,6 +242,7 @@
             "https_property_value": "HTTPS_ONLY",
             "kerberos_keytab": "{{yarn-site/yarn.resourcemanager.webapp.spnego-keytab-file}}",
             "kerberos_principal": "{{yarn-site/yarn.resourcemanager.webapp.spnego-principal}}",
+            "connection_timeout": 5.0,
             "high_availability": {
               "alias_key" : "{{yarn-site/yarn.resourcemanager.ha.rm-ids}}",
               "http_pattern" : "{{yarn-site/yarn.resourcemanager.webapp.address.{{alias}}}}",
@@ -265,8 +274,11 @@
           "uri": {
             "http": "{{yarn-site/yarn.resourcemanager.webapp.address}}",
             "https": "{{yarn-site/yarn.resourcemanager.webapp.https.address}}",
+            "kerberos_keytab": "{{yarn-site/yarn.resourcemanager.webapp.spnego-keytab-file}}",
+            "kerberos_principal": "{{yarn-site/yarn.resourcemanager.webapp.spnego-principal}}",
             "https_property": "{{yarn-site/yarn.http.policy}}",
             "https_property_value": "HTTPS_ONLY",
+            "connection_timeout": 5.0,
             "high_availability": {
               "alias_key" : "{{yarn-site/yarn.resourcemanager.ha.rm-ids}}",
               "http_pattern" : "{{yarn-site/yarn.resourcemanager.webapp.address.{{alias}}}}",
@@ -308,8 +320,11 @@
           "uri": {
             "http": "{{yarn-site/yarn.resourcemanager.webapp.address}}",
             "https": "{{yarn-site/yarn.resourcemanager.webapp.https.address}}",
+            "kerberos_keytab": "{{yarn-site/yarn.resourcemanager.webapp.spnego-keytab-file}}",
+            "kerberos_principal": "{{yarn-site/yarn.resourcemanager.webapp.spnego-principal}}",
             "https_property": "{{yarn-site/yarn.http.policy}}",
             "https_property_value": "HTTPS_ONLY",
+            "connection_timeout": 5.0,
             "high_availability": {
               "alias_key" : "{{yarn-site/yarn.resourcemanager.ha.rm-ids}}",
               "http_pattern" : "{{yarn-site/yarn.resourcemanager.webapp.address.{{alias}}}}",
@@ -378,7 +393,8 @@
             "https_property": "{{yarn-site/yarn.http.policy}}",
             "https_property_value": "HTTPS_ONLY",
             "kerberos_keytab": "{{yarn-site/yarn.timeline-service.http-authentication.kerberos.keytab}}",
-            "kerberos_principal": "{{yarn-site/yarn.timeline-service.http-authentication.kerberos.principal}}"
+            "kerberos_principal": "{{yarn-site/yarn.timeline-service.http-authentication.kerberos.principal}}",
+            "connection_timeout": 5.0
           },
           "reporting": {
             "ok": {

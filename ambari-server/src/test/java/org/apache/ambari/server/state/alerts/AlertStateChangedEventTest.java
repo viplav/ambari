@@ -23,11 +23,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import junit.framework.Assert;
+
+import org.apache.ambari.server.events.AggregateAlertRecalculateEvent;
+import org.apache.ambari.server.events.AlertEvent;
 import org.apache.ambari.server.events.AlertStateChangeEvent;
+import org.apache.ambari.server.events.MockEventListener;
 import org.apache.ambari.server.events.publishers.AlertEventPublisher;
 import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
 import org.apache.ambari.server.orm.dao.AlertDispatchDAO;
+import org.apache.ambari.server.orm.dao.AlertsDAO;
 import org.apache.ambari.server.orm.entities.AlertDefinitionEntity;
 import org.apache.ambari.server.orm.entities.AlertGroupEntity;
 import org.apache.ambari.server.orm.entities.AlertHistoryEntity;
@@ -57,6 +63,7 @@ public class AlertStateChangedEventTest {
   private AlertEventPublisher eventPublisher;
   private AlertDispatchDAO dispatchDao;
   private Injector injector;
+  private MockEventListener m_listener;
 
   /**
    *
@@ -67,12 +74,13 @@ public class AlertStateChangedEventTest {
         new InMemoryDefaultTestModule()).with(new MockModule()));
 
     injector.getInstance(GuiceJpaInitializer.class);
+    m_listener = injector.getInstance(MockEventListener.class);
 
     dispatchDao = injector.getInstance(AlertDispatchDAO.class);
 
     // !!! need a synchronous op for testing
-    EventBusSynchronizer.synchronizeAlertEventPublisher(injector);
-    EventBusSynchronizer.synchronizeAmbariEventPublisher(injector);
+    EventBusSynchronizer.synchronizeAlertEventPublisher(injector).register(m_listener);
+    EventBusSynchronizer.synchronizeAmbariEventPublisher(injector).register(m_listener);
 
     eventPublisher = injector.getInstance(AlertEventPublisher.class);
   }
@@ -110,7 +118,7 @@ public class AlertStateChangedEventTest {
         dispatchDao.findGroupsByDefinition(EasyMock.anyObject(AlertDefinitionEntity.class))).andReturn(
         groups).once();
 
-    dispatchDao.create(EasyMock.anyObject(AlertNoticeEntity.class));
+    dispatchDao.createNotices(EasyMock.<List<AlertNoticeEntity>>anyObject());
     EasyMock.expectLastCall().once();
 
     EasyMock.replay(alertTarget, alertGroup, dispatchDao);
@@ -163,6 +171,8 @@ public class AlertStateChangedEventTest {
         dispatchDao.findGroupsByDefinition(EasyMock.anyObject(AlertDefinitionEntity.class))).andReturn(
         groups).once();
 
+    dispatchDao.createNotices(EasyMock.<List<AlertNoticeEntity>>anyObject());
+
     // dispatchDao should be strict enough to throw an exception on verify
     // that the create alert notice method was not called
     EasyMock.replay(alertTarget, alertGroup, dispatchDao);
@@ -192,6 +202,22 @@ public class AlertStateChangedEventTest {
     // async publishing
     eventPublisher.publish(event);
     EasyMock.verify(dispatchDao, history, event);
+  }
+
+  /**
+   * Tests that {@link AggregateAlertRecalculateEvent}s are fired correctly.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testAggregateAlertRecalculateEvent() throws Exception {
+    Class<? extends AlertEvent> eventClass = AggregateAlertRecalculateEvent.class;
+
+    Assert.assertFalse(m_listener.isAlertEventReceived(eventClass));
+    AlertsDAO dao = injector.getInstance(AlertsDAO.class);
+    dao.removeCurrentByServiceComponentHost(1, "HDFS", "DATANODE", "c6401");
+    Assert.assertTrue(m_listener.isAlertEventReceived(eventClass));
+    Assert.assertEquals(1, m_listener.getAlertEventReceivedCount(eventClass));
   }
 
   /**

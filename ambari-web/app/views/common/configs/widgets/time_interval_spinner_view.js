@@ -45,10 +45,10 @@ App.TimeIntervalSpinnerView = App.ConfigWidgetView.extend({
   /**
    * Default property value in widget format.
    *
-   * @property defaultValue
+   * @property savedValue
    * @type {Object[]}
    */
-  defaultValue: null,
+  savedValue: null,
 
   /**
    * Maximum property value in widget format.
@@ -56,7 +56,9 @@ App.TimeIntervalSpinnerView = App.ConfigWidgetView.extend({
    * @property maxValue
    * @type {Object[]}
    */
-  maxValue: null,
+  maxValue: function() {
+    return this.generateWidgetValue(this.get('config.stackConfigProperty.valueAttributes.maximum'));
+  }.property('config.stackConfigProperty.valueAttributes.maximum'),
 
   /**
    * Minimum property value in widget format.
@@ -64,7 +66,11 @@ App.TimeIntervalSpinnerView = App.ConfigWidgetView.extend({
    * @property minValue
    * @type {Object[]}
    */
-  minValue: null,
+  minValue: function() {
+    return this.generateWidgetValue(this.get('config.stackConfigProperty.valueAttributes.minimum'));
+  }.property('config.stackConfigProperty.valueAttributes.minimum'),
+
+  propertyUnitBinding: 'config.stackConfigProperty.valueAttributes.unit',
 
   /**
    * @TODO move it to unit conversion view mixin?
@@ -82,8 +88,8 @@ App.TimeIntervalSpinnerView = App.ConfigWidgetView.extend({
   },
 
   didInsertElement: function () {
-    Em.run.once(this, 'prepareContent');
     this._super();
+    this.prepareContent();
     this.toggleWidgetState();
     this.initPopover();
   },
@@ -91,20 +97,13 @@ App.TimeIntervalSpinnerView = App.ConfigWidgetView.extend({
   /**
    * Content setter.
    * Affects to view attributes:
-   *  @see propertyUnit
-   *  @see defaultValue
-   *  @see minValue
-   *  @see maxValue
+   *  @see savedValue
    *       content
    * @method prepareContent
    */
   prepareContent: function() {
     var property = this.get('config');
-
-    this.set('propertyUnit', property.get('stackConfigProperty.valueAttributes.unit'));
-    this.set('minValue', this.generateWidgetValue(property.get('stackConfigProperty.valueAttributes.minimum')));
-    this.set('maxValue', this.generateWidgetValue(property.get('stackConfigProperty.valueAttributes.maximum')));
-    this.set('content', this.generateWidgetValue(property.get('value')));
+    this.setValue(!isNaN(parseInt(property.get('value'))) ? property.get('value') : 0);
     this.parseIncrement();
   },
 
@@ -147,37 +146,51 @@ App.TimeIntervalSpinnerView = App.ConfigWidgetView.extend({
   },
 
   /**
-   * Subscribe for value changes
-   * @method valueObserver
+   * Handle changes for widget value.
+   *  * Capture validation errors.
+   *  * Set original config value converted from widget format
+   *  * Send recommendations.
    */
-  valueObserver: function() {
-    if (!this.get('content')) return;
-    Em.run.once(this, 'valueObserverCallback');
-  }.observes('content.@each.value'),
-
-  valueObserverCallback: function() {
+  widgetValueObserver: function() {
     this.checkModified();
     this.setConfigValue();
     this.checkErrors();
     this.sendRequestRorDependentConfigs(this.get('config'));
-  },
+  }.observes('content.@each.value'),
+
+  /**
+   * Handle config value changes in raw mode.
+   * Check specific validation errors regarding widget format value.
+   */
+  configValueObserver: function() {
+    if (this.get('config.showAsTextBox')) {
+      this.checkErrors();
+    }
+  }.observes('config.value', 'config.showAsTextBox'),
 
   /**
    * Check for property modification.
    * @method checkModified
    */
   checkModified: function() {
-    this.set('valueIsChanged', this.configValueByWidget(this.get('content')) != parseInt(this.get('config.defaultValue')));
+    this.set('valueIsChanged', this.configValueByWidget(this.get('content')) != parseInt(this.get('config.savedValue')));
   },
 
   /**
    * Check for validation errors like minimum or maximum required value
+   * @param {*} [val]
    * @method checkErrors
    */
-  checkErrors: function() {
-    var convertedValue = this.configValueByWidget(this.get('content'));
+  checkErrors: function(val) {
+    val = val || this.get('content');
+    // in raw mode we should use config value instead of converted from widget
+    var convertedValue = this.get('config.showAsTextBox') ? parseInt(this.get('config.value'), 10) : this.configValueByWidget(val);
     var warnMessage = '';
     var warn = false;
+    // if not a number ignore check since it validation failed in config model as well.
+    if (isNaN(convertedValue)) {
+      return;
+    }
     if (convertedValue < parseInt(this.get('config.stackConfigProperty.valueAttributes.minimum'))) {
       warnMessage = Em.I18n.t('config.warnMessage.outOfBoundaries.less').format(this.dateToText(this.get('minValue')));
       warn = true;
@@ -200,8 +213,20 @@ App.TimeIntervalSpinnerView = App.ConfigWidgetView.extend({
    * set appropriate attribute for configProperty model
    * @method setConfigValue
    */
-  setConfigValue: function() {
-    this.set('config.value', '' + this.configValueByWidget(this.get('content')));
+  setConfigValue: function(value) {
+    this.set('config.value', '' + (value || this.configValueByWidget(this.get('content'))));
+  },
+
+  setValue: function(value) {
+    if ((value && !isNaN(value)) || !isNaN(this.get('config.value'))) {
+      this.set('content', this.generateWidgetValue(value || this.get('config.value')));
+    }
+  },
+
+  setRecommendedValue: function() {
+    this._super();
+    this.setValue();
+    this.parseIncrement();
   },
 
   /**
@@ -228,12 +253,8 @@ App.TimeIntervalSpinnerView = App.ConfigWidgetView.extend({
    */
   restoreValue: function() {
     this._super();
-    this.set('content', this.generateWidgetValue(this.get('config.defaultValue')));
+    this.setValue(this.get('config.savedValue'));
     this.parseIncrement();
-  },
-
-  setValue: function() {
-    this.set('content', this.generateWidgetValue(this.get('config.value')));
   },
 
   isValueCompatibleWithWidget: function() {
@@ -242,17 +263,25 @@ App.TimeIntervalSpinnerView = App.ConfigWidgetView.extend({
       if (isNaN(configValue)) return false;
       if (this.get('config.stackConfigProperty.valueAttributes.minimum')) {
         var min = parseInt(this.get('config.stackConfigProperty.valueAttributes.minimum'));
-        if (configValue < min) return false;
+        if (configValue < min) {
+          this.updateWarningsForCompatibilityWithWidget(Em.I18n.t('config.warnMessage.outOfBoundaries.less').format(this.dateToText(this.get('minValue'))));
+          return false;
+        }
       }
       if (this.get('config.stackConfigProperty.valueAttributes.maximum')) {
         var max = parseInt(this.get('config.stackConfigProperty.valueAttributes.maximum'));
-        if (configValue > max) return false;
+        if (configValue > max) {
+          this.updateWarningsForCompatibilityWithWidget(Em.I18n.t('config.warnMessage.outOfBoundaries.greater').format(this.dateToText(this.get('maxValue'))));
+          return false;
+        }
       }
       if (this.get('config.stackConfigProperty.valueAttributes.increment_step')) {
         if (configValue % this.get('config.stackConfigProperty.valueAttributes.increment_step') != 0) return false;
       }
+      this.updateWarningsForCompatibilityWithWidget('');
       return true;
     }
     return false;
   }
+
 });

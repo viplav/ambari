@@ -255,12 +255,12 @@ class TestAlerts(TestCase):
     cluster_configuration = self.__get_cluster_configuration()
     self.__update_cluster_configuration(cluster_configuration, configuration)
 
-    alert = MetricAlert(definition_json, definition_json['source'])
+    alert = MetricAlert(definition_json, definition_json['source'], None)
     alert.set_helpers(collector, cluster_configuration)
     alert.set_cluster("c1", "c6401.ambari.apache.org")
 
     # trip an OK
-    ma_load_jmx_mock.return_value = [1, 25]
+    ma_load_jmx_mock.return_value = ([1, 25], None)
 
     alert.collect()
     alerts = collector.alerts()
@@ -269,7 +269,7 @@ class TestAlerts(TestCase):
     self.assertEquals('(Unit Tests) OK: 1 25 125', alerts[0]['text'])
 
     # trip a warning
-    ma_load_jmx_mock.return_value = [1, 75]
+    ma_load_jmx_mock.return_value = ([1, 75], None)
 
     alert.collect()
     alerts = collector.alerts()
@@ -278,7 +278,7 @@ class TestAlerts(TestCase):
     self.assertEquals('(Unit Tests) Warning: 1 75 175', alerts[0]['text'])
 
     # trip a critical now
-    ma_load_jmx_mock.return_value = [1, 150]
+    ma_load_jmx_mock.return_value = ([1, 150], None)
 
     alert.collect()
     alerts = collector.alerts()
@@ -289,12 +289,12 @@ class TestAlerts(TestCase):
     del definition_json['source']['jmx']['value']
     collector = AlertCollector()
 
-    alert = MetricAlert(definition_json, definition_json['source'])
+    alert = MetricAlert(definition_json, definition_json['source'], None)
     alert.set_helpers(collector, cluster_configuration)
     alert.set_cluster("c1", "c6401.ambari.apache.org")
 
     # now try without any jmx value to compare to
-    ma_load_jmx_mock.return_value = [1, 25]
+    ma_load_jmx_mock.return_value = ([1, 25], None)
 
     alert.collect()
     alerts = collector.alerts()
@@ -307,13 +307,13 @@ class TestAlerts(TestCase):
   def test_alert_uri_structure(self, ma_load_jmx_mock):
     definition_json = self._get_metric_alert_definition()
 
-    ma_load_jmx_mock.return_value = [0,0]
+    ma_load_jmx_mock.return_value = ([0,0], None)
     
     # run the alert without specifying any keys; an exception should be thrown
     # indicating that there was no URI and the result is UNKNOWN
     collector = AlertCollector()
     cluster_configuration = self.__get_cluster_configuration()
-    alert = MetricAlert(definition_json, definition_json['source'])
+    alert = MetricAlert(definition_json, definition_json['source'], None)
     alert.set_helpers(collector, cluster_configuration)
     alert.set_cluster("c1", "c6401.ambari.apache.org")
     alert.collect()
@@ -329,7 +329,7 @@ class TestAlerts(TestCase):
     cluster_configuration = self.__get_cluster_configuration()
     self.__update_cluster_configuration(cluster_configuration, configuration)
 
-    alert = MetricAlert(definition_json, definition_json['source'])
+    alert = MetricAlert(definition_json, definition_json['source'], None)
     alert.set_helpers(collector, cluster_configuration)
     alert.set_cluster("c1", "c6401.ambari.apache.org")
     alert.collect()
@@ -345,7 +345,7 @@ class TestAlerts(TestCase):
     self.__update_cluster_configuration(cluster_configuration, configuration)
 
     collector = AlertCollector()
-    alert = MetricAlert(definition_json, definition_json['source'])
+    alert = MetricAlert(definition_json, definition_json['source'], None)
     alert.set_helpers(collector, cluster_configuration)
     alert.set_cluster("c1", "c6401.ambari.apache.org")
     alert.collect()
@@ -361,7 +361,7 @@ class TestAlerts(TestCase):
     self.__update_cluster_configuration(cluster_configuration, configuration)
 
     collector = AlertCollector()
-    alert = MetricAlert(definition_json, definition_json['source'])
+    alert = MetricAlert(definition_json, definition_json['source'], None)
     alert.set_helpers(collector, cluster_configuration)
     alert.set_cluster("c1", "c6401.ambari.apache.org")
     alert.collect()
@@ -378,7 +378,7 @@ class TestAlerts(TestCase):
     self.__update_cluster_configuration(cluster_configuration, configuration)
 
     collector = AlertCollector()
-    alert = MetricAlert(definition_json, definition_json['source'])
+    alert = MetricAlert(definition_json, definition_json['source'], None)
     alert.set_helpers(collector, cluster_configuration)
     alert.set_cluster("c1", "c6401.ambari.apache.org")
     alert.collect()
@@ -628,7 +628,7 @@ class TestAlerts(TestCase):
     self.assertEquals(alert._get_reporting_text(alert.RESULT_CRITICAL), 'Connection failed to {1}')
 
     definition_json['source']['type'] = 'METRIC'
-    alert = MetricAlert(definition_json, definition_json['source'])
+    alert = MetricAlert(definition_json, definition_json['source'], None)
     self.assertEquals(alert._get_reporting_text(alert.RESULT_OK), '{0}')
     self.assertEquals(alert._get_reporting_text(alert.RESULT_WARNING), '{0}')
     self.assertEquals(alert._get_reporting_text(alert.RESULT_CRITICAL), '{0}')
@@ -867,7 +867,7 @@ class TestAlerts(TestCase):
     cluster_configuration = self.__get_cluster_configuration()
     self.__update_cluster_configuration(cluster_configuration, configuration)
 
-    alert = MetricAlert(definition_json, definition_json['source'])
+    alert = MetricAlert(definition_json, definition_json['source'], None)
     alert.set_helpers(collector, cluster_configuration)
     alert.set_cluster("c1", "c6401.ambari.apache.org")
 
@@ -955,6 +955,61 @@ class TestAlerts(TestCase):
     # ensure that the parent was not called
     self.assertFalse(parent_mock.open.called)
 
+
+  def test_uri_timeout(self):
+    # the web alert will have a timeout value
+    definition_json = self._get_web_alert_definition()
+    alert = WebAlert(definition_json, definition_json['source'], None)
+    self.assertEquals(5.678, alert.connection_timeout)
+    self.assertEquals("5", alert.curl_connection_timeout)
+
+    # the metric definition will not and should default to 5.0
+    definition_json = self._get_metric_alert_definition()
+    alert = MetricAlert(definition_json, definition_json['source'], None)
+    self.assertEquals(5.0, alert.connection_timeout)
+
+
+  def test_get_configuration_values(self):
+    """
+    Tests that we are able to extract parameters correctly from the cached
+    configuration.
+    :return:
+    """
+    configuration = { 'foo-site' :
+      { 'foo-key1' : 'value1',
+        'foo-key2' : 'value2',
+        'special-character-*' : 'asterisk',
+        'special-character-$' : 'dollar sign',
+        'special-character-%' : 'percent',
+        'special-character-#' : 'hash',
+        'special-character-!' : 'bang',
+        'special-character-&' : 'ampersand'
+      }
+    }
+
+    collector = AlertCollector()
+    cluster_configuration = self.__get_cluster_configuration()
+    self.__update_cluster_configuration(cluster_configuration, configuration)
+
+    alert = MockAlert()
+    alert.set_helpers(collector, cluster_configuration)
+    alert.set_cluster("c1", "c6401.ambari.apache.org")
+
+    self.assertEquals("constant", alert._get_configuration_value("constant"))
+    self.assertEquals("value1", alert._get_configuration_value("{{foo-site/foo-key1}}"))
+    self.assertEquals("value2", alert._get_configuration_value("{{foo-site/foo-key2}}"))
+    self.assertEquals("asterisk", alert._get_configuration_value("{{foo-site/special-character-*}}"))
+    self.assertEquals("dollar sign", alert._get_configuration_value("{{foo-site/special-character-$}}"))
+    self.assertEquals("hash", alert._get_configuration_value("{{foo-site/special-character-#}}"))
+    self.assertEquals("bang", alert._get_configuration_value("{{foo-site/special-character-!}}"))
+    self.assertEquals("ampersand", alert._get_configuration_value("{{foo-site/special-character-&}}"))
+
+    # try a mix of parameter and constant
+    self.assertEquals("http://value1/servlet", alert._get_configuration_value("http://{{foo-site/foo-key1}}/servlet"))
+    self.assertEquals("http://value1/servlet/value2", alert._get_configuration_value("http://{{foo-site/foo-key1}}/servlet/{{foo-site/foo-key2}}"))
+
+    # try to request a dictionary object instead of a property
+    self.assertEquals(configuration["foo-site"], alert._get_configuration_value("{{foo-site}}"))
 
   def __get_cluster_configuration(self):
     """
@@ -1113,7 +1168,8 @@ class TestAlerts(TestCase):
           "http": "{{hdfs-site/dfs.datanode.http.address}}",
           "https": "{{hdfs-site/dfs.datanode.https.address}}",
           "https_property": "{{hdfs-site/dfs.http.policy}}",
-          "https_property_value": "HTTPS_ONLY"
+          "https_property_value": "HTTPS_ONLY",
+          "connection_timeout": 5.678
         },
         "reporting": {
           "ok": {

@@ -276,7 +276,7 @@ public class ControllerModule extends AbstractModule {
 
     final SessionIdManager sessionIdManager = new HashSessionIdManager();
     final SessionManager sessionManager = new HashSessionManager();
-    sessionManager.setSessionPath("/");
+    sessionManager.getSessionCookieConfig().setPath("/");
     sessionManager.setSessionIdManager(sessionIdManager);
     bind(SessionManager.class).toInstance(sessionManager);
     bind(SessionIdManager.class).toInstance(sessionIdManager);
@@ -284,6 +284,7 @@ public class ControllerModule extends AbstractModule {
     bind(KerberosOperationHandlerFactory.class);
     bind(KerberosDescriptorFactory.class);
     bind(KerberosServiceDescriptorFactory.class);
+    bind(KerberosHelper.class).to(KerberosHelperImpl.class);
 
     bind(Configuration.class).toInstance(configuration);
     bind(OsFamily.class).toInstance(os_family);
@@ -606,7 +607,7 @@ public class ControllerModule extends AbstractModule {
     // log the order of the pre-upgrade checks
     List<AbstractCheckDescriptor> upgradeChecks = registry.getUpgradeChecks();
     for (AbstractCheckDescriptor upgradeCheck : upgradeChecks) {
-      LOG.error("Registered pre-upgrade check {}", upgradeCheck.getClass());
+      LOG.debug("Registered pre-upgrade check {}", upgradeCheck.getClass());
     }
   }
 }

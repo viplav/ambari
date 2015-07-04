@@ -25,7 +25,7 @@ import time
 import re
 import logging
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 class DataCleaner(threading.Thread):
   COMMAND_FILE_NAMES_PATTERN = 'errors-\d+.txt|output-\d+.txt|site-\d+.pp|structured-out-\d+.json|command-\d+.json'

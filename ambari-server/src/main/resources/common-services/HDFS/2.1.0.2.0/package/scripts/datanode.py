@@ -52,7 +52,9 @@ class DataNode(Script):
     # pre-upgrade steps shutdown the datanode, so there's no need to call
     # action=stop
     if rolling_restart:
-      datanode_upgrade.pre_upgrade_shutdown()
+      stopped = datanode_upgrade.pre_upgrade_shutdown()
+      if not stopped:
+        datanode(action="stop")
     else:
       datanode(action="stop")
 
@@ -143,7 +145,9 @@ class DataNodeDefault(DataNode):
 
 @OsFamilyImpl(os_family=OSConst.WINSRV_FAMILY)
 class DataNodeWindows(DataNode):
-  pass
+  def install(self, env):
+    import install_params
+    self.install_packages(env, install_params.exclude_packages)
 
 if __name__ == "__main__":
   DataNode().execute()

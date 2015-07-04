@@ -18,11 +18,19 @@ limitations under the License.
 Ambari Agent
 
 """
-
-from resource_management import *
+import os
+from resource_management.libraries.script import Script
+from resource_management.libraries.resources.hdfs_resource import HdfsResource
+from resource_management.libraries.resources.execute_hadoop import ExecuteHadoop
+from resource_management.libraries.functions import format
 from resource_management.libraries.functions.version import compare_versions
+from resource_management.libraries.functions.copy_tarball import copy_to_hdfs
+from resource_management.core.resources.system import File, Execute
+
 from ambari_commons import OSConst
 from ambari_commons.os_family_impl import OsFamilyImpl
+
+from resource_management.core.logger import Logger
 
 class TezServiceCheck(Script):
   pass
@@ -33,46 +41,46 @@ class TezServiceCheckLinux(TezServiceCheck):
     import params
     env.set_params(params)
 
-    if params.hdp_stack_version != "" and compare_versions(params.hdp_stack_version, '2.2') >= 0:
-      hdp_version = functions.get_hdp_version("hadoop-client")
-
-    path_to_tez_jar = format(params.path_to_tez_examples_jar)
-    wordcount_command = format("jar {path_to_tez_jar} orderedwordcount "
-                               "/tmp/tezsmokeinput/sample-tez-test /tmp/tezsmokeoutput/")
+    path_to_tez_jar = format(params.tez_examples_jar)
+    wordcount_command = format("jar {path_to_tez_jar} orderedwordcount /tmp/tezsmokeinput/sample-tez-test /tmp/tezsmokeoutput/")
     test_command = format("fs -test -e /tmp/tezsmokeoutput/_SUCCESS")
-    
-    File( format("{tmp_dir}/sample-tez-test"),
-          content = "foo\nbar\nfoo\nbar\nfoo",
-          mode = 0755
+
+    File(format("{tmp_dir}/sample-tez-test"),
+      content = "foo\nbar\nfoo\nbar\nfoo",
+      mode = 0755
     )
-    
+
     params.HdfsResource("/tmp/tezsmokeinput",
-                        action="create_on_execute",
-                        type="directory",
-                        owner=params.smokeuser,
+      action = "create_on_execute",
+      type = "directory",
+      owner = params.smokeuser,
     )
     params.HdfsResource("/tmp/tezsmokeinput/sample-tez-test",
-                        action="create_on_execute",
-                        type="file",
-                        owner=params.smokeuser,
-                        source=format("{tmp_dir}/sample-tez-test"),
-    )
-    params.HdfsResource(None, action="execute")
-
-    ExecuteHadoop( wordcount_command,
-                   tries = 3,
-                   try_sleep = 5,
-                   user = params.smokeuser,
-                   conf_dir = params.hadoop_conf_dir,
-                   bin_dir = params.hadoop_bin_dir
+      action = "create_on_execute",
+      type = "file",
+      owner = params.smokeuser,
+      source = format("{tmp_dir}/sample-tez-test"),
     )
 
-    ExecuteHadoop( test_command,
-                   tries = 10,
-                   try_sleep = 6,
-                   user = params.smokeuser,
-                   conf_dir = params.hadoop_conf_dir,
-                   bin_dir = params.hadoop_bin_dir
+    if params.hdp_stack_version and compare_versions(params.hdp_stack_version, '2.2.0.0') >= 0:
+      copy_to_hdfs("tez", params.user_group, params.hdfs_user)
+
+    params.HdfsResource(None, action = "execute")
+
+    ExecuteHadoop(wordcount_command,
+      tries = 3,
+      try_sleep = 5,
+      user = params.smokeuser,
+      conf_dir = params.hadoop_conf_dir,
+      bin_dir = params.hadoop_bin_dir
+    )
+
+    ExecuteHadoop(test_command,
+      tries = 10,
+      try_sleep = 6,
+      user = params.smokeuser,
+      conf_dir = params.hadoop_conf_dir,
+      bin_dir = params.hadoop_bin_dir
     )
 
 

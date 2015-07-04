@@ -94,6 +94,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -319,7 +320,7 @@ public class UpgradeCatalog170 extends AbstractUpgradeCatalog {
       dbAccessor.dropTable("serviceconfigmapping");
     }
 
-    dbAccessor.dropConstraint("confgroupclusterconfigmapping", "FK_confg");
+    dbAccessor.dropFKConstraint("confgroupclusterconfigmapping", "FK_confg");
 
     if (databaseType == DatabaseType.ORACLE
         || databaseType == DatabaseType.MYSQL
@@ -384,7 +385,7 @@ public class UpgradeCatalog170 extends AbstractUpgradeCatalog {
 
     populateConfigVersions();
 
-    dbAccessor.setNullable("clusterconfig", new DBColumnInfo("version", Long.class, null), false);
+    dbAccessor.setColumnNullable("clusterconfig", new DBColumnInfo("version", Long.class, null), false);
 
     dbAccessor.executeQuery("ALTER TABLE clusterconfig ADD CONSTRAINT UQ_config_type_tag UNIQUE (cluster_id, type_name, version_tag)", true);
     dbAccessor.executeQuery("ALTER TABLE clusterconfig ADD CONSTRAINT UQ_config_type_version UNIQUE (cluster_id, type_name, version)", true);
@@ -461,15 +462,25 @@ public class UpgradeCatalog170 extends AbstractUpgradeCatalog {
     dbAccessor.executeQuery("INSERT INTO ambari_sequences(sequence_name, sequence_value) VALUES('service_config_application_id_seq', 1)", false);
 
     long count = 1;
-    ResultSet resultSet = null;
+
+    Statement statement = null;
+    ResultSet rs = null;
     try {
-      resultSet = dbAccessor.executeSelect("SELECT count(*) FROM clusterconfig");
-      if (resultSet.next()) {
-        count = resultSet.getLong(1) + 2;
+      statement = dbAccessor.getConnection().createStatement();
+      if (statement != null) {
+        rs = statement.executeQuery("SELECT count(*) FROM clusterconfig");
+        if (rs != null) {
+          if (rs.next()) {
+            count = rs.getLong(1) + 2;
+          }
+        }
       }
     } finally {
-      if (resultSet != null) {
-        resultSet.close();
+      if (rs != null) {
+        rs.close();
+      }
+      if (statement != null) {
+        statement.close();
       }
     }
 
@@ -530,64 +541,85 @@ public class UpgradeCatalog170 extends AbstractUpgradeCatalog {
   }
 
   private void populateConfigVersions() throws SQLException {
-    ResultSet resultSet = dbAccessor.executeSelect("SELECT DISTINCT type_name FROM clusterconfig ");
+    ResultSet resultSet = null;
     Set<String> configTypes = new HashSet<String>();
-    if (resultSet != null) {
-      try {
-        while (resultSet.next()) {
-          configTypes.add(resultSet.getString("type_name"));
-        }
-      } finally {
-        resultSet.close();
-      }
-    }
 
     //use new connection to not affect state of internal one
-    Connection connection = dbAccessor.getNewConnection();
-    PreparedStatement orderedConfigsStatement =
-      connection.prepareStatement("SELECT config_id FROM clusterconfig WHERE type_name = ? ORDER BY create_timestamp");
-
+    Connection connection = null;
+    PreparedStatement orderedConfigsStatement = null;
     Map<String, List<Long>> configVersionMap = new HashMap<String, List<Long>>();
-    for (String configType : configTypes) {
-      List<Long> configIds = new ArrayList<Long>();
-      orderedConfigsStatement.setString(1, configType);
-      resultSet = orderedConfigsStatement.executeQuery();
-      if (resultSet != null) {
-        try {
-          while (resultSet.next()) {
-            configIds.add(resultSet.getLong("config_id"));
-          }
-        } finally {
-          resultSet.close();
-        }
-      }
-      configVersionMap.put(configType, configIds);
-    }
-
-    orderedConfigsStatement.close();
-
-    connection.setAutoCommit(false); //disable autocommit
-    PreparedStatement configVersionStatement =
-      connection.prepareStatement("UPDATE clusterconfig SET version = ? WHERE config_id = ?");
-
-
     try {
-      for (Entry<String, List<Long>> entry : configVersionMap.entrySet()) {
-        long version = 1L;
-        for (Long configId : entry.getValue()) {
-          configVersionStatement.setLong(1, version++);
-          configVersionStatement.setLong(2, configId);
-          configVersionStatement.addBatch();
+      connection = dbAccessor.getNewConnection();
+
+      Statement statement = null;
+      try {
+        statement = connection.createStatement();
+        if (statement != null) {
+          resultSet = statement.executeQuery("SELECT DISTINCT type_name FROM clusterconfig ");
+          if (resultSet != null) {
+            while (resultSet.next()) {
+              configTypes.add(resultSet.getString("type_name"));
+            }
+          }
         }
-        configVersionStatement.executeBatch();
+      } finally {
+        if (statement != null) {
+          statement.close();
+        }
       }
-      connection.commit(); //commit changes manually
-    } catch (SQLException e) {
-      connection.rollback();
-      throw e;
+
+      try {
+        orderedConfigsStatement
+                = connection.prepareStatement("SELECT config_id FROM clusterconfig WHERE type_name = ? ORDER BY create_timestamp");
+
+        for (String configType : configTypes) {
+          List<Long> configIds = new ArrayList<Long>();
+          orderedConfigsStatement.setString(1, configType);
+          resultSet = orderedConfigsStatement.executeQuery();
+          if (resultSet != null) {
+            try {
+              while (resultSet.next()) {
+                configIds.add(resultSet.getLong("config_id"));
+              }
+            } finally {
+              resultSet.close();
+            }
+          }
+          configVersionMap.put(configType, configIds);
+        }
+      } finally {
+        if (orderedConfigsStatement != null) {
+          orderedConfigsStatement.close();
+        }
+      }
+
+      connection.setAutoCommit(false); //disable autocommit
+      PreparedStatement configVersionStatement = null;
+      try {
+        configVersionStatement = connection.prepareStatement("UPDATE clusterconfig SET version = ? WHERE config_id = ?");
+
+        for (Entry<String, List<Long>> entry : configVersionMap.entrySet()) {
+          long version = 1L;
+          for (Long configId : entry.getValue()) {
+            configVersionStatement.setLong(1, version++);
+            configVersionStatement.setLong(2, configId);
+            configVersionStatement.addBatch();
+          }
+          configVersionStatement.executeBatch();
+        }
+        connection.commit(); //commit changes manually
+      } catch (SQLException e) {
+        connection.rollback();
+        throw e;
+      } finally {
+        if (configVersionStatement != null){
+          configVersionStatement.close();
+        }
+      }
     } finally {
-      configVersionStatement.close();
-      connection.close();
+      if (connection != null) {
+        connection.close();
+      }
     }
 
   }
@@ -1348,27 +1380,35 @@ public class UpgradeCatalog170 extends AbstractUpgradeCatalog {
     final ResourceEntity ambariResource = resourceDAO.findAmbariResource();
 
     final Map<UserEntity, List<String>> roles = new HashMap<UserEntity, List<String>>();
-    ResultSet resultSet = null;
+    Statement statement = null;
+    ResultSet rs = null;
     try {
-      resultSet = dbAccessor.executeSelect("SELECT role_name, user_id FROM user_roles");
-      while (resultSet.next()) {
-        final String roleName = resultSet.getString(1);
-        final int userId = resultSet.getInt(2);
+      statement = dbAccessor.getConnection().createStatement();
+      if (statement != null) {
+        rs = statement.executeQuery("SELECT role_name, user_id FROM user_roles");
+        if (rs != null) {
+          while (rs.next()) {
+            final String roleName = rs.getString(1);
+            final int userId = rs.getInt(2);
 
-        final UserEntity user = userDAO.findByPK(userId);
-        List<String> userRoles = roles.get(user);
-        if (userRoles == null) {
-          userRoles = new ArrayList<String>();
-          roles.put(user, userRoles);
+            final UserEntity user = userDAO.findByPK(userId);
+            List<String> userRoles = roles.get(user);
+            if (userRoles == null) {
+              userRoles = new ArrayList<String>();
+              roles.put(user, userRoles);
+            }
+            userRoles.add(roleName);
+          }
         }
-        userRoles.add(roleName);
       }
     } finally {
-      if (resultSet != null) {
-        resultSet.close();
+      if (rs != null) {
+        rs.close();
+      }
+      if (statement != null) {
+        statement.close();
       }
     }
-
     for (UserEntity user: userDAO.findAll()) {
       List<String> userRoles = roles.get(user);
       if (userRoles.contains("admin")) {

@@ -83,7 +83,7 @@ App.MainHostView = App.TableView.extend(App.TableServerViewMixin, {
   refresh: function () {
     this.set('filteringComplete', false);
     var updaterMethodName = this.get('updater.tableUpdaterMap')[this.get('tableName')];
-    this.get('updater')[updaterMethodName](this.updaterSuccessCb.bind(this), this.updaterErrorCb.bind(this));
+    this.get('updater')[updaterMethodName](this.updaterSuccessCb.bind(this), this.updaterErrorCb.bind(this), true);
     return true;
   },
 
@@ -155,11 +155,7 @@ App.MainHostView = App.TableView.extend(App.TableServerViewMixin, {
     change: function () {
       this.get('parentView').saveDisplayLength();
       var self = this;
-      if (this.get('parentView.startIndex') === 1 || this.get('parentView.startIndex') === 0) {
-        Ember.run.next(function () {
-          self.get('parentView').updatePagination();
-        });
-      } else {
+      if (this.get('parentView.startIndex') !== 1 && this.get('parentView.startIndex') !== 0) {
         Ember.run.next(function () {
           self.set('parentView.startIndex', 1);
         });
@@ -203,14 +199,10 @@ App.MainHostView = App.TableView.extend(App.TableServerViewMixin, {
     this.clearFiltersObs();
     this.addObserver('selectAllHosts', this, this.toggleAllHosts);
     this.addObserver('filteringComplete', this, this.overlayObserver);
-    this.addObserver('startIndex', this, 'updateHostsPagination');
+    this.addObserver('startIndex', this, 'updatePagination');
     this.addObserver('displayLength', this, 'updatePagination');
     this.addObserver('filteredCount', this, this.updatePaging);
     this.overlayObserver();
-  },
-
-  updateHostsPagination: function () {
-    this.updatePagination();
   },
 
   willDestroyElement: function () {
@@ -376,15 +368,11 @@ App.MainHostView = App.TableView.extend(App.TableServerViewMixin, {
   getHostsForBulkOperations: function (queryParams, operationData, loadingPopup) {
     var params = App.router.get('updateController').computeParameters(queryParams);
 
-    if (!params.length) {
-      params = '&';
-    }
-
     App.ajax.send({
       name: 'hosts.bulk.operations',
       sender: this,
       data: {
-        parameters: params.substring(0, params.length - 1),
+        parameters: params,
         operationData: operationData,
         loadingPopup: loadingPopup
       },
@@ -552,6 +540,9 @@ App.MainHostView = App.TableView.extend(App.TableServerViewMixin, {
     },
 
     displayComponents: function () {
+      if (this.get('hasNoComponents')) {
+        return;
+      }
       var header = Em.I18n.t('common.components'),
         hostName = this.get('content.hostName'),
         items = this.get('content.hostComponents').getEach('displayName');
@@ -559,6 +550,9 @@ App.MainHostView = App.TableView.extend(App.TableServerViewMixin, {
     },
 
     displayVersions: function () {
+      if (this.get('hasSingleVersion')) {
+        return;
+      }
       var header = Em.I18n.t('common.versions'),
         hostName = this.get('content.hostName'),
         items = this.get('content.stackVersions').filterProperty('isVisible').map(function (stackVersion) {
@@ -625,7 +619,7 @@ App.MainHostView = App.TableView.extend(App.TableServerViewMixin, {
      */
     currentVersion: function() {
       var currentRepoVersion = this.get('content.stackVersions').findProperty('isCurrent') || this.get('content.stackVersions').objectAt(0);
-      return currentRepoVersion ? currentRepoVersion.get('displayName') + " (" + currentRepoVersion.get('displayStatus') + ")" : "";
+      return currentRepoVersion ? currentRepoVersion.get('displayName') : "";
     }.property('content.stackVersions'),
 
     /**

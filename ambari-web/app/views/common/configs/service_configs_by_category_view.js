@@ -36,12 +36,22 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
 
   service: null,
 
-  canEdit: true, // View is editable or read-only?
-
-  serviceConfigs: null, // General, Advanced, NameNode, SNameNode, DataNode, etc.
+  /**
+   * View is editable or read-only?
+   * @type {boolean}
+   */
+  canEdit: true,
 
   /**
-   * @type {Array}
+   * All configs for current <code>service</code>
+   * @type {App.ServiceConfigProperty[]}
+   */
+  serviceConfigs: null,
+
+  /**
+   * Configs for current category filtered by <code>isVisible</code>
+   * and sorted by <code>displayType</code> and <code>index</code>
+   * @type {App.ServiceConfigProperty[]}
    */
   categoryConfigs: function () {
     // sort content type configs, sort the rest of configs based on index and then add content array at the end (as intended)
@@ -59,14 +69,10 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
    * is helpful in Oozie/Hive database configuration, where
    * MySQL etc. database options don't show up, because
    * they were not visible initially.
+   * @type {App.ServiceConfigProperty[]}
    */
    categoryConfigsAll: function () {
-     var configs = this.get('serviceConfigs').filterProperty('category', this.get('category.name'));
-
-     if (this.get('service.serviceName') === 'KERBEROS' && App.router.get('kerberosWizardController.skipClientInstall')) {
-       App.router.get('kerberosWizardController').overrideVisibility(configs, false);
-     }
-     return configs;
+     return this.get('serviceConfigs').filterProperty('category', this.get('category.name'));
    }.property('serviceConfigs.@each').cacheable(),
 
   /**
@@ -78,47 +84,37 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
     return this.get('category.isCollapsed') ? "display: none;" : "display: block;"
   }.property('serviceConfigs.length'),
 
-  childView: App.ServiceConfigsOverridesView,
-
-  changeFlag: Ember.Object.create({
-    val: 1
-  }),
-
   /**
    * Should we show config group or not
    * @type {boolean}
    */
   isShowBlock: function () {
     var isCustomPropertiesCategory = this.get('category.customCanAddProperty');
-    var emptyFiltered = this.get('categoryConfigs').filterProperty('isHiddenByFilter', false).length > 0;
-    var isWidgetsOnlyCategory = this.get('categoryConfigs.length') == this.get('categoryConfigs').filterProperty('widget').length;
-    return isCustomPropertiesCategory && this.get('controller.filter') === '' && !this.get('parentView.columns').someProperty('selected') || (emptyFiltered && !isWidgetsOnlyCategory);
+    var hasFilteredAdvancedConfigs = this.get('categoryConfigs').filter(function (config) {
+        return config.get('isHiddenByFilter') === false && Em.isNone(config.get('widget'));
+      }, this).length > 0;
+    return (isCustomPropertiesCategory && this.get('controller.filter') === '' && !this.get('parentView.columns').someProperty('selected')) ||
+      hasFilteredAdvancedConfigs;
   }.property('category.customCanAddProperty', 'categoryConfigs.@each.isHiddenByFilter', 'categoryConfigs.@each.widget', 'controller.filter', 'parentView.columns.@each.selected'),
 
   /**
    * Re-order the configs to list content displayType properties at last in the category
-   * @param categoryConfigs
+   * @param {App.ServiceConfigProperty[]} categoryConfigs
+   * @method orderContentAtLast
    */
   orderContentAtLast: function (categoryConfigs) {
     var contentProperties = categoryConfigs.filterProperty('displayType', 'content');
-    var self = this;
     if (!contentProperties.length) {
-      return categoryConfigs
+      return categoryConfigs;
     }
     else {
-      var comparator;
       return categoryConfigs.sort(function (a, b) {
         var aContent = contentProperties.someProperty('name', a.get('name'));
         var bContent = contentProperties.someProperty('name', b.get('name'));
         if (aContent && bContent) {
           return 0;
         }
-        else if (aContent) {
-          return 1;
-        }
-        else {
-          return -1;
-        }
+        return aContent ? 1 : -1;
       });
     }
   },
@@ -152,7 +148,7 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
       console.log("Unable to load modification handler for ", serviceId);
     }
     if (serviceConfigModificationHandler != null) {
-      var securityEnabled = App.router.get('mainAdminSecurityController.securityEnabled');
+      var securityEnabled = App.router.get('mainAdminKerberosController.securityEnabled');
       this.affectedProperties = serviceConfigModificationHandler.getDependentConfigChanges(changedProperty, this.get("controller.selectedServiceNames"), stepConfigs, securityEnabled);
     }
     changedProperty.set("editDone", false); // Turn off flag
@@ -192,16 +188,16 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
           var affected = self.get("newAffectedProperties").objectAt(0),
             changedProperty = self.get("controller.stepConfigs").findProperty("serviceName", affected.sourceServiceName)
               .get("configs").findProperty("name", affected.changedPropertyName);
-          changedProperty.set('value', changedProperty.get('defaultValue'));
+          changedProperty.set('value', changedProperty.get('savedValue') || changedProperty.get('initialValue'));
           self.get("controller").set("miscModalVisible", false);
           this.hide();
         },
-        footerClass: Ember.View.extend({
+        footerClass: Em.View.extend({
           classNames: ['modal-footer'],
           templateName: require('templates/common/configs/propertyDependence_footer'),
           canIgnore: serviceId == 'MISC'
         }),
-        bodyClass: Ember.View.extend({
+        bodyClass: Em.View.extend({
           templateName: require('templates/common/configs/propertyDependence'),
           controller: this,
           propertyChange: self.get("newAffectedProperties"),
@@ -233,47 +229,16 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
 
   /**
    * Filtered <code>categoryConfigs</code> array. Used to show filtered result
+   * @method filteredCategoryConfigs
    */
   filteredCategoryConfigs: function () {
     $('.popover').remove();
     var filter = this.get('parentView.filter').toLowerCase();
-    var selectedFilters = this.get('parentView.columns').filterProperty('selected');
     var filteredResult = this.get('categoryConfigs');
     var isInitialRendering = !arguments.length || arguments[1] != 'categoryConfigs';
 
-    if (selectedFilters.length > 0 || filter.length > 0 || this.get('state') === 'inDOM') {
-      filteredResult.forEach(function (config) {
-        var passesFilters = true;
-
-        selectedFilters.forEach(function (filter) {
-          if (config.get(filter.attributeName) !== filter.attributeValue) {
-            passesFilters = false;
-          }
-        });
-
-        if (!passesFilters) {
-          config.set('isHiddenByFilter', true);
-          return false;
-        }
-
-        var searchString = config.get('defaultValue') + config.get('description') +
-          config.get('displayName') + config.get('name') + config.get('value') + config.getWithDefault('stackConfigProperty.displayName', '');
-
-        if (config.get('overrides')) {
-          config.get('overrides').forEach(function (overriddenConf) {
-            searchString += overriddenConf.get('value') + overriddenConf.get('group.name');
-          });
-        }
-
-        if (filter != null && typeof searchString === "string") {
-          config.set('isHiddenByFilter', !(searchString.toLowerCase().indexOf(filter) > -1));
-        } else {
-          config.set('isHiddenByFilter', false);
-        }
-      });
-    }
-    filteredResult = this.sortByIndex(filteredResult);
     filteredResult = filteredResult.filterProperty('isHiddenByFilter', false);
+    filteredResult = this.sortByIndex(filteredResult);
 
     if (filter) {
       if (filteredResult.length && typeof this.get('category.collapsedByDefault') === 'undefined') {
@@ -281,13 +246,17 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
         this.set('category.collapsedByDefault', this.get('category.isCollapsed'));
       }
       this.set('category.isCollapsed', !filteredResult.length);
-    } else if (typeof this.get('category.collapsedByDefault') !== 'undefined') {
-      // If user clear filter -- restore defaults
-      this.set('category.isCollapsed', this.get('category.collapsedByDefault'));
-      this.set('category.collapsedByDefault', undefined);
-    } else if (isInitialRendering && !filteredResult.length) {
-      this.set('category.isCollapsed', true);
     }
+    else
+      if (typeof this.get('category.collapsedByDefault') !== 'undefined') {
+        // If user clear filter -- restore defaults
+        this.set('category.isCollapsed', this.get('category.collapsedByDefault'));
+        this.set('category.collapsedByDefault', undefined);
+      }
+      else
+        if (isInitialRendering && !filteredResult.length) {
+          this.set('category.isCollapsed', true);
+        }
 
     var categoryBlock = $('.' + this.get('category.name').split(' ').join('.') + '>.accordion-body');
     this.get('category.isCollapsed') ? categoryBlock.hide() : categoryBlock.show();
@@ -326,11 +295,20 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
    */
   onToggleBlock: function () {
     this.$('.accordion-body').toggle('blind', 500);
-    this.set('category.isCollapsed', !this.get('category.isCollapsed'));
+    this.toggleProperty('category.isCollapsed');
+  },
+
+  /**
+   * Determines should accordion be collapsed by default
+   * @returns {boolean}
+   * @method calcIsCollapsed
+   */
+  calcIsCollapsed: function() {
+    return Em.isNone(this.get('category.isCollapsed')) ? (this.get('category.name').indexOf('Advanced') != -1 || this.get('category.name').indexOf('CapacityScheduler') != -1 || this.get('category.name').indexOf('Custom') != -1) : this.get('category.isCollapsed');
   },
 
   didInsertElement: function () {
-    var isCollapsed = this.get('category.isCollapsed') == undefined ? (this.get('category.name').indexOf('Advanced') != -1 || this.get('category.name').indexOf('CapacityScheduler') != -1 || this.get('category.name').indexOf('Custom') != -1) : this.get('category.isCollapsed');
+    var isCollapsed = this.calcIsCollapsed();
     var self = this;
     this.set('category.isCollapsed', isCollapsed);
     if (isCollapsed) {
@@ -350,19 +328,6 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
     });
   },
 
-  willDestroyElement: function () {
-    if (this.get('parentView.controller.name') == 'mainServiceInfoConfigsController') {
-      this.get('categoryConfigsAll').forEach(function (item) {
-        item.set('isVisible', false);
-      });
-    }
-  },
-
-  isOneOfAdvancedSections: function () {
-    var category = this.get('category');
-    return category.indexOf("Advanced") != -1;
-  },
-
   /**
    * @returns {string}
    */
@@ -371,7 +336,7 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
   },
 
   isSecureConfig: function (configName, filename) {
-    var secureConfigs = this.get('controller.secureConfigs').filterProperty('filename', filename);
+    var secureConfigs = App.config.get('secureConfigs').filterProperty('filename', filename);
     return !!secureConfigs.findProperty('name', configName);
   },
 
@@ -387,7 +352,8 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
       category: propertyObj.categoryName,
       id: 'site property',
       serviceName: propertyObj.serviceName,
-      defaultValue: null,
+      savedValue: null,
+      recommendedValue: null,
       supportsFinal: App.config.shouldSupportFinal(propertyObj.serviceName, propertyObj.filename),
       filename: propertyObj.filename || '',
       isUserProperty: true,
@@ -637,18 +603,18 @@ App.ServiceConfigsByCategoryView = Em.View.extend(App.UserPref, App.ConfigOverri
   doRestoreDefaultValue: function (event) {
     var serviceConfigProperty = event.contexts[0];
     var value = serviceConfigProperty.get('value');
-    var dValue = serviceConfigProperty.get('defaultValue');
+    var savedValue = serviceConfigProperty.get('savedValue');
     var supportsFinal = serviceConfigProperty.get('supportsFinal');
-    var defaultIsFinal = serviceConfigProperty.get('defaultIsFinal');
+    var savedIsFinal = serviceConfigProperty.get('savedIsFinal');
 
-    if (dValue != null) {
+    if (savedValue != null) {
       if (serviceConfigProperty.get('displayType') === 'password') {
-        serviceConfigProperty.set('retypedPassword', dValue);
+        serviceConfigProperty.set('retypedPassword', savedValue);
       }
-      serviceConfigProperty.set('value', dValue);
+      serviceConfigProperty.set('value', savedValue);
     }
     if (supportsFinal) {
-      serviceConfigProperty.set('isFinal', defaultIsFinal);
+      serviceConfigProperty.set('isFinal', savedIsFinal);
     }
     this.configChangeObserver(serviceConfigProperty);
     Em.$('body>.tooltip').remove(); //some tooltips get frozen when their owner's DOM element is removed

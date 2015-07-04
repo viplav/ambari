@@ -44,11 +44,11 @@ def reach_safemode_state(user, safemode_state, in_ha):
   original_state = SafeMode.UNKNOWN
 
   hostname = params.hostname
-  safemode_check = format("su - {user} -c 'hdfs dfsadmin -safemode get'")
+  safemode_check = format("hdfs dfsadmin -safemode get")
 
   grep_pattern = format("Safe mode is {safemode_state} in {hostname}") if in_ha else format("Safe mode is {safemode_state}")
-  safemode_check_with_grep = format("su - {user} -c 'hdfs dfsadmin -safemode get | grep \"{grep_pattern}\"'")
-  code, out = shell.call(safemode_check)
+  safemode_check_with_grep = format("hdfs dfsadmin -safemode get | grep '{grep_pattern}'")
+  code, out = shell.call(safemode_check, user=user)
   Logger.info("Command: %s\nCode: %d." % (safemode_check, code))
   if code == 0 and out is not None:
     Logger.info(out)
@@ -67,7 +67,7 @@ def reach_safemode_state(user, safemode_state, in_ha):
                 logoutput=True,
                 path=[params.hadoop_bin_dir])
 
-        code, out = call(safemode_check_with_grep)
+        code, out = shell.call(safemode_check_with_grep, user=user)
         Logger.info("Command: %s\nCode: %d. Out: %s" % (safemode_check_with_grep, code, out))
         if code == 0:
           return (True, original_state)
@@ -91,7 +91,8 @@ def prepare_rolling_upgrade():
   Logger.info(format("Performing a(n) {params.upgrade_direction} of HDFS"))
 
   if params.security_enabled:
-    Execute(format("{params.kinit_path_local} -kt {params.hdfs_user_keytab} {params.hdfs_principal_name}"))
+    kinit_command = format("{params.kinit_path_local} -kt {params.hdfs_user_keytab} {params.hdfs_principal_name}") 
+    Execute(kinit_command, user=params.hdfs_user, logoutput=True)
 
 
   if params.upgrade_direction == Direction.UPGRADE:
@@ -118,7 +119,8 @@ def finalize_rolling_upgrade():
   import params
 
   if params.security_enabled:
-    Execute(format("{params.kinit_path_local} -kt {params.hdfs_user_keytab} {params.hdfs_principal_name}"))
+    kinit_command = format("{params.kinit_path_local} -kt {params.hdfs_user_keytab} {params.hdfs_principal_name}") 
+    Execute(kinit_command, user=params.hdfs_user, logoutput=True)
 
   finalize_cmd = "hdfs dfsadmin -rollingUpgrade finalize"
   query_cmd = "hdfs dfsadmin -rollingUpgrade query"

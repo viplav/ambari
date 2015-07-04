@@ -65,12 +65,15 @@ class TestNFSGateway(RMFTestCase):
                               mode = 0775
                               )
     self.assertResourceCalled('File', '/var/run/hadoop/root/hadoop_privileged_nfs3.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1',
-                              )
-    self.assertResourceCalled('Execute', "ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf start nfs3",
-        environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec', 'HADOOP_PRIVILEGED_NFS_USER': 'hdfs', 'HADOOP_PRIVILEGED_NFS_LOG_DIR': '/var/log/hadoop/root', 'HADOOP_PRIVILEGED_NFS_PID_DIR': '/var/run/hadoop/root'},
-        not_if = 'ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1',
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1'",
+    )
+    self.assertResourceCalled('Execute', 'ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf start nfs3',
+        environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec',
+           'HADOOP_PRIVILEGED_NFS_LOG_DIR': u'/var/log/hadoop/root',
+           'HADOOP_PRIVILEGED_NFS_PID_DIR': u'/var/run/hadoop/root',
+           'HADOOP_PRIVILEGED_NFS_USER': u'hdfs'},
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1'",
     )
     self.assertNoMoreResources()
 
@@ -82,26 +85,15 @@ class TestNFSGateway(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assertResourceCalled('Directory', '/var/run/hadoop',
-                              owner = 'root',
-                              group = 'root',
-                              mode = 0755
-                              )
-    self.assertResourceCalled('Directory', '/var/run/hadoop/root',
-                              owner = 'root',
-                              recursive = True,
-                              )
-    self.assertResourceCalled('Directory', '/var/log/hadoop/root',
-                              owner = 'root',
-                              group = 'hadoop',
-                              mode = 0775
-                              )
     self.assertResourceCalled('File', '/var/run/hadoop/root/hadoop_privileged_nfs3.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1',
-                              )
-    self.assertResourceCalled('Execute', "ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf stop nfs3",
-        environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec', 'HADOOP_PRIVILEGED_NFS_USER': 'hdfs', 'HADOOP_PRIVILEGED_NFS_LOG_DIR': '/var/log/hadoop/root', 'HADOOP_PRIVILEGED_NFS_PID_DIR': '/var/run/hadoop/root'},
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1'",
+    )
+    self.assertResourceCalled('Execute', 'ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf stop nfs3',
+        environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec',
+           'HADOOP_PRIVILEGED_NFS_LOG_DIR': u'/var/log/hadoop/root',
+           'HADOOP_PRIVILEGED_NFS_PID_DIR': u'/var/run/hadoop/root',
+           'HADOOP_PRIVILEGED_NFS_USER': u'hdfs'},
         not_if = None,
     )
     self.assertResourceCalled('File', '/var/run/hadoop/root/hadoop_privileged_nfs3.pid',
@@ -146,12 +138,15 @@ class TestNFSGateway(RMFTestCase):
                               mode = 0775
                               )
     self.assertResourceCalled('File', '/var/run/hadoop/root/hadoop_privileged_nfs3.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1',
-                              )
-    self.assertResourceCalled('Execute', "ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf start nfs3",
-        environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec', 'HADOOP_PRIVILEGED_NFS_USER': 'hdfs', 'HADOOP_PRIVILEGED_NFS_LOG_DIR': '/var/log/hadoop/root', 'HADOOP_PRIVILEGED_NFS_PID_DIR': '/var/run/hadoop/root'},
-        not_if = 'ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1',
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1'",
+    )
+    self.assertResourceCalled('Execute', 'ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf start nfs3',
+        environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec',
+           'HADOOP_PRIVILEGED_NFS_LOG_DIR': u'/var/log/hadoop/root',
+           'HADOOP_PRIVILEGED_NFS_PID_DIR': u'/var/run/hadoop/root',
+           'HADOOP_PRIVILEGED_NFS_USER': u'hdfs'},
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1'",
     )
     self.assertNoMoreResources()
 
@@ -163,26 +158,15 @@ class TestNFSGateway(RMFTestCase):
                        hdp_stack_version = self.STACK_VERSION,
                        target = RMFTestCase.TARGET_COMMON_SERVICES
     )
-    self.assertResourceCalled('Directory', '/var/run/hadoop',
-                              owner = 'root',
-                              group = 'root',
-                              mode = 0755
-                              )
-    self.assertResourceCalled('Directory', '/var/run/hadoop/root',
-                              owner = 'root',
-                              recursive = True,
-                              )
-    self.assertResourceCalled('Directory', '/var/log/hadoop/root',
-                              owner = 'root',
-                              group = 'hadoop',
-                              mode = 0775
-                              )
     self.assertResourceCalled('File', '/var/run/hadoop/root/hadoop_privileged_nfs3.pid',
-                              action = ['delete'],
-                              not_if='ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1',
-                              )
-    self.assertResourceCalled('Execute', "ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf stop nfs3",
-        environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec', 'HADOOP_PRIVILEGED_NFS_USER': 'hdfs', 'HADOOP_PRIVILEGED_NFS_LOG_DIR': '/var/log/hadoop/root', 'HADOOP_PRIVILEGED_NFS_PID_DIR': '/var/run/hadoop/root'},
+        action = ['delete'],
+        not_if = "ambari-sudo.sh su hdfs -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/hadoop/root/hadoop_privileged_nfs3.pid >/dev/null 2>&1 && ps -p `cat /var/run/hadoop/root/hadoop_privileged_nfs3.pid` >/dev/null 2>&1'",
+    )
+    self.assertResourceCalled('Execute', 'ambari-sudo.sh [RMF_ENV_PLACEHOLDER] -H -E /usr/lib/hadoop/sbin/hadoop-daemon.sh --config /etc/hadoop/conf stop nfs3',
+        environment = {'HADOOP_LIBEXEC_DIR': '/usr/lib/hadoop/libexec',
+           'HADOOP_PRIVILEGED_NFS_LOG_DIR': u'/var/log/hadoop/root',
+           'HADOOP_PRIVILEGED_NFS_PID_DIR': u'/var/run/hadoop/root',
+           'HADOOP_PRIVILEGED_NFS_USER': u'hdfs'},
         not_if = None,
     )
     self.assertResourceCalled('File', '/var/run/hadoop/root/hadoop_privileged_nfs3.pid',
@@ -191,6 +175,18 @@ class TestNFSGateway(RMFTestCase):
     self.assertNoMoreResources()
 
   def assert_configure_default(self):
+    self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-i386-32',
+        recursive = True,
+    )
+    self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-amd64-64',
+        recursive = True,
+    )
+    self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-i386-32/libsnappy.so',
+        to = '/usr/lib/hadoop/lib/libsnappy.so',
+    )
+    self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-amd64-64/libsnappy.so',
+        to = '/usr/lib/hadoop/lib64/libsnappy.so',
+    )
     self.assertResourceCalled('Directory', '/etc/security/limits.d',
                               owner = 'root',
                               group = 'root',
@@ -221,11 +217,21 @@ class TestNFSGateway(RMFTestCase):
                               content = Template('slaves.j2'),
                               owner = 'hdfs',
                               )
-    self.assertResourceCalled('File', '/var/lib/ambari-agent/lib/fast-hdfs-resource.jar',
-        content = StaticFile('fast-hdfs-resource.jar'),
-    )
+
 
   def assert_configure_secured(self):
+    self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-i386-32',
+        recursive = True,
+    )
+    self.assertResourceCalled('Directory', '/usr/lib/hadoop/lib/native/Linux-amd64-64',
+        recursive = True,
+    )
+    self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-i386-32/libsnappy.so',
+        to = '/usr/lib/hadoop/lib/libsnappy.so',
+    )
+    self.assertResourceCalled('Link', '/usr/lib/hadoop/lib/native/Linux-amd64-64/libsnappy.so',
+        to = '/usr/lib/hadoop/lib64/libsnappy.so',
+    )
     self.assertResourceCalled('Directory', '/etc/security/limits.d',
                               owner = 'root',
                               group = 'root',
@@ -256,9 +262,7 @@ class TestNFSGateway(RMFTestCase):
                               content = Template('slaves.j2'),
                               owner = 'root',
                               )
-    self.assertResourceCalled('File', '/var/lib/ambari-agent/lib/fast-hdfs-resource.jar',
-        content = StaticFile('fast-hdfs-resource.jar'),
-    )
+
 
 
   @patch("resource_management.libraries.functions.security_commons.build_expectations")

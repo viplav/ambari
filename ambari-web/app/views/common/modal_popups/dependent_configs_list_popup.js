@@ -35,11 +35,21 @@ App.showDependentConfigsPopup = function (configs, primary, secondary) {
     bodyClass: Em.View.extend({
       templateName: require('templates/common/modal_popups/dependent_configs_list'),
 
-      ToggleAll: Em.Checkbox.extend({
+      toggleAll: Em.Checkbox.extend({
         didInsertElement: function () {
-          this.set('checked', !this.get('parentView.parentView.configs').someProperty('saveRecommended', false));
+          this.updateCheckbox();
         },
         click: function () {
+          Em.run.next(this, 'updateSaveRecommended');
+        },
+        updateCheckboxObserver: function () {
+          Em.run.once(this, 'updateCheckbox');
+        }.observes('parentView.parentView.configs.@each.saveRecommended'),
+
+        updateCheckbox: function() {
+          this.set('checked', !(this.get('parentView.parentView.configs')|| []).someProperty('saveRecommended', false));
+        },
+        updateSaveRecommended: function() {
           this.get('parentView.parentView.configs').setEach('saveRecommended', this.get('checked'));
         }
       })
@@ -58,6 +68,12 @@ App.showDependentConfigsPopup = function (configs, primary, secondary) {
       this.get('configs').forEach(function(c) {
         Em.set(c, 'saveRecommended', Em.get(c, 'saveRecommendedDefault'));
       });
+      if (secondary) {
+        secondary();
+      }
+    },
+    onClose: function () {
+      this._super();
       if (secondary) {
         secondary();
       }

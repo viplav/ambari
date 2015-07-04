@@ -25,7 +25,6 @@ from hive import hive
 from ambari_commons.os_family_impl import OsFamilyImpl
 from ambari_commons import OSConst
 
-
 class HiveClient(Script):
   def install(self, env):
     import params
@@ -55,6 +54,7 @@ class HiveClientDefault(HiveClient):
     import params
     env.set_params(params)
     if params.version and compare_versions(format_hdp_stack_version(params.version), '2.2.0.0') >= 0:
+      conf_select.select(params.stack_name, "hive", params.version)
       conf_select.select(params.stack_name, "hadoop", params.version)
       hdp_select.select("hadoop-client", params.version)
 
